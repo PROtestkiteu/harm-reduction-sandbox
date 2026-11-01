@@ -135,6 +135,14 @@ const SPARK_H = 14;
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const NARROW = '(max-width: 760px)';
 
+/** Small icons for the city-service meters, drawn in the text colour: a police badge, a medical cross, a bed, a house. */
+const STRESS_ICONS: Record<'police' | 'medics' | 'sobering' | 'district', string> = {
+  police: '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 1l6 2.2v4.3c0 3.6-2.6 6.3-6 7.5-3.4-1.2-6-3.9-6-7.5V3.2z"/></svg>',
+  medics: '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M6 1.5h4v4.5h4.5v4H10v4.5H6V10H1.5V6H6z"/></svg>',
+  sobering: '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M1 4h2v5h12v5h-2v-2H3v2H1zm3 1.5a1.8 1.8 0 1 1 0 3.6 1.8 1.8 0 0 1 0-3.6zM7 6h6.5a1.5 1.5 0 0 1 1.5 1.5V8H7z"/></svg>',
+  district: '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 1.5l6.5 5.5H13v7.5H9.5V10h-3v4.5H3V7H1.5z"/></svg>',
+};
+
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -216,6 +224,7 @@ export class Hud {
   private readonly unmet: HTMLElement;
   private readonly stressRow: HTMLElement;
   private readonly stressFill = {} as Record<'police' | 'medics' | 'sobering' | 'district', HTMLElement>;
+  private readonly stressMeters = {} as Record<'police' | 'medics' | 'sobering' | 'district', HTMLElement>;
   private speed: number = SPEEDS[0];
   private readonly switches = {} as Record<ServiceId, HTMLButtonElement>;
   private readonly switchState = {} as Record<ServiceId, HTMLElement>;
@@ -240,6 +249,7 @@ export class Hud {
   private readonly staffGroupBtn: HTMLButtonElement;
   private readonly staffGroupLong: HTMLElement;
   private readonly staffGroupOpt: HTMLLIElement;
+  private readonly topBar: HTMLElement;
   private staffOpen = false;
   private camperOpen = false;
   private mixOpen = false;
@@ -271,10 +281,8 @@ export class Hud {
     for (const id of LOCATION_IDS) this.trends[id] = new MetricTrend();
 
     this.header = el('header', 'hud-header');
-    const help = button('help-link', t('How it works'));
-    help.addEventListener('click', () => cb.onHelp());
-    const subtitle = el('p', 'subtitle', t('Help people stay alive without going bankrupt.') + ' ');
-    subtitle.append(help);
+    // 'How it works' lives in the Configure menu.
+    const subtitle = el('p', 'subtitle', t('Help people stay alive without going bankrupt.'));
     this.header.append(el('h1', undefined, t('Harm reduction project')), subtitle);
 
     this.column = el('aside', 'column');
@@ -304,7 +312,39 @@ export class Hud {
     this.foldBtn = button('sheet-handle');
     this.foldBtn.setAttribute('aria-expanded', 'true');
     this.foldBtn.setAttribute('aria-label', t('Fold the panel away'));
-    this.foldBtn.addEventListener('click', () => this.setFolded(!this.folded));
+    // The handle is a swipe: down folds the sheet, up opens it; the sheet follows the finger. A short tap toggles.
+    let drag: { id: number; y: number; dy: number } | null = null;
+    let swiped = false;
+    this.foldBtn.addEventListener('pointerdown', (e) => {
+      drag = { id: e.pointerId, y: e.clientY, dy: 0 };
+      swiped = false;
+      this.foldBtn.setPointerCapture(e.pointerId);
+    });
+    this.foldBtn.addEventListener('pointermove', (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      drag.dy = e.clientY - drag.y;
+      // Only the open sheet slides with the finger (downwards); a folded one just waits for the release.
+      if (!this.folded && drag.dy > 0) {
+        this.column.style.transition = 'none';
+        this.column.style.transform = `translateY(${Math.min(drag.dy, this.column.offsetHeight * 0.8)}px)`;
+      }
+    });
+    const release = (e: PointerEvent) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      const dy = drag.dy;
+      drag = null;
+      this.column.style.transition = '';
+      this.column.style.transform = '';
+      if (Math.abs(dy) < 24) return;
+      swiped = true;
+      this.setFolded(dy > 0);
+    };
+    this.foldBtn.addEventListener('pointerup', release);
+    this.foldBtn.addEventListener('pointercancel', release);
+    this.foldBtn.addEventListener('click', () => {
+      if (swiped) { swiped = false; return; }
+      this.setFolded(!this.folded);
+    });
     this.eventsSlot = el('div', 'column-events');
 
     // The conversation: who or what is selected, speaking in plain sentences.
@@ -506,6 +546,7 @@ export class Hud {
     this.favourBtn.append(this.favourLong, favourShort);
     this.favourBtn.addEventListener('click', () => {
       this.favourOpen = !this.favourOpen;
+      queueMicrotask(() => this.syncDrill());
       if (this.lastSnapshot) this.update(this.lastSnapshot);
     });
     this.favourOpt = opt(this.favourBtn);
@@ -567,15 +608,33 @@ export class Hud {
       ['sobering', t('Sobering'), t('Drunk club leavers taken to the sobering-up centre (izba wytrzeźwień).')],
     ] as const) {
       const m = el('span', 'stress');
-      m.title = hint;
+      m.dataset.key = key;
+      m.title = `${name}: ${hint}`;
+      m.setAttribute('aria-label', name);
       const bar = el('span', 'stress-bar');
       const fill = el('span', 'stress-fill');
       bar.append(fill);
-      m.append(el('span', 'stress-name', name), bar);
+      // An icon per service, coloured by how stretched it is; the name is in the tooltip.
+      const icon = el('span', 'stress-icon');
+      icon.innerHTML = STRESS_ICONS[key];
+      m.append(icon, el('span', 'stress-name', name), bar);
+      this.stressMeters[key] = m;
       this.stressRow.append(m);
       this.stressFill[key] = fill;
     }
     this.column.append(this.foldBtn, top, this.stressRow, this.eventsSlot, this.log, this.options, this.continueBtn);
+    // Phones: the clock, money and meters live in a block at the top of the screen; the sheet keeps the rest.
+    this.topBar = el('div', 'top-bar');
+    const placeIndicators = () => {
+      if (window.matchMedia(NARROW).matches) {
+        if (top.parentElement !== this.topBar) this.topBar.append(top, this.stressRow);
+      } else if (top.parentElement !== this.column) {
+        this.foldBtn.after(top, this.stressRow);
+      }
+      this.headerBottom = 0;
+    };
+    placeIndicators();
+    window.matchMedia(NARROW).addEventListener('change', placeIndicators);
 
     const labelLayer = el('div', 'labels');
     for (const id of LOCATION_IDS) {
@@ -593,7 +652,7 @@ export class Hud {
       labelLayer.append(b);
     }
 
-    root.append(labelLayer, this.header, this.column);
+    root.append(labelLayer, this.header, this.topBar, this.column);
     // Label widths depend on the web fonts, which arrive after first layout.
     void document.fonts.ready.then(() => {
       for (const id of LOCATION_IDS) this.labelWidths[id] = 0;
@@ -753,7 +812,7 @@ export class Hud {
 
   placeLabels(points: Record<LocationId, { x: number; y: number; below?: boolean }>): void {
     this.labelPoints = points;
-    if (!this.headerBottom) this.headerBottom = this.header.getBoundingClientRect().bottom;
+    if (!this.headerBottom) this.headerBottom = Math.max(this.header.getBoundingClientRect().bottom, this.topBar.getBoundingClientRect().bottom);
     const narrow = window.matchMedia(NARROW).matches;
     const rect = this.column.getBoundingClientRect();
     const columnLeft = narrow ? window.innerWidth : rect.left;
@@ -853,7 +912,7 @@ export class Hud {
   /** CSS-pixel areas the HUD covers; the camera frames the scene around them. */
   insets(): Insets {
     const vh = window.innerHeight;
-    this.headerBottom = this.header.getBoundingClientRect().bottom;
+    this.headerBottom = Math.max(this.header.getBoundingClientRect().bottom, this.topBar.getBoundingClientRect().bottom);
     const top = this.headerBottom + 6;
     if (!window.matchMedia(NARROW).matches) {
       return { top: Math.min(top, 72), right: window.innerWidth - this.column.getBoundingClientRect().left, bottom: 8, left: 0 };
@@ -897,7 +956,7 @@ export class Hud {
         const w = `${Math.round(v * 100)}%`;
         if (f.style.width !== w) f.style.width = w;
         const state = key === 'district' ? 'good' : v >= 0.7 ? 'high' : v >= 0.4 ? 'mid' : 'low';
-        if (f.dataset.state !== state) f.dataset.state = state;
+        if (f.dataset.state !== state) { f.dataset.state = state; this.stressMeters[key].dataset.state = state; }
       }
     }
     const aid = s.aid;
@@ -977,6 +1036,7 @@ export class Hud {
 
   /** Action replies for the selected place: labels carry the current numbers and costs. */
   private renderActions(a: PlaceLevers | undefined): void {
+    queueMicrotask(() => this.syncDrill());
     // Closed for a reason no reply can change (law, hours, switched off, an event):
     // everything but leaving is locked. Closed for want of staff: only staffing helps.
     const why = a?.closedReason ?? null;
@@ -1061,7 +1121,25 @@ export class Hud {
   }
 
   /** Shows the parts of the column that belong to the current mode. */
+  /**
+   * Phones: an open group (staffing, the budget mix, a favour) takes the list
+   * over: the other replies step aside and the group's own reply, marked ‹,
+   * leads back. On wider screens the list stays as it is.
+   */
+  private syncDrill(): void {
+    const head = this.staffOpen && !this.staffGroupOpt.hidden ? this.staffGroupOpt
+      : this.mixOpen && !this.actionOpts.mix.li.hidden ? this.actionOpts.mix.li
+        : this.favourOpen && !this.favourOpt.hidden ? this.favourOpt
+          : null;
+    for (const li of this.options.querySelectorAll(':scope > li.drill-head')) if (li !== head) li.classList.remove('drill-head');
+    if (head) {
+      head.classList.add('drill-head');
+      this.options.dataset.drill = 'true';
+    } else if (this.options.dataset.drill) delete this.options.dataset.drill;
+  }
+
   private render(): void {
+    queueMicrotask(() => this.syncDrill());
     const m = this.mode;
     // Picking something on the map opens a folded sheet to show it.
     if (m) this.setFolded(false);

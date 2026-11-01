@@ -71,6 +71,36 @@
     --role-police: #33467a;
     --role-resident: #8a4a2a;
   }
+  /* At night the HUD stays dark even in light mode: a pale sheet under a night scene glares. */
+  :root[data-scene='night'] {
+    --fade: 10, 9, 8;
+    --text: #ece4d4;
+    --muted: #aaa093;
+    --reply: #edb300;
+    --reply-hover: #f5c93a;
+    --bar-text: #090a0c;
+    --open: #8fd0a0;
+    --opening: #8cc4e0;
+    --closing: #f08048;
+    --closed: #8a8278;
+    --law: #ff6a5a;
+    --focus: #fff4e6;
+    --role-staff: #5ec0e8;
+    --role-visitor: #f2a07b;
+    --role-clubgoer: #a98cf0;
+    --role-passerby: #c2baae;
+    --role-police: #9fb0dc;
+    --role-resident: #d8a888;
+  }
+}
+
+/* Text over the 3D scene (title, links, map labels) is always light on dark, whatever the theme. */
+.hud-header, .loc-label {
+  --reply: #edb300;
+  --reply-hover: #f5c93a;
+  --text: #ece4d4;
+  --muted: #d6ccba;
+  --focus: #fff4e6;
 }
 
 * { box-sizing: border-box; }
@@ -1466,7 +1496,7 @@ body:has(.sandbox-toggle[aria-expanded='true']) .portrait { display: none; }
 .stress-row { display: flex; gap: 12px; margin: 4px 0 2px; font-size: 11px; color: var(--muted); }
 .stress { display: flex; align-items: center; gap: 5px; flex: 1; min-width: 0; }
 .stress-name { white-space: nowrap; }
-.stress-bar { flex: 1; height: 4px; min-width: 24px; background: rgba(255, 255, 255, 0.12); border-radius: 2px; overflow: hidden; }
+.stress-bar { flex: 1; height: 4px; min-width: 24px; background: color-mix(in srgb, var(--muted) 28%, transparent); border-radius: 2px; overflow: hidden; }
 .stress-fill { display: block; height: 100%; width: 0; background: var(--muted); transition: width 0.4s; }
 .stress-fill[data-state='mid'] { background: var(--closing); }
 .stress-fill[data-state='high'] { background: var(--law); }
@@ -1501,4 +1531,95 @@ body:has(.sandbox-toggle[aria-expanded='true']) .portrait { display: none; }
 @media (max-width: 360px) {
   .clock { font-size: 15px; }
   .column-sub .people { display: none; }
+}
+
+/* Decision pop-ups: choices spaced apart; the first one filled, the others outlined, so they read as separate buttons. */
+.event-choices { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+.event-popup .welcome-controls { margin-top: 8px; }
+.event-choice { padding: 10px 14px; line-height: 1.3; }
+.event-choice:not(:first-child) { background: transparent; color: var(--reply); border: 1px solid currentColor; }
+@media (hover: hover) { .event-choice:not(:first-child):hover { background: rgba(255, 255, 255, 0.06); } }
+.event-choice:disabled { opacity: 0.45; cursor: not-allowed; }
+/* The handle is swiped: the browser must not scroll or zoom while a finger drags it. */
+.sheet-handle { touch-action: none; }
+
+/* Loading screen: the PROtestkit logo, breathing gently, over the skeleton diamond. */
+.loading-logo { width: 110px; height: auto; animation: logo-breathe 2.4s ease-in-out infinite; }
+@keyframes logo-breathe { 50% { opacity: 0.65; transform: scale(0.97); } }
+.loading-line { min-height: 1.4em; margin: 0; text-align: center; padding: 0 16px; }
+@media (prefers-reduced-motion: reduce) { .loading-logo { animation: none; } }
+
+/* The Configure button sits over the scene: always the bright gold. */
+.sandbox-toggle { --reply: #edb300; --reply-hover: #f5c93a; }
+
+/* Phones: the indicators live in a compact block at the top right; the title takes the left. */
+.top-bar:empty { display: none; }
+@media (max-width: 760px) {
+  .top-bar {
+    position: absolute;
+    top: max(10px, env(safe-area-inset-top));
+    right: max(10px, env(safe-area-inset-right));
+    width: min(60vw, 280px);
+    padding: 6px 10px 8px;
+    background: var(--grain), rgba(var(--fade), 0.9);
+    border-top: 2px solid var(--reply);
+    color: var(--text);
+    z-index: 3;
+  }
+  .top-bar .column-top { flex-direction: column; align-items: stretch; gap: 0; }
+  .top-bar .column-time { justify-content: space-between; }
+  .top-bar .column-right { align-items: flex-end; }
+  .top-bar .stress-row { margin: 4px 0 0; }
+  .hud-header { right: auto; max-width: calc(40vw - 20px); }
+}
+@media (max-width: 760px) and (orientation: portrait) {
+  /* The name on three lines, the tagline left to the welcome box. */
+  .hud-header h1 { width: min-content; font-size: 20px; line-height: 1.05; }
+  .subtitle { display: none; }
+  .sandbox { top: calc(max(12px, env(safe-area-inset-top)) + 74px); }
+}
+@media (max-width: 760px) {
+  /* Half the size: small type, slim meters; the speed button looks small but keeps a 44 px tap area. */
+  .top-bar { width: min(46vw, 200px); padding: 4px 7px 5px; border-top-width: 1px; }
+  .top-bar .clock { font-size: 12.5px; }
+  .top-bar .money { font-size: 12.5px; }
+  .top-bar .column-sub { font-size: 10px; gap: 5px; }
+  .top-bar .speed-toggle { position: relative; min-width: 0; min-height: 0; padding: 1px 5px; font-size: 11px; }
+  .top-bar .speed-toggle::before { content: ''; position: absolute; inset: -11px -8px; }
+  .top-bar .stress-row { font-size: 9.5px; gap: 1px 8px; margin-top: 2px; }
+  .top-bar .stress-name { min-width: 0; }
+  .top-bar .stress-bar { height: 3px; min-width: 14px; }
+  .top-bar .column-time { gap: 6px; }
+}
+@media (max-width: 760px) {
+  /* An open group takes the list over: other replies step aside, its own reply (marked ‹) leads back. */
+  .options[data-drill] > li:not(.nested):not(.drill-head) { display: none; }
+  .options[data-drill] > li.drill-head { grid-column: 1 / -1; }
+  .options[data-drill] > li.drill-head .opt::before { content: '‹'; font-size: 1.3em; line-height: 1; }
+  .options[data-drill] > li.drill-head .opt.group::after { display: none; }
+  .options[data-drill] > li.nested { grid-column: 1 / -1; padding-left: 0; }
+}
+
+/* City-service meters: an icon each, coloured by state; the names show only where there is room. */
+.stress-icon { display: inline-flex; width: 13px; height: 13px; flex: none; color: var(--muted); }
+.stress-icon svg { width: 100%; height: 100%; }
+.stress[data-state='mid'] .stress-icon { color: var(--closing); }
+.stress[data-state='high'] .stress-icon { color: var(--law); }
+.stress[data-state='good'] .stress-icon { color: var(--open); }
+@media (max-width: 760px) {
+  .top-bar .stress-row { display: flex; gap: 8px; }
+  .top-bar .stress-name { display: none; }
+  .top-bar .stress-icon { width: 11px; height: 11px; }
+}
+@media (max-width: 760px) {
+  /* A tidy grid: time and speed; money and turned away; four equal meters. */
+  .top-bar .column-top { display: grid; grid-template-columns: 1fr; row-gap: 3px; }
+  .top-bar .column-time { display: flex; justify-content: space-between; align-items: center; }
+  .top-bar .column-right { flex-direction: row; justify-content: space-between; align-items: baseline; width: 100%; container-type: normal; }
+  .top-bar .column-sub { justify-content: flex-end; }
+  .top-bar .column-sub .people { display: none; }
+  .top-bar .unmet::before { content: none; }
+  .top-bar .stress-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0 6px; margin-top: 5px; padding-top: 4px; border-top: 1px solid color-mix(in srgb, var(--muted) 25%, transparent); }
+  .top-bar .stress { gap: 3px; }
+  .top-bar .stress-bar { min-width: 0; }
 }

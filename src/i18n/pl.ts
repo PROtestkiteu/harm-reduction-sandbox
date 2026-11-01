@@ -1247,4 +1247,5 @@ export const PL: Record<string, string> = {
   "Things got worse on the street: the {venue} has closed.": "Na ulicy zrobiło się gorzej: zamknięto miejsce ({venue}).",
   "District": "Dzielnica",
   "How well the district is doing: harm reduction that works brings more people out and new venues.": "Jak radzi sobie dzielnica: skuteczna redukcja szkód przyciąga więcej osób i nowe lokale.",
+  "Configure": "Ustawienia",
 };

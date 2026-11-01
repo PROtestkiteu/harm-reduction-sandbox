@@ -56,8 +56,10 @@ function secret(): string {
 
 function db(): PDO {
     $path = getenv('THEGAME_DB') ?: '/var/lib/thegame/board.sqlite';
-    $pdo = new PDO('sqlite:' . $path, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-    $pdo->exec('PRAGMA journal_mode=WAL; PRAGMA busy_timeout=2000;');
+    // Wait for a lock before anything else: the game sends two requests at once on start.
+    $pdo = new PDO('sqlite:' . $path, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_TIMEOUT => 5]);
+    $pdo->exec('PRAGMA busy_timeout=5000');
+    $pdo->exec('PRAGMA journal_mode=WAL');
     $pdo->exec('CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY, name TEXT NOT NULL, helped INTEGER NOT NULL, nights INTEGER NOT NULL, ts INTEGER NOT NULL, updated INTEGER NOT NULL, who TEXT NOT NULL)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS runs_helped ON runs (helped DESC)');
     $pdo->exec('CREATE TABLE IF NOT EXISTS hits (who TEXT NOT NULL, kind TEXT NOT NULL, at INTEGER NOT NULL)');
@@ -72,14 +74,28 @@ function who(string $secret): string {
     return substr(hash_hmac('sha256', 'ip|' . $ip, $secret), 0, 32);
 }
 
+/**
+ * Starts a transaction holding the write lock from its first statement. A
+ * transaction that reads first and writes later fails at once (no waiting)
+ * when another request wrote in between; one that writes first waits its turn.
+ */
+function begin_write(PDO $db): void {
+    $db->beginTransaction();
+    $db->exec('DELETE FROM hits WHERE 0');
+}
+
 /** At most `limit` hits of `kind` in `window` seconds per caller; records this one. */
 function limit(PDO $db, string $who, string $kind, int $limit, int $window): void {
     $now = time();
+    begin_write($db);
     $db->prepare('DELETE FROM hits WHERE at < ?')->execute([$now - 86400]);
     $q = $db->prepare('SELECT COUNT(*) FROM hits WHERE who = ? AND kind = ? AND at > ?');
     $q->execute([$who, $kind, $now - $window]);
-    if ((int) $q->fetchColumn() >= $limit) out(429, ['error' => 'slow down']);
+    $count = (int) $q->fetchColumn();
+    $q->closeCursor();
+    if ($count >= $limit) { $db->commit(); out(429, ['error' => 'slow down']); }
     $db->prepare('INSERT INTO hits (who, kind, at) VALUES (?, ?, ?)')->execute([$who, $kind, $now]);
+    $db->commit();
 }
 
 function ticket(string $secret, string $id, int $ts): string {
@@ -142,7 +158,7 @@ if (($in['action'] ?? '') === 'hello') {
     $db->prepare('DELETE FROM sessions WHERE last < ?')->execute([$now - SESSION_TTL]);
     $free = free_memory();
     $busy = $free !== null && $free < FREE_FLOOR;
-    $db->beginTransaction();
+    begin_write($db);
     $q = $db->prepare('SELECT admitted, until, first FROM sessions WHERE sid = ?');
     $q->execute([$sid]);
     $row = $q->fetch(PDO::FETCH_ASSOC);
@@ -196,7 +212,7 @@ if ($nights > intdiv($elapsed, SECONDS_PER_NIGHT) + 1) out(422, ['error' => 'too
 if ($helped > ($nights + 1) * MAX_HELPED_PER_NIGHT || $helped > ($elapsed + 60) * MAX_HELPED_PER_SECOND) out(422, ['error' => 'too many']);
 $name = clean_name($in['name'] ?? null);
 
-$db->beginTransaction();
+begin_write($db);
 $q = $db->prepare('SELECT helped FROM runs WHERE id = ?');
 $q->execute([$id]);
 $prev = $q->fetchColumn();

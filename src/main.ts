@@ -475,6 +475,7 @@ const setDateClock = (v: { date: number; clock: number }) => {
   queueSetting('clock', v.clock);
   sandbox.setAll(settings);
 };
+sandbox.addAction(t('How it works'), () => welcome.show());
 sandbox.mount(randomSection(setDateClock));
 sandbox.mount(aboutSection(__APP_VERSION__));
 
@@ -648,6 +649,9 @@ function syncNight(): void {
   lastDay = d;
   world.setNight(q, d);
   pipeline.setNight(q, d);
+  // The HUD follows the scene: dark at night even on a light-mode device (see style.css).
+  const scene = q > 0.5 ? 'night' : 'day';
+  if (document.documentElement.dataset.scene !== scene) document.documentElement.dataset.scene = scene;
   dirty = true;
 }
 
