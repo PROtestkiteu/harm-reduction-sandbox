@@ -138,8 +138,10 @@ html, body {
   margin: 0;
   height: 100%;
   overflow: hidden;
-  /* The scene's horizon colour once the game runs (set from main.ts); the theme's until then. */
-  background: var(--page, var(--bg));
+  /* The scene's horizon colour once the game runs (set from main.ts); dark until then, whatever the
+     theme, because phone browsers take their bars' colour from the first paint: a light page then
+     leaves cream bars round the night city. */
+  background: var(--page, #120f0d);
   overscroll-behavior: none;
   /* Page zoom is blocked by the viewport and by cancelling Safari's pinch (src/loading.ts), not by
      touch-action here: on iPhone a page-wide pan-x pan-y took one-finger drags from the map. */
@@ -164,13 +166,12 @@ html, body {
 }
 
 /*
- * Installed on the Home Screen (no browser bars), iPhones report a window one status bar short:
- * 'inset: 0' stops that much above the bottom and leaves a band. The fixed layers add the status
- * bar's height back. Only the fixed layers: a taller page itself scrolls under the status bar,
- * and iOS then blurs a tall band at the top.
+ * Installed on the Home Screen, iPhones lay the page out one status bar short and paint nothing
+ * below that, leaving a band under the panel. A root taller by the status bar makes iOS give the
+ * page the whole screen; the fixed layers then fill it with 'inset: 0'.
  */
 @media (display-mode: standalone), (display-mode: fullscreen) {
-  #scene, #hud { bottom: auto; height: calc(100% + env(safe-area-inset-top)); }
+  html { height: calc(100% + env(safe-area-inset-top)); }
 }
 
 #hud button, .column { pointer-events: auto; }
@@ -200,8 +201,12 @@ button:focus-visible {
   place-content: center;
   justify-items: center;
   gap: 16px;
+  /* Dark in both themes: phone browsers take their bars' colour from this first screen, and keep it. */
+  --muted: #aaa093;
+  --text: #ece4d4;
+  --reply: #edb300;
   color: var(--muted);
-  background: var(--bg);
+  background: #120f0d;
   font-family: var(--body);
   font-size: 16px;
   z-index: 10;
@@ -1755,10 +1760,7 @@ body:has(.sandbox-toggle[aria-expanded='true']) .portrait { display: none; }
   -webkit-mask: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='-1.5 -1.5 27 27'><path d='M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.6 7.6 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.6 7.6 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1c.5.4 1.1.7 1.7 1l.4 2.6h4l.4-2.6c.6-.3 1.2-.6 1.7-1l2.5 1 2-3.5zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z'/></svg>") left center / 1em 1em no-repeat;
   mask: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='-1.5 -1.5 27 27'><path d='M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.6 7.6 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.6 7.6 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1c.5.4 1.1.7 1.7 1l.4 2.6h4l.4-2.6c.6-.3 1.2-.6 1.7-1l2.5 1 2-3.5zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z'/></svg>") left center / 1em 1em no-repeat;
 }
-@media (prefers-color-scheme: light) {
-  /* The gold logo reads faintly on the light loading screen: a shade deeper. */
-  .loading-logo { filter: brightness(0.72) saturate(1.25); }
-}
+
 
 
 .column-sub:not(:has(:not([hidden]))) { display: none; }
