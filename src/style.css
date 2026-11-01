@@ -1,10 +1,16 @@
-@import '@fontsource/sedgwick-ave/latin-400.css';
-@import '@fontsource/sedgwick-ave/latin-ext-400.css';
 @import '@fontsource/roboto-condensed/latin-400.css';
 @import '@fontsource/roboto-condensed/latin-500.css';
 /* Polish letters (ą ć ę ł ń ó ś ź ż): fetched only when a page uses them, by unicode-range. */
 @import '@fontsource/roboto-condensed/latin-ext-400.css';
 @import '@fontsource/roboto-condensed/latin-ext-500.css';
+/* Permanent Marker with the Polish letters added (src/fonts/PermanentMarker-NOTICE.md). */
+@font-face {
+  font-family: 'Permanent Marker';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./fonts/PermanentMarker-PL.woff2') format('woff2');
+}
 
 /*
  * HUD as a conversation over the painted scene. A dark column on the right
@@ -47,7 +53,7 @@
   --role-resident: #d8a888;
   --outline: 0 1px 2px rgba(0, 0, 0, 0.95), 0 0 6px rgba(0, 0, 0, 0.85), 0 0 14px rgba(0, 0, 0, 0.55);
   --body: 'Roboto Condensed', 'Arial Narrow', sans-serif;
-  --caps: 'Sedgwick Ave', 'Roboto Condensed', sans-serif;
+  --caps: 'Permanent Marker', 'Roboto Condensed', sans-serif;
   /* Canvas grain laid over the column, the same character as the scene's. */
   --grain: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.6 0 0 0 0 0.55 0 0 0 0 0.5 0 0 0 0.09 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
   --column-w: min(440px, 40vw);
@@ -121,7 +127,8 @@ html, body {
   margin: 0;
   height: 100%;
   overflow: hidden;
-  background: var(--bg);
+  /* The scene's horizon colour once the game runs (set from main.ts); the theme's until then. */
+  background: var(--page, var(--bg));
   overscroll-behavior: none;
 }
 
@@ -131,6 +138,7 @@ html, body {
   width: 100%;
   height: 100%;
   display: block;
+  background: var(--page, var(--bg));
   /* All gestures are ours: tap selects, two-finger drag orbits. */
   touch-action: none;
 }
@@ -175,14 +183,6 @@ button:focus-visible {
   z-index: 10;
 }
 
-.skeleton-diamond {
-  width: 200px;
-  height: 116px;
-  /* A bright band sweeping across, in the theme's skeleton colours. */
-  background: linear-gradient(105deg, var(--skeleton) 30%, var(--skeleton-hi) 48%, var(--skeleton-glint) 50%, var(--skeleton-hi) 52%, var(--skeleton) 70%) 0 0 / 300% 100%;
-  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
-  animation: shimmer 1.3s linear infinite;
-}
 @keyframes shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
 
 @keyframes pulse { from { opacity: 0.5; } to { opacity: 1; } }
@@ -212,7 +212,7 @@ button:focus-visible {
   text-shadow: var(--outline);
 }
 
-.hud-header h1 { margin: 0; font-family: var(--caps); font-size: 22px; font-weight: 400; line-height: 1.1; }
+.hud-header h1 { margin: 0; font-family: var(--caps); font-size: 22px; font-weight: 400; line-height: 1.1; text-wrap: balance; }
 .subtitle { margin: 4px 0 0; font-size: 16px; color: #d6ccba; }
 
 /* The column */
@@ -250,14 +250,12 @@ button:focus-visible {
 }
 .speed-toggle[data-fast='true'] { background: var(--bar); border-color: var(--bar); color: var(--bar-text); }
 .speed-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.clock, .people, .money { white-space: nowrap; }
+.clock, .money { white-space: nowrap; }
 .column-right { display: flex; flex-direction: column; align-items: flex-end; min-width: 0; line-height: 1.25; }
 .money { color: var(--text); font-size: 17px; font-variant-numeric: tabular-nums; }
 .money::before { content: '●'; margin-right: 6px; color: var(--reply); font-size: 0.7em; vertical-align: 0.15em; }
 .money[data-state='falling'] { color: var(--closing); }
 .money[data-state='low'] { color: var(--closing); font-weight: 600; }
-.people { font-size: 12px; }
-.people { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .clock { font-size: 24px; color: var(--text); font-variant-numeric: tabular-nums; }
 
 .log {
@@ -322,6 +320,16 @@ button:focus-visible {
 .facts .fact { display: grid; grid-template-columns: 7.6em 1fr; gap: 8px; }
 .facts dt { color: var(--muted); }
 .facts dd { margin: 0; font-variant-numeric: tabular-nums; }
+/* A place's counts on one line: icon and number, the full sentence in the tooltip. */
+.chips { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; font-variant-numeric: tabular-nums; }
+.chip { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.chip-icon { display: inline-flex; width: 14px; height: 14px; color: var(--muted); }
+.chip-icon svg { width: 100%; height: 100%; }
+/* Why a place is closed: one line across, label and reason run together. */
+.place-facts:empty { display: none; }
+.place-facts .fact { display: block; }
+.place-facts dt, .place-facts dd { display: inline; }
+.place-facts dt::after { content: ': '; }
 
 /* Counts read like a check result: bracketed heading, four separate lines. */
 .check { margin-top: 8px !important; color: var(--muted); font-size: 13px; }
@@ -568,7 +576,6 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .skeleton-diamond { animation: none; }
   .opt.group::after { transition: none; }
 }
 
@@ -902,9 +909,16 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
 .event-body p { margin: 6px 0 0; }
 .event-mitigation { color: var(--muted); }
 
-.event-hints { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 6px; }
+.event-hints { display: flex; flex-wrap: wrap; gap: 2px 6px; align-items: center; margin-top: 4px; }
+/* The story behind an event, folded: one small link under the settings that help. */
+.event-more { margin-top: 2px; font-size: 13px; }
+.event-more > summary { cursor: pointer; color: var(--muted); font-size: 12px; list-style: none; padding: 4px 0; }
+.event-more > summary::-webkit-details-marker { display: none; }
+.event-more > summary::after { content: ' ›'; }
+.event-more[open] > summary::after { content: ' ‹'; }
+.event-more p { margin: 4px 0 0; }
 .hints-label { color: var(--muted); }
-.btn.hint, .btn.trigger { min-height: 32px; padding: 0 8px; font-size: 12px; position: relative; text-align: left; }
+.btn.hint, .btn.trigger { min-height: 28px; padding: 0 8px; font-size: 12px; position: relative; text-align: left; }
 .btn.hint::before, .btn.trigger::before { content: ''; position: absolute; inset: -6px 0; }
 
 .trigger-group { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
@@ -1500,15 +1514,16 @@ body:has(.sandbox-toggle[aria-expanded='true']) .portrait { display: none; }
 .mix-row .mix-setup::before { content: '›'; }
 .options > li.mix-row[hidden] { display: none; }
 .column-sub { display: flex; gap: 8px; font-size: 12px; white-space: nowrap; }
-.unmet { color: var(--muted); font-variant-numeric: tabular-nums; }
-.unmet::before { content: '·'; margin-right: 8px; color: var(--muted); }
-.unmet[data-state='crisis']::after, .unmet[data-state='rising']::after { content: attr(data-tag); margin-left: 6px; padding: 0 5px; border-radius: 3px; background: var(--law); color: #fff; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; vertical-align: 1px; }
-.unmet[data-state='rising'] { color: var(--closing); }
-.unmet[data-state='crisis'] { color: var(--law); font-weight: 600; }
+/* A crisis (many people turned away in a day): a tag under the money; amber while it builds, red at its worst. */
+.crisis-tag { flex: none; padding: 0 5px; border-radius: 3px; background: var(--closing); color: #fff; font-size: 10px; font-weight: 600; line-height: 1.5; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
+.crisis-tag[data-state='crisis'] { background: var(--law); }
+.crisis-tag[hidden] { display: none; }
 
 /* City services under pressure: three small meters under the top line. */
-.stress-row { display: flex; flex-wrap: wrap; gap: 3px 12px; margin: 4px 0 2px; font-size: 11px; color: var(--muted); }
-/* Each meter keeps its name and a readable bar; when four do not fit on one line they wrap. */
+.stress-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3px 12px; margin: 4px 0 2px; font-size: 11px; color: var(--muted); }
+/* Four meters in a row where the column has room for their names, otherwise two by two: never three and one. */
+.stress-wrap { container-type: inline-size; }
+@container (max-width: 460px) { .stress-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .stress { display: flex; align-items: center; gap: 5px; flex: 1 1 auto; min-width: 0; }
 .stress-name { white-space: nowrap; }
 .stress-bar { flex: 1; height: 4px; min-width: 32px; background: color-mix(in srgb, var(--muted) 28%, transparent); border-radius: 2px; overflow: hidden; }
@@ -1520,11 +1535,13 @@ body:has(.sandbox-toggle[aria-expanded='true']) .portrait { display: none; }
 /* The money block takes the room left beside the clock; its second line never runs under the speed button. */
 /* Clock and money share the line when there is room; otherwise the money block wraps under the clock. */
 .column-top { flex-wrap: wrap; row-gap: 2px; }
-.column-right { flex: 1 1 auto; margin-left: auto; }
+/*
+ * Money and the crisis tag: beside the clock they stack (the block is only as
+ * wide as the money); once the clock leaves no room for the money either, the
+ * block drops below and the two share that line.
+ */
+.column-right { flex: 1 1 0; min-width: min-content; margin-left: auto; flex-direction: row; flex-wrap: wrap; justify-content: flex-end; align-items: center; column-gap: 8px; }
 .column-sub { justify-content: flex-end; flex-wrap: wrap; row-gap: 1px; max-width: 100%; }
-/* The tag stays whole: it wraps under the count when the line runs out. */
-.unmet { white-space: normal; text-align: right; min-width: 0; }
-.unmet::after { display: inline-block; white-space: nowrap; line-height: 1.35; }
 .stress-fill[data-state='good'] { background: var(--open, #6cc28a); }
 
 /* Small phones: a tighter top line, the city-service meters two by two, a compact title. */
@@ -1536,7 +1553,6 @@ body:has(.sandbox-toggle[aria-expanded='true']) .portrait { display: none; }
   .speed-toggle { padding: 0 6px; font-size: 13px; }
   .money { font-size: 15px; }
   .column-sub { font-size: 11px; }
-  .stress-row { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 14px; }
   .stress-name { min-width: 4.6em; }
   /* Map labels a size smaller, so long names stay on screen. */
   .loc-label { font-size: 14px; gap: 6px; }
@@ -1545,7 +1561,6 @@ body:has(.sandbox-toggle[aria-expanded='true']) .portrait { display: none; }
 }
 @media (max-width: 360px) {
   .clock { font-size: 15px; }
-  .column-sub .people { display: none; }
 }
 
 /* Decision pop-ups: choices spaced apart; the first one filled, the others outlined, so they read as separate buttons. */
@@ -1562,7 +1577,15 @@ body:has(.sandbox-toggle[aria-expanded='true']) .portrait { display: none; }
 .loading-logo { width: 110px; height: auto; animation: logo-breathe 2.4s ease-in-out infinite; }
 @keyframes logo-breathe { 50% { opacity: 0.45; transform: scale(0.95); } }
 .loading-line { min-height: 1.4em; margin: 0; text-align: center; padding: 0 16px; }
-@media (prefers-reduced-motion: reduce) { .loading-logo { animation: none; } }
+/* A band sweeping across the words: muted, then the full text colour, with a gold glint at its centre. */
+.loading-line {
+  color: transparent;
+  background: linear-gradient(105deg, var(--muted) 35%, var(--text) 46%, var(--reply) 50%, var(--text) 54%, var(--muted) 65%) 0 0 / 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: shimmer 1.6s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) { .loading-logo, .loading-line { animation: none; } .loading-line { color: var(--muted); background: none; } }
 
 /* The Configure button sits over the scene: always the bright gold. */
 .sandbox-toggle { --reply: #edb300; --reply-hover: #f5c93a; }
@@ -1632,8 +1655,6 @@ body:has(.sandbox-toggle[aria-expanded='true']) .portrait { display: none; }
   .top-bar .column-time { display: flex; justify-content: space-between; align-items: center; }
   .top-bar .column-right { flex-direction: row; justify-content: space-between; align-items: baseline; width: 100%; container-type: normal; }
   .top-bar .column-sub { justify-content: flex-end; }
-  .top-bar .column-sub .people { display: none; }
-  .top-bar .unmet::before { content: none; }
   .top-bar .stress-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0 6px; margin-top: 5px; padding-top: 4px; border-top: 1px solid color-mix(in srgb, var(--muted) 25%, transparent); }
   .top-bar .stress { gap: 3px; }
   .top-bar .stress-bar { min-width: 0; }
@@ -1684,3 +1705,34 @@ body:has(.sandbox-toggle[aria-expanded='true']) .portrait { display: none; }
   .loading-logo { filter: brightness(0.72) saturate(1.25); }
 }
 
+
+.column-sub:not(:has(:not([hidden]))) { display: none; }
+
+/* Name tags over the big events on the street: a pill with a pulsing dot in the event's colour. */
+.fx-tags { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.fx-tag {
+  position: absolute; left: 0; top: 0;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 9px 3px 7px; border-radius: 999px;
+  background: rgba(14, 12, 10, 0.82); color: #f4ecdc;
+  font: 600 13px/1.2 var(--body); white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+.fx-tag::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--fx, #edb300); box-shadow: 0 0 8px var(--fx, #edb300); animation: fx-pulse 1s ease-in-out infinite alternate; }
+.fx-tag[data-kind='raid'] { --fx: #4a7aff; }
+.fx-tag[data-kind='alert'] { --fx: #ff4a3a; }
+.fx-tag[data-kind='rave'] { --fx: #ff4aa8; }
+.fx-tag[data-kind='sweep'] { --fx: #ffa020; }
+.fx-tag[data-kind='press'] { --fx: #ffffff; }
+@keyframes fx-pulse { from { opacity: 0.45; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .fx-tag::before { animation: none; } }
+
+/* A new version is out: a slim bar over the top middle of the screen. */
+.update-bar {
+  position: fixed; z-index: 30; left: 50%; top: max(8px, env(safe-area-inset-top)); transform: translateX(-50%);
+  display: flex; align-items: center; gap: 10px; max-width: calc(100vw - 24px);
+  padding: 6px 6px 6px 14px; border-radius: 999px;
+  background: rgba(14, 12, 10, 0.92); color: #f4ecdc; font: 500 13px/1.3 var(--body);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+.update-go { min-height: 34px; padding: 0 14px; border-radius: 999px; background: var(--bar); color: var(--bar-text); border: 0; font-weight: 600; white-space: nowrap; }

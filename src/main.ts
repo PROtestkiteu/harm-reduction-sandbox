@@ -1,6 +1,6 @@
 import { QUALITY } from './render/quality';
 import { Vector3, WebGLRenderer } from 'three';
-import { LANG, t } from './i18n';
+import { LANG, LANG_KEY, t } from './i18n';
 import { ILLUSTRATIVE } from './config/illustrative';
 import { combineEffects, decodeContext, defaultContext, encodeContext, type ContextSelection } from './config/contextFactors';
 import { NATIONAL_MODELS, selectionFor } from './config/nationalModels';
@@ -32,7 +32,12 @@ import { Welcome } from './ui/welcome';
 import { SavePanel } from './ui/savePanel';
 import { GameOver } from './ui/gameOver';
 import { EventPopup } from './ui/eventPopup';
-import { budgetEvent, concessionEvent, pickEvent, type EventWorld } from './game/majorEvents';
+import { budgetEvent, concessionEvent, pickEvent, type EventWorld, type Spectacle } from './game/majorEvents';
+import { EVENT_PLACE, type EventPlace } from './config/eventPlaces';
+import { CAMP_AT, EventFx, PARTY_AT } from './world/eventFx';
+import { FxTags } from './ui/fxTags';
+import { RESUME_KEY, watchForUpdates } from './game/updates';
+import { UpdateBar } from './ui/updateBar';
 import { SERVICE_NAMES } from './sim/organisation';
 import { loadKits } from './world/kits';
 import { QueueBox } from './ui/queueBox';
@@ -49,7 +54,7 @@ import type { PolicyInfo } from './sim/simulation';
 import type { EventId } from './config/randomEvents';
 import { SandboxPanel } from './ui/sandboxPanel';
 import { buildSnapshot } from './ui/snapshot';
-import { aboutSection, applyShuffle, randomSection } from './ui/sandboxTopics';
+import { aboutSection, applyShuffle, languageSection, randomSection } from './ui/sandboxTopics';
 import { CityCards, PropertyView, SHOPS_FOR } from './game/cityState';
 import { SelectionMarker } from './ui/selection';
 import { ContextProps } from './world/contextProps';
@@ -116,6 +121,46 @@ function syncStreet(): void {
 }
 // Coins over each place where money moves: gold where it comes in, red where visits cost it.
 const coins = new CoinPops(world.scene);
+// The big events played out on the street: raves, raids, the camp cleared, a bad batch, the press.
+const fx = new EventFx(world.scene, () => reducedMotion.matches);
+const fxTags = new FxTags(hudRoot);
+let fxVersion = -1;
+/** Name tags over the events on screen: placed when the view moves or an event starts or ends. */
+function placeFxTags(): void {
+  const on = fx.active();
+  fxVersion = fx.version;
+  fxTags.set(on.map((a) => ({ kind: a.kind, theme: a.theme, ...worldToClient(new Vector3(a.x, a.y, a.z), camera, pipeline.frame) })));
+}
+const anchorOf = (service: ServiceId) => world.locations[service === 'clubHr' ? 'club' : service].labelAnchor;
+const footprintOf = (service: ServiceId) => world.locations[service === 'clubHr' ? 'club' : service].footprint;
+/** Where an event plays out, on the ground. */
+function placePoint(place: EventPlace): Vector3 {
+  if (place === 'park') return new Vector3(PARTY_AT.x, 0, PARTY_AT.z);
+  if (place === 'camp') return new Vector3(CAMP_AT.x, 0, CAMP_AT.z);
+  const a = place === 'busiest' ? anchorOf(sim.busiest.service) : world.locations[place].labelAnchor;
+  return new Vector3(a.x, 0, a.z);
+}
+/** Brings where an event happens into view, without locking the camera on it. */
+function focusPlace(place: EventPlace | undefined): void {
+  if (!place) return;
+  rig.lookAt(placePoint(place));
+  dirty = true;
+}
+function showSpectacle(s: Spectacle): void {
+  const now = sim.org.now;
+  switch (s.kind) {
+    case 'rave': fx.setRave(s.theme); focusPlace('park'); break;
+    case 'raid': fx.setRaid(footprintOf(s.at), now + s.hours * 60); break;
+    case 'sweep': fx.setSweep(now + s.hours * 60); focusPlace('camp'); break;
+    case 'alert': fx.setAlert(footprintOf(s.at), now + s.hours * 60); break;
+    case 'press': fx.setPress(footprintOf(s.at), now + s.hours * 60); break;
+    case 'coins': if (!reducedMotion.matches) for (let i = 0; i < s.count; i++) coins.pop(anchorOf(s.at), true); break;
+    case 'patrol':
+      for (const id of ['dropIn', 'outreach', 'drugChecking'] as const) eventWorld.dispatchTo('police', id, t('Posted near the services by the new government.'));
+      break;
+  }
+  dirty = true;
+}
 // City cars stop for people crossing in front of them.
 world.setTrafficYield((x, z, dx, dz) => crowd.someoneAhead(x, z, dx, dz));
 sim.on((e) => {
@@ -303,7 +348,7 @@ function refreshHud(): void {
   // The warming bus and the water point are out only in the hours they work.
   const exposure = exposureNow(sim.season, sim.clockMinutes, sim.events.isActive('coldNight'));
   world.setAid(sim.warmingBus && exposure === 'cold', sim.coolingPoint && exposure === 'heat');
-  world.setCamp(sim.camp.size);
+  world.setCamp(sim.camp.size, sim.camp.station);
   world.setNightlife(sim.vitality.venues, sim.vitality.partners);
   syncProperty();
   hud.update(buildSnapshot(sim, crowd.population));
@@ -404,6 +449,7 @@ const feed = new EventFeed(hud.eventsSlot, {
     pendingTriggers.push(id);
     dirty = true;
   },
+  onFocus: (id) => focusPlace(EVENT_PLACE[id]),
   onHint: (hint) => {
     sandbox.setOpen(true);
     const input = document.getElementById(hintInputId(hint));
@@ -488,6 +534,13 @@ if (canFullscreen()) {
   onFullscreenChange(() => { fs.textContent = fsLabel(); });
 }
 sandbox.mount(randomSection(setDateClock));
+sandbox.mount(languageSection((lang) => {
+  try { localStorage.setItem(LANG_KEY, lang); } catch { /* storage blocked: the address bar carries it */ }
+  const query = new URLSearchParams(location.search);
+  query.set('lang', lang);
+  history.replaceState(history.state, '', `${location.pathname}?${query}${location.hash}`);
+  reloadKeepingGame();
+}));
 sandbox.mount(aboutSection(__APP_VERSION__));
 
 /** The run ends when the money is gone: the city pauses and the run's numbers are shown. */
@@ -517,6 +570,7 @@ const eventWorld: EventWorld = {
     const at = world.locations[service === 'clubHr' ? 'club' : service].labelAnchor;
     world.dispatch(kind, at.x + (eventRandom() - 0.5) * 8, at.z + (eventRandom() - 0.5) * 8, reason);
   },
+  show: (s) => showSpectacle(s),
   factor: (id) => FACTOR_BY_ID[id as keyof typeof FACTOR_BY_ID]?.options[contextSelection[id as keyof ContextSelection]]?.id ?? '',
   setFactor: (id, option) => {
     const f = FACTOR_BY_ID[id as keyof typeof FACTOR_BY_ID];
@@ -530,6 +584,7 @@ function checkBigEvent(): void {
   if (sim.concessionDue) {
     const ids = ['postedOfficer', 'cleanUp', 'camperOff'] as const;
     const event = concessionEvent(ids[Math.floor(eventRandom() * ids.length)]);
+    focusPlace(event.place);
     eventPopup.show(event, sim.org.budget, (choice) => choice.apply(eventWorld));
     return;
   }
@@ -542,6 +597,7 @@ function checkBigEvent(): void {
   if (sim.org.now < nextBigEvent) return;
   nextBigEvent = sim.org.now + 10 * 60 + eventRandom() * 15 * 60;
   const event = pickEvent(eventWorld);
+  if (event) focusPlace(event.place);
   if (event) eventPopup.show(event, sim.org.budget, (choice) => choice.apply(eventWorld));
 }
 
@@ -565,6 +621,21 @@ function afterLoad(): void {
  */
 async function startGame(): Promise<void> {
   setRun(undefined);
+  // Back from an update reload: the same run, as it was a moment ago.
+  let resume: SaveData | null = null;
+  try {
+    resume = parseSave(JSON.parse(sessionStorage.getItem(RESUME_KEY) ?? 'null'));
+    sessionStorage.removeItem(RESUME_KEY);
+  } catch { /* storage blocked or unreadable: a fresh start */ }
+  if (resume) {
+    const s = resume;
+    setRun(s.run);
+    queueOrg(() => {
+      applySave(sim, s);
+      sim.org.notice(sim.clockMinutes, t('Updated to the new version. Your game carries on where it was.'));
+      afterLoad();
+    });
+  }
   const code = location.hash.startsWith('#g=') ? location.hash.slice(3) : '';
   if (code) {
     const save = await unpackSave(code);
@@ -583,6 +654,18 @@ async function startGame(): Promise<void> {
   try { await ensureRun(); } catch { /* leaderboard offline: the game plays the same */ }
 }
 feed.prependBar(org.bar);
+
+// A newer version on the server: offer a reload that keeps the game; in a background tab, just do it.
+function reloadKeepingGame(): void {
+  writeUrl();
+  try { sessionStorage.setItem(RESUME_KEY, JSON.stringify(captureSave(sim, orgName(), currentRun()))); } catch { /* storage blocked: reload anyway */ }
+  location.reload();
+}
+watchForUpdates(() => {
+  if (document.hidden) return reloadKeepingGame();
+  new UpdateBar(hudRoot, reloadKeepingGame);
+  document.addEventListener('visibilitychange', () => { if (document.hidden && !eventPopup.open) reloadKeepingGame(); });
+});
 
 function refreshOrg(): void {
   savePanel.sync();
@@ -649,6 +732,8 @@ function syncSeason(): void {
 
 let lastNight = -1;
 let lastDay = -1;
+let pageHaze = '';
+const themeColor = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]') ?? document.head.appendChild(Object.assign(document.createElement('meta'), { name: 'theme-color' }));
 function syncNight(): void {
   const night = nightFactor(sim.clockMinutes, sim.calendar.sunset);
   const day = dayFactor(sim.clockMinutes, sim.calendar.sunset);
@@ -663,6 +748,13 @@ function syncNight(): void {
   // The HUD follows the scene: dark at night even on a light-mode device (see style.css).
   const scene = q > 0.5 ? 'night' : 'day';
   if (document.documentElement.dataset.scene !== scene) document.documentElement.dataset.scene = scene;
+  // The page behind the scene takes the horizon's colour, so phone browsers tint their bars to match.
+  const haze = world.hazeHex();
+  if (haze !== pageHaze) {
+    pageHaze = haze;
+    document.documentElement.style.setProperty('--page', haze);
+    themeColor.content = haze;
+  }
   dirty = true;
 }
 
@@ -752,7 +844,12 @@ function queuePlaceAction(service: ServiceId, action: PlaceAction): void {
 
 function scheduleUrlUpdate(): void {
   clearTimeout(urlTimer);
-  urlTimer = window.setTimeout(() => {
+  urlTimer = window.setTimeout(writeUrl, 400);
+}
+/** Writes the settings into the address bar now. */
+function writeUrl(): void {
+  clearTimeout(urlTimer);
+  {
     const query = new URLSearchParams(location.search);
     for (const key of ['set', 'ctx', 'model']) query.delete(key);
     // Appended unescaped so the link stays readable; ids and numbers need no escaping.
@@ -760,7 +857,7 @@ function scheduleUrlUpdate(): void {
     const ctx = modelId ? `model=${modelId}` : encodeContext(contextSelection) && `ctx=${encodeContext(contextSelection)}`;
     const search = [query.toString(), encoded && `set=${encoded}`, ctx].filter(Boolean).join('&');
     history.replaceState(history.state, '', `${location.pathname}${search ? `?${search}` : ''}${location.hash}`);
-  }, 400);
+  }
 }
 
 function layout(): void {
@@ -794,6 +891,7 @@ function applyView(): void {
     points[id] = { ...worldToClient(loc.labelAnchor, camera, frame), below: loc.labelBelow };
   }
   hud.placeLabels(points);
+  placeFxTags();
   hud.setViewChanged(!rig.atDefault);
   interaction.viewChanged();
   dirty = true;
@@ -840,6 +938,8 @@ function frame(now: number): void {
     props.update(realDt * speed);
     street.update(realDt * speed);
     cityProps.update(realDt * speed);
+    fx.update(realDt * speed, sim.org.now, sim.party === 'popUp');
+    if (fx.version !== fxVersion) placeFxTags();
     seasonProps.update(realDt * speed);
     dirty = true;
     hudTimer -= realDt;

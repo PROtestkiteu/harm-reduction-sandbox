@@ -471,7 +471,7 @@ export class Simulation {
     const sd = SEASON_PROFILES[this.season].demand;
     const seasonal = id === 'dropIn' ? sd.dropIn : id === 'outreach' ? sd.outreach : id === 'shelter' ? sd.shelter : 1;
     // People living in a squat come to a camper parked by it (illustrative).
-    const squat = id === 'outreach' ? (this.squatCovered ? 1.5 * (1 + CAMP.squatDemand * this.camp.squat) : 1) * (1 + CAMP.outreachDemand * this.camp.size) : 1;
+    const squat = id === 'outreach' ? (this.squatCovered ? 1.5 * (1 + CAMP.squatDemand * this.camp.squat) : 1) * (1 + CAMP.outreachDemand * this.camp.outdoors) : 1;
     // Paying for a check puts some people off.
     const fee = id === 'drugChecking' && this.commercialChecking ? HUSTLE.commercialDemand : 1;
     // A thriving district brings more people out, and more people needing the services.
@@ -890,7 +890,7 @@ export class Simulation {
       coolingPoint: this.coolingPoint && paid,
       // More food, drinks and warmth in the places' mix, fewer people harmed outdoors.
       deathFactor: 1 + STRESS.medicsDeaths * this.cityStress.medics,
-      mixFactor: Math.max(0.5, 1.2 - 0.2 * this.mixAverage('basics', 0, 1)) * (1 + CRISIS.harmBoost * this.crisis) * (1 + CAMP.harm * this.camp.size),
+      mixFactor: Math.max(0.5, 1.2 - 0.2 * this.mixAverage('basics', 0, 1)) * (1 + CRISIS.harmBoost * this.crisis) * (1 + CAMP.harm * this.camp.outdoors),
     });
     if (!harm) return;
     const found = harm.kind === 'cold'
@@ -1269,7 +1269,7 @@ export class Simulation {
       crisis: this.crisis,
       shelterCrowded: Math.min(1, this.services.shelter.queue.length / Math.max(1, this.services.shelter.params.waitingSlots)),
     });
-    this.cityStress.tick(dt * this.minuteRate, this.camp.size, this.crisis);
+    this.cityStress.tick(dt * this.minuteRate, this.camp.outdoors, this.crisis);
     this.cityStress.sobering = Math.max(0, this.cityStress.sobering - this.vitality.partners.size * VITALITY.partnerEasesSobering * (dt * this.minuteRate) / 60);
     const s = this.cityStress;
     const venueChange = this.vitality.tick(dt * this.minuteRate, { crisis: this.crisis, unmet24: this.unmet24, stress: (s.police + s.medics + s.sobering) / 3 });

@@ -35,6 +35,7 @@ LimitRequestBody 1024
   # Probes for things this folder never has.
   RewriteRule (^|/)\. - [F,L]
   RewriteCond %{REQUEST_URI} !/api/board\.php$
+  RewriteCond %{REQUEST_URI} !/version\.json$
   RewriteRule \.(php\d?|phtml|asp|aspx|jsp|cgi|pl|env|ini|log|sql|sqlite|bak|old|orig|swp|map|ts|md|json|yml|yaml|sh)$ - [F,L,NC]
 </IfModule>
 
@@ -56,6 +57,10 @@ LimitRequestBody 1024
   # Private: Cloudflare must not keep its own copy of the page (or its headers).
   <FilesMatch "^index\.html$">
     Header set Cache-Control "private, no-cache"
+  </FilesMatch>
+  # Running games ask this to notice an update: never cached.
+  <FilesMatch "^version\.json$">
+    Header set Cache-Control "no-store"
   </FilesMatch>
 </IfModule>
 

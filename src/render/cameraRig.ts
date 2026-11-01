@@ -63,6 +63,15 @@ export class CameraRig {
     this.target(point.x, point.y, point.z, zoom);
   }
 
+  /**
+   * Eases over to `point` without locking onto it (an event somewhere in the
+   * city): the person can pan away at once. Zooms in a little if far out.
+   */
+  lookAt(point: Vector3, zoom = Math.max(this.targetZoom, 1.3)): void {
+    this.locked = false;
+    this.target(point.x, point.y, point.z, zoom);
+  }
+
   /** Lets go of a subject, keeping the place in view at the base scale. */
   release(): void {
     this.locked = false;

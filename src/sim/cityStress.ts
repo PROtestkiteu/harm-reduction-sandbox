@@ -1,4 +1,5 @@
 import type { SimEvent } from './simulation';
+import type { ServiceId } from './types';
 
 /**
  * Pressure on the city's own services: police, ambulances and A&E, and the
@@ -21,6 +22,21 @@ export const STRESS = {
   exposure: 0.1,
   /** A drunk club leaver taken in to sober up. */
   drunk: 0.04,
+  /**
+   * One person turned away, by where they went next: no bed means a night
+   * outdoors (police called, medics for the cold); no kit, no check or no
+   * talk means riskier use (medics); a club leaver with no help sobers up in
+   * the izba. Turned away eighty times a day holds a bar near a third.
+   */
+  turnedAway: {
+    shelter: { police: 0.008, medics: 0.006 },
+    dropIn: { medics: 0.01, police: 0.004 },
+    outreach: { medics: 0.01, police: 0.004 },
+    pharmacy: { medics: 0.012 },
+    clinic: { medics: 0.012 },
+    drugChecking: { medics: 0.01 },
+    clubHr: { sobering: 0.012, medics: 0.004 },
+  } satisfies Record<ServiceId, Partial<Record<'police' | 'medics' | 'sobering', number>>>,
   /** Per clock hour at full camp size, and at the worst of a crisis. */
   camp: 0.03,
   crisis: 0.03,
@@ -42,7 +58,14 @@ export class CityStress {
     else if (e.type === 'clubLeaver') {
       if (e.intoxicated) this.sobering += STRESS.drunk;
       if (e.acute) this.medics += e.acute.helpedBy ? STRESS.overdoseHelped : STRESS.overdoseAlone;
-    } else if (e.type === 'aftermath' && e.acute) this.medics += e.acute.helpedBy ? STRESS.overdoseHelped : STRESS.overdoseAlone;
+    } else if (e.type === 'aftermath') {
+      // Someone turned away: their next hours land on the city's services.
+      const w: Partial<Record<'police' | 'medics' | 'sobering', number>> = STRESS.turnedAway[e.service];
+      this.police += w.police ?? 0;
+      this.medics += w.medics ?? 0;
+      this.sobering += w.sobering ?? 0;
+      if (e.acute) this.medics += e.acute.helpedBy ? STRESS.overdoseHelped : STRESS.overdoseAlone;
+    }
     else if (e.type === 'exposure') this.medics += STRESS.exposure;
     this.clamp();
   }

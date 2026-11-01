@@ -1,14 +1,15 @@
-import { Box3, CircleGeometry, ConeGeometry, CylinderGeometry, TorusGeometry, Group, IcosahedronGeometry, Mesh, PlaneGeometry, Vector3, type Material, type MeshLambertMaterial, type Object3D } from 'three';
+import { Box3, CircleGeometry, ConeGeometry, CylinderGeometry, TorusGeometry, Group, IcosahedronGeometry, Mesh, PlaneGeometry, Vector3, type Material, MeshLambertMaterial, type Object3D } from 'three';
 import { fillCityBlock } from './infill';
 import { PALETTE } from '../config/palette';
 import type { Random } from '../sim/random';
 import { WindowBank } from './animated';
-import { bench, box, cylinder, gableRoof, add, streetLight, tree } from './kit';
+import { bench, box, cylinder, gableRoof, add, pixelTextTexture, streetLight, tree } from './kit';
 import { registerBuilding } from './cityBuildings';
-import { DISTRICT, ROAD, STREETS, type Rect } from './layout';
+import { DISTRICT, POLICE_STATION, ROAD, STATION_CAMP, STREETS, type Rect } from './layout';
 import { glowMat, mat, softMat } from './materials';
 import { dynamic, mergeStatic } from './mergeStatic';
 import { train as trainModel } from './vehicles';
+import { riverMaterial } from './puddles';
 import { curtainWall } from './curtainWall';
 
 const TOWER_TINTS = [0x9ab8c0, 0xa8b0bc, 0xc0aa90, 0x90a8b8];
@@ -34,7 +35,7 @@ export interface CityBeyond {
   /** Swaps in the kits' trees and buildings once they have loaded, and dresses the park. */
   applyKits(kits: Kits): void;
   /** Building ids of the public hospital and the sobering-up centre, for their cards. */
-  landmarks: { hospital: number; sobering: number };
+  landmarks: { hospital: number; sobering: number; police: number };
 }
 
 const EDGE = DISTRICT + 2;
@@ -202,13 +203,14 @@ export function buildCityBeyond(scene: Object3D, random: Random): CityBeyond {
 // ------------------------------------------------------------------ river
 
 function buildRiver(g: Object3D, random: Random): void {
-  const water = glowMat(0x1e3440, 0x0a1a24, 0.6);
   const stone = mat(0x6e6a62);
   const paving = mat(PALETTE.pavementAlt);
   const grass = mat(PALETTE.grassDark);
   const w = RIVER.x1 - RIVER.x0;
-  // Water a hair above the ground plane, walled in by stone embankments.
-  flat(g, w, 260, water, (RIVER.x0 + RIVER.x1) / 2, 0, LAYER.water);
+  // Water a hair above the ground plane, walled in by stone embankments; it mirrors the promenade lamps
+  // (heads 0.85 m out on their arms from posts 1 m off the bank, every 20 m from z = -115, 4.07 m up).
+  const river = add(g, dynamic(new Mesh(new PlaneGeometry(w, 260).rotateX(-Math.PI / 2), riverMaterial(RIVER.x0 - 1.85, -115, 20, 4.07))));
+  river.position.set((RIVER.x0 + RIVER.x1) / 2, LAYER.water, 0);
   for (const x of [RIVER.x0, RIVER.x1]) add(g, box(0.6, 0.5, 260, stone, x, -0.1, 0));
   // Promenade on the city side: paving, a lamp and a tree every so often, benches facing the water.
   flat(g, RIVER.x0 - EDGE - 2.3, 260, paving, (EDGE + 2 + RIVER.x0 - 0.3) / 2, 0, LAYER.promenade);
@@ -410,7 +412,7 @@ function buildRailway(g: Object3D): { update(dt: number): void } {
 const HOSPITAL = { x0: 88, x1: 124, z0: -30, z1: 2 };
 const SOBERING = { x0: 30, x1: 44, z0: -59, z1: -51 };
 
-function buildLandmarks(g: Object3D, lit: MeshLambertMaterial[]): { hospital: number; sobering: number } {
+function buildLandmarks(g: Object3D, lit: MeshLambertMaterial[]): { hospital: number; sobering: number; police: number } {
   const white = mat(0xdadcd8);
   const trim = mat(0x8a929a);
   const red = glowMat(0x9a2a2a, 0xff4a3a, 0.6);
@@ -444,7 +446,22 @@ function buildLandmarks(g: Object3D, lit: MeshLambertMaterial[]): { hospital: nu
   add(g, box(1.6, 2.4, 0.2, mat(0x3a3a3a), sx, 0, s.z1 + 0.05));
   add(g, box(0.5, 0.5, 0.5, glowMat(0x2a3a7a, 0x5a8aff, 1.2), sx + 1.4, 2.8, s.z1 + 0.3));
   const sobering = registerBuilding(s.x0, s.x1, s.z0, s.z1, 6.4);
-  return { hospital, sobering };
+  // Police station: three storeys of grey stone, a blue POLICE sign and lamp over the door, cars in the yard.
+  const p = POLICE_STATION;
+  const px = (p.x0 + p.x1) / 2;
+  const pz = (p.z0 + p.z1) / 2;
+  const front = p.z1;
+  add(g, box(p.x1 - p.x0 + 3, 0.22, p.z1 - p.z0 + 3, mat(PALETTE.pavement), px, -0.1, pz));
+  add(g, box(p.x1 - p.x0, 9.2, p.z1 - p.z0 - 2, mat(0x8a8e92), px, 0, pz - 1));
+  add(g, box(p.x1 - p.x0 + 0.3, 0.5, p.z1 - p.z0 - 1.7, trim, px, 9.2, pz - 1));
+  for (const y of [1.4, 4.4, 7.2]) add(g, box(p.x1 - p.x0 - 1, 1.1, p.z1 - p.z0 - 1.94, lit[(y | 0) % 3], px, y, pz - 1));
+  const blue = glowMat(0x1a2a6a, 0x4a7aff, 1.2);
+  const sign = new MeshLambertMaterial({ map: pixelTextTexture('POLICE', '#ffffff', '#1a3a8a'), emissive: 0xffffff, emissiveIntensity: 0.6, emissiveMap: pixelTextTexture('POLICE', '#ffffff', '#1a3a8a') });
+  add(g, box(4.4, 0.9, 0.1, sign, px, 6.0, front - 1.95));
+  add(g, box(2.2, 2.6, 0.2, mat(0x2a2c30), px, 0, front - 1.95));
+  add(g, box(0.45, 0.45, 0.45, blue, px + 1.6, 3.0, front - 1.75));
+  const police = registerBuilding(p.x0, p.x1, p.z0, p.z1 - 2, 9.2);
+  return { hospital, sobering, police };
 }
 
 // ------------------------------------------------------------------ business district
@@ -696,6 +713,8 @@ const TAKEN: Rect[] = [
   { x0: -142, x1: -58, z0: -142, z1: -58 }, // the hill
   { x0: HOSPITAL.x0 - 3, x1: HOSPITAL.x1 + 3, z0: HOSPITAL.z0 - 3, z1: HOSPITAL.z1 + 3 }, // the public hospital
   { x0: SOBERING.x0 - 2, x1: SOBERING.x1 + 2, z0: SOBERING.z0 - 2, z1: SOBERING.z1 + 2 }, // the sobering-up centre
+  { x0: STATION_CAMP.x0 - 2, x1: STATION_CAMP.x1 + 2, z0: STATION_CAMP.z0, z1: STATION_CAMP.z1 + 1 }, // the station forecourt and its camp
+  { x0: POLICE_STATION.x0 - 2, x1: POLICE_STATION.x1 + 2, z0: POLICE_STATION.z0, z1: POLICE_STATION.z1 + 2 }, // the police station
 ];
 
 /** Block sites on a regular lattice out to the skyline, clear of roads and of TAKEN ground. */

@@ -25,14 +25,14 @@ import { mat } from './materials';
 // Light pools: soft radial glow decals instead of real lights, which would
 // cost every pixel of the scene.
 
-function radialTexture(inner: string, outer: string): CanvasTexture {
+function radialTexture(inner: string, outer: string, spread = 0.45): CanvasTexture {
   const size = 128;
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = size;
   const ctx = canvas.getContext('2d')!;
   const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
   g.addColorStop(0, inner);
-  g.addColorStop(0.45, outer);
+  g.addColorStop(spread, outer);
   g.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, size, size);
@@ -47,9 +47,9 @@ let lampPoolMat: MeshBasicMaterial | null = null;
 let windowPoolMat: MeshBasicMaterial | null = null;
 
 function poolMaterial(kind: 'lamp' | 'window'): MeshBasicMaterial {
-  const make = (inner: string, outer: string) =>
-    new MeshBasicMaterial({ map: radialTexture(inner, outer), transparent: true, blending: AdditiveBlending, depthWrite: false, opacity: 1 });
-  if (kind === 'lamp') return (lampPoolMat ??= make('rgba(255,196,120,0.55)', 'rgba(255,160,80,0.18)'));
+  const make = (inner: string, outer: string, spread?: number) =>
+    new MeshBasicMaterial({ map: radialTexture(inner, outer, spread), transparent: true, blending: AdditiveBlending, depthWrite: false, opacity: 1 });
+  if (kind === 'lamp') return (lampPoolMat ??= make('rgba(255,192,120,0.3)', 'rgba(255,165,90,0.19)', 0.62));
   return (windowPoolMat ??= make('rgba(255,200,130,0.32)', 'rgba(255,170,100,0.1)'));
 }
 

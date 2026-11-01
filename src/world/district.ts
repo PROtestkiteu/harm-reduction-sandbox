@@ -132,7 +132,7 @@ export function buildStreets(scene: Object3D, random: Random): void {
     // The lamp head hangs 0.82 m along its arm; its pool of light lands below it.
     const hx = rot === 0 ? x + dir * 0.82 : x;
     const hz = rot === 0 ? z : z - dir * 0.82;
-    lightPool(g, hx, hz, 6, 6);
+    lightPool(g, hx, hz, 10, 10);
     // The bulb hangs 4.07 m above the lamp's base.
     heads.push({ x: hx, y: 0.12 + 4.07, z: hz });
   }

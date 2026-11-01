@@ -86,6 +86,9 @@ export interface LocationSnapshot {
   name: string;
   service: string;
   status: ServiceStatus;
+  /** Counts as icon chips: `value` on screen, `label` the full sentence (tooltip and screen readers). */
+  chips: { icon: ChipIcon; value: string; label: string }[];
+  /** Things worth a sentence (why it is closed). */
   facts: [string, string][];
   metrics: { demand: number; attended: number; unmetNeed: number; adverse: number };
   metricsLabel: string;
@@ -145,6 +148,17 @@ const STRESS_ICONS: Record<'police' | 'medics' | 'sobering' | 'district', string
   district: '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 1.5l6.5 5.5H13v7.5H9.5V10h-3v4.5H3V7H1.5z"/></svg>',
 };
 
+/** A place's counts as icons: people being helped, people waiting, staff, people who turned back, the venue's crowd, the door. */
+export type ChipIcon = 'inside' | 'queue' | 'staff' | 'back' | 'venue' | 'door';
+const CHIP_ICONS: Record<ChipIcon, string> = {
+  inside: '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M5.5 2.5a2.2 2.2 0 1 1 0 4.4 2.2 2.2 0 0 1 0-4.4zm5.5 1a1.9 1.9 0 1 1 0 3.8 1.9 1.9 0 0 1 0-3.8zM1 13.5c0-2.9 2-4.8 4.5-4.8S10 10.6 10 13.5zm10-.1c0-1.4-.4-2.6-1.1-3.6.4-.1.7-.2 1.1-.2 2.2 0 4 1.6 4 3.8z"/></svg>',
+  queue: '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M4 1.5h8v1.5h-1v1.6c0 1.4-.8 2.5-2 3.4 1.2.9 2 2 2 3.4V13h1v1.5H4V13h1v-1.6c0-1.4.8-2.5 2-3.4-1.2-.9-2-2-2-3.4V3H4zm2.5 1.5v1.6c0 .9.6 1.7 1.5 2.4.9-.7 1.5-1.5 1.5-2.4V3z"/></svg>',
+  staff: '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 1.5a2.6 2.6 0 1 1 0 5.2 2.6 2.6 0 0 1 0-5.2zM2.5 14.5c0-3.2 2.4-5.6 5.5-5.6s5.5 2.4 5.5 5.6zm4.8-4v1.3H6v1.4h1.3v1.3h1.4v-1.3H10v-1.4H8.7v-1.3z"/></svg>',
+  back: '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M6 2L1.5 6 6 10V7.5h4a2.5 2.5 0 0 1 0 5H6V14h4a4 4 0 0 0 0-8H6z"/></svg>',
+  venue: '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M13.5 1.5v9.2a2.3 2.3 0 1 1-1.5-2.1V4.6L6.5 5.9v6.8a2.3 2.3 0 1 1-1.5-2.1V3.3z"/></svg>',
+  door: '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M3 1.5h8.5V14.5H13V16H1.5v-1.5H3zm6.2 6a.9.9 0 1 0 0 1.8.9.9 0 0 0 0-1.8z"/></svg>',
+};
+
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -200,7 +214,6 @@ export class Hud {
   readonly eventsSlot: HTMLElement;
   private readonly options: HTMLElement;
   private readonly clock: HTMLElement;
-  private readonly people: HTMLElement;
   private readonly log: HTMLElement;
   private readonly idle: HTMLElement;
   private readonly speaker: HTMLElement;
@@ -209,6 +222,8 @@ export class Hud {
   private readonly locationView: HTMLElement;
   private readonly buildingView: HTMLElement;
   private readonly facts: HTMLElement;
+  private readonly chips: HTMLElement;
+  private chipKeys = '';
   private readonly metricsLabel: HTMLElement;
   private readonly metrics = {} as Record<MetricKey, MetricRow>;
   private readonly personNote: HTMLElement;
@@ -259,7 +274,7 @@ export class Hud {
   /** One row per activity slot: a labelled slider, its share, and a set-up button when it needs one. */
   private readonly mixRows: { li: HTMLLIElement; label: HTMLLabelElement; input: HTMLInputElement; out: HTMLOutputElement; note: HTMLElement; setup: HTMLButtonElement; id: Activity | null; editingUntil: number }[] = [];
   private readonly spotOpts: { li: HTMLLIElement; button: HTMLButtonElement; long: HTMLElement; short: HTMLElement }[] = [];
-  private readonly actionOpts = {} as Record<PlaceAction, { li: HTMLLIElement; button: HTMLButtonElement; label: HTMLElement }>;
+  private readonly actionOpts = {} as Record<PlaceAction, { li: HTMLLIElement; button: HTMLButtonElement; label: HTMLElement; short: HTMLElement }>;
   private readonly focusBtn: HTMLButtonElement;
   private readonly focusLong: HTMLElement;
   private readonly focusShort: HTMLElement;
@@ -293,7 +308,6 @@ export class Hud {
     const top = el('div', 'column-top');
     this.clock = el('span', 'clock', '19:40');
     this.clock.setAttribute('aria-label', t('Scene clock'));
-    this.people = el('span', 'people');
     // One toggle beside the clock steps through the speeds.
     this.speedBtn = button('speed-toggle', '1x');
     this.speedBtn.addEventListener('click', () => cb.onSpeed(SPEEDS[(SPEEDS.indexOf(this.speed as (typeof SPEEDS)[number]) + 1) % SPEEDS.length]));
@@ -302,14 +316,13 @@ export class Hud {
     // Money on hand, always in view: everything priced is greyed out when it runs short.
     this.money = el('span', 'money');
     this.money.setAttribute('role', 'status');
-    // Unmet need over the last day: the other thing that can sink a run.
-    this.unmet = el('span', 'unmet');
+    // People turned away show as pressure on the city's services (the meters); a crisis gets a tag under the money.
+    this.unmet = el('span', 'crisis-tag', t('Crisis'));
     this.unmet.setAttribute('role', 'status');
-    // The red tag beside the count in a crisis, drawn by CSS from this attribute.
-    this.unmet.dataset.tag = t('Crisis');
-    // One quiet line under the money: people out, and people turned away (red in a crisis).
+    this.unmet.hidden = true;
+    // Under the money: the crisis tag, only while there is one.
     const sub = el('div', 'column-sub');
-    sub.append(this.people, this.unmet);
+    sub.append(this.unmet);
     const right = el('div', 'column-right');
     right.append(this.money, sub);
     top.append(time, right);
@@ -355,7 +368,7 @@ export class Hud {
     // The conversation: who or what is selected, speaking in plain sentences.
     this.log = el('div', 'log');
     this.log.setAttribute('aria-live', 'polite');
-    this.idle = el('p', 'idle', t('Pick a place or a person.'));
+    this.idle = el('p', 'idle', t('Pick a place, a person or an action.'));
     const line = el('p', 'line');
     this.speaker = el('span', 'speaker');
     this.said = el('span', 'said');
@@ -366,7 +379,9 @@ export class Hud {
     line.append(this.speaker, this.renameBtn, this.said);
     this.aside = el('p', 'aside');
     this.locationView = el('div', 'location-view');
-    this.facts = el('dl', 'facts');
+    this.chips = el('ul', 'chips');
+    this.chips.setAttribute('role', 'list');
+    this.facts = el('dl', 'facts place-facts');
     this.metricsLabel = el('p', 'check');
     const metrics = el('dl', 'metrics');
     for (const key of METRIC_KEYS) {
@@ -384,6 +399,7 @@ export class Hud {
       this.metrics[key] = { value, line: polyline };
     }
     this.locationView.append(
+      this.chips,
       this.facts,
       this.metricsLabel,
       metrics,
@@ -441,7 +457,7 @@ export class Hud {
         }
         if (levers) cb.onAction(levers.service, action);
       });
-      this.actionOpts[action] = { li: opt(b), button: b, label: long };
+      this.actionOpts[action] = { li: opt(b), button: b, label: long, short };
       if (STAFF_ACTIONS.includes(action)) this.actionOpts[action].li.classList.add('nested');
     }
     // The selected building's own actions, filled per card.
@@ -609,14 +625,17 @@ export class Hud {
     this.continueBtn.addEventListener('click', () => cb.onTogglePause());
 
     // City services under pressure: three small meters under the top line.
-    this.stressRow = el('div', 'stress-row');
-    this.stressRow.setAttribute('role', 'group');
-    this.stressRow.setAttribute('aria-label', t('City services under pressure'));
+    // The meters sit in their own size container, so their grid follows the room they have.
+    this.stressRow = el('div', 'stress-wrap');
+    const meters = el('div', 'stress-row');
+    meters.setAttribute('role', 'group');
+    meters.setAttribute('aria-label', t('City services under pressure'));
+    this.stressRow.append(meters);
     for (const [key, name, hint] of [
-      ['police', t('Police'), t('Incidents, stops and the camp keep police busy; an overstretched force makes the council lean on funders.')],
-      ['medics', t('Medics'), t('Overdoses nobody reached and people harmed outdoors fill ambulances and A&E; overstretched, fewer survive.')],
+      ['police', t('Police'), t('Incidents, stops, the camp and people turned away from a bed keep police busy; an overstretched force makes the council lean on funders.')],
+      ['medics', t('Medics'), t('Overdoses nobody reached, people harmed outdoors and people turned away from services fill ambulances and A&E; overstretched, fewer survive.')],
       ['district', t('District'), t('How well the district is doing: harm reduction that works brings more people out and new venues.')],
-      ['sobering', t('Sobering'), t('Drunk club leavers taken to the sobering-up centre (izba wytrzeźwień).')],
+      ['sobering', t('Sobering'), t('Drunk club leavers taken to the sobering-up centre (izba wytrzeźwień), more of them when the club service turns people away.')],
     ] as const) {
       const m = el('span', 'stress');
       m.dataset.key = key;
@@ -630,7 +649,7 @@ export class Hud {
       icon.innerHTML = STRESS_ICONS[key];
       m.append(icon, el('span', 'stress-name', name), bar);
       this.stressMeters[key] = m;
-      this.stressRow.append(m);
+      meters.append(m);
       this.stressFill[key] = fill;
     }
     this.column.append(this.foldBtn, top, this.stressRow, this.eventsSlot, this.log, this.options, this.continueBtn);
@@ -941,8 +960,6 @@ export class Hud {
     if (!this.lastSnapshot) requestAnimationFrame(() => this.root.classList.add('hud-ready'));
     this.lastSnapshot = s;
     setText(this.clock, s.clock);
-    setText(this.people, t('{n} out', { n: s.people }));
-    this.people.title = plural(s.people, ['{n} person out on the street', '{n} people out on the street'], ['{n} osoba na ulicy', '{n} osoby na ulicy', '{n} osób na ulicy']);
     if (s.money) {
       const b = Math.round(s.money.budget);
       const rate = Math.round(s.money.perHour);
@@ -953,11 +970,11 @@ export class Hud {
     }
     if (s.unmet) {
       const { day, crisis } = s.unmet;
-      setText(this.unmet, t('{n} turned away', { n: day }));
       const away = plural(day, ['{n} person turned away in the last 24 hours', '{n} people turned away in the last 24 hours'], ['{n} osoba odesłana w ciągu ostatnich 24 godzin', '{n} osoby odesłane w ciągu ostatnich 24 godzin', '{n} osób odesłanych w ciągu ostatnich 24 godzin']);
-      this.unmet.title = crisis > 0 ? t('{away}: crisis on the street', { away }) : away;
-      setAttr(this.unmet, 'aria-label', crisis > 0 ? t('{away}, crisis', { away }) : away);
-      const state = crisis >= 0.5 ? 'crisis' : crisis > 0 ? 'rising' : 'ok';
+      this.unmet.title = t('{away}: crisis on the street', { away });
+      setAttr(this.unmet, 'aria-label', t('{away}, crisis', { away }));
+      const state = crisis >= 0.5 ? 'crisis' : 'rising';
+      if (this.unmet.hidden !== (crisis <= 0)) this.unmet.hidden = crisis <= 0;
       if (this.unmet.dataset.state !== state) this.unmet.dataset.state = state;
     }
     if (s.stress) {
@@ -1005,7 +1022,7 @@ export class Hud {
     const aidHidden = !aid || this.servicesOpen || this.mode !== null;
     if (this.aidOpt.hidden !== aidHidden) this.aidOpt.hidden = aidHidden;
     const on = SERVICE_IDS.filter((id) => s.enabled[id]).length;
-    setText(this.reviewName, t('Review the services ({on} of {all} on).', { on, all: SERVICE_IDS.length }));
+    setText(this.reviewName, t('Services ({on}/{all}).', { on, all: SERVICE_IDS.length }));
     setText(this.reviewShort, t('Services ({on}/{all}).', { on, all: SERVICE_IDS.length }));
     for (const id of SERVICE_IDS) {
       setAttr(this.switches[id], 'aria-checked', String(s.enabled[id]));
@@ -1127,6 +1144,9 @@ export class Hud {
         r.setup.disabled = !afford(m.setupCost);
       }
     });
+    // A switch: the short label (all a phone shows) says whether the box is out.
+    setText(this.actionOpts.donations.short, don.on ? t('Donation box: out.') : t('Donation box: in.'));
+    setAttr(this.actionOpts.donations.button, 'aria-pressed', String(don.on));
     show('donations', !a.closedDown, don.on ? t('Donation box +{price}/h', { price: price(don.each * don.staff) }) : t('Put out a donation box'), true, don.on ? t('{rate}. Click to take it in.', { rate }) : t('{price} an hour per staff member on shift.', { price: price(don.each) }));
     show('relaunch', a.closedDown, a.reopening ? t('Relaunching…') : t('Relaunch {price}', { price: price(ACTION_COST.relaunch) }), !a.reopening && afford(ACTION_COST.relaunch), t('Back in about 2 hours.'));
   }
@@ -1198,6 +1218,24 @@ export class Hud {
   }
 
   private renderLocation(loc: LocationSnapshot, trend: MetricTrend): void {
+    const chipKeys = loc.chips.map((c) => c.icon).join('|');
+    if (chipKeys !== this.chipKeys) {
+      this.chipKeys = chipKeys;
+      this.chips.replaceChildren(...loc.chips.map((c) => {
+        const li = el('li', 'chip');
+        li.dataset.icon = c.icon;
+        const icon = el('span', 'chip-icon');
+        icon.innerHTML = CHIP_ICONS[c.icon];
+        li.append(icon, el('span', 'chip-value'));
+        return li;
+      }));
+    }
+    loc.chips.forEach((c, i) => {
+      const li = this.chips.children[i] as HTMLElement;
+      setText(li.lastElementChild as HTMLElement, c.value);
+      if (li.title !== c.label) li.title = c.label;
+      setAttr(li, 'aria-label', c.label);
+    });
     // Rebuild the fact rows only when their set changes; otherwise update text in place.
     const keys = loc.facts.map(([k]) => k).join('|');
     if (keys !== this.factKeys) {

@@ -30,7 +30,7 @@ interface Page {
 }
 
 /** Topics in menu order; anything mounted that is not listed goes at the end. */
-const ORDER = ['org-section', 'group-night', 'group-demand', 'services', 'context-section', 'random-section', 'save-section', 'about-section'];
+const ORDER = ['org-section', 'group-night', 'group-demand', 'services', 'context-section', 'random-section', 'save-section', 'language-section', 'about-section'];
 
 /**
  * Sandbox controls laid out like the conversation column: a short numbered

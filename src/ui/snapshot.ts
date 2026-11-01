@@ -29,11 +29,20 @@ const CLOSED_TEXT: Record<ClosedReason, string> = {
   closedDown: t('Closed down: the money ran out for too long (relaunch it from Your organisation)'),
 };
 
-/** Context facts shared by every service: why it is closed, and who turned back. */
+/** Why a place is closed, when it is: the one fact worth a sentence. */
 function contextFacts(s: ServiceModel): [string, string][] {
-  const rows: [string, string][] = [[t('Turned back'), t('{n} set out but turned back before arriving', { n: s.turnedBack })]];
-  if (s.closedReason) rows.unshift([t('Closed because'), CLOSED_TEXT[s.closedReason]]);
-  return rows;
+  return s.closedReason ? [[t('Closed because'), CLOSED_TEXT[s.closedReason]]] : [];
+}
+
+type Chip = LocationSnapshot['chips'][number];
+/** Who is being helped, who waits, staff on site, and who turned back: as icon chips. */
+function serviceChips(s: ServiceModel, servedAt: string): Chip[] {
+  return [
+    { icon: 'inside', value: `${s.inService.size}/${s.capacity}`, label: t('{n} {where}, {cap} at a time', { n: s.inService.size, where: servedAt, cap: s.capacity }) },
+    { icon: 'queue', value: `${s.queue.length}/${s.params.waitingSlots}`, label: t('{n} waiting, {waiting} waiting places', { n: s.queue.length, waiting: s.params.waitingSlots }) },
+    { icon: 'staff', value: `${s.staffOnSite}/${s.params.staff}`, label: t('Staff on site: {n} of {max}', { n: s.staffOnSite, max: s.params.staff }) },
+    { icon: 'back', value: String(s.turnedBack), label: t('{n} set out but turned back before arriving', { n: s.turnedBack }) },
+  ];
 }
 
 function serviceSnapshot(id: LocationId, s: ServiceModel, sim?: Simulation): LocationSnapshot {
@@ -42,12 +51,8 @@ function serviceSnapshot(id: LocationId, s: ServiceModel, sim?: Simulation): Loc
     name: displayName('location', id, LOCATION_NAMES[id]),
     service: text.label,
     status: s.status,
-    facts: [
-      [t('Capacity'), t('{n} at a time, {waiting} waiting places', { n: s.capacity, waiting: s.params.waitingSlots })],
-      [t('Current visitors'), t('{n} {where}, {waiting} waiting', { n: s.inService.size, where: text.servedAt, waiting: s.queue.length })],
-      [t('Staff on site'), t('{n} of {max}', { n: s.staffOnSite, max: s.params.staff })],
-      ...contextFacts(s),
-    ],
+    chips: serviceChips(s, text.servedAt),
+    facts: contextFacts(s),
     metrics: { ...s.metrics },
     metricsLabel: t('Tonight so far'),
     blockedByLaw: s.closedReason === 'notPermitted',
@@ -94,13 +99,10 @@ function clubSnapshot(sim: Simulation): LocationSnapshot {
   const c = sim.club;
   const stand = sim.services.clubHr;
   const club = serviceSnapshot('club', stand, sim);
-  club.facts = [
-    [t('Venue'), t('Open, {n} of {max} inside, {queue} queuing', { n: c.inside, max: c.capacity, queue: c.queue.length })],
-    [t('Stand capacity'), t('{n} at a time', { n: stand.capacity })],
-    [t('At the stand'), t('{n} talking, {waiting} waiting', { n: stand.inService.size, waiting: stand.queue.length })],
-    [t('Staff on site'), t('{n} of {max}', { n: stand.staffOnSite, max: stand.params.staff })],
-    [t('Door (venue)'), t('{n} let in, {adverse} adverse (placeholder)', { n: c.entered, adverse: c.adverse })],
-    ...contextFacts(stand),
+  club.chips = [
+    { icon: 'venue', value: `${c.inside}/${c.capacity}`, label: t('Venue: open, {n} of {max} inside, {queue} queuing', { n: c.inside, max: c.capacity, queue: c.queue.length }) },
+    { icon: 'door', value: String(c.entered), label: t('Door (venue): {n} let in, {adverse} adverse (placeholder)', { n: c.entered, adverse: c.adverse }) },
+    ...serviceChips(stand, SERVICE_TEXT.clubHr.servedAt),
   ];
   club.metricsLabel = t('Stand, tonight so far');
   return club;

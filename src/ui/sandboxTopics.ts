@@ -1,7 +1,7 @@
 import { normalize } from '../config/sandboxParams';
-import { t } from '../i18n';
+import { LANG, LANGS, t, type Lang } from '../i18n';
 
-/** Two small topics of the sandbox menu: New game and About. */
+/** Small topics of the sandbox menu: New game, Language and About. */
 
 type DateClock = { date: number; clock: number };
 
@@ -54,6 +54,28 @@ export function applyShuffle(setDateClock: (v: DateClock) => void): void {
     const clock = normalize('clock', Number(v.clock));
     if (Number.isFinite(date) && Number.isFinite(clock)) setDateClock({ date, clock });
   } catch { /* a bad value is ignored */ }
+}
+
+/** Language: each in its own name; picking one reloads the page in it, the game kept. */
+export function languageSection(choose: (lang: Lang) => void): HTMLFieldSetElement {
+  const section = document.createElement('fieldset');
+  section.className = 'sandbox-group';
+  section.id = 'language-section';
+  const legend = document.createElement('legend');
+  legend.textContent = t('Language');
+  section.append(legend);
+  for (const l of LANGS) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn save-btn';
+    b.lang = l.id;
+    b.textContent = l.name;
+    b.setAttribute('aria-pressed', String(l.id === LANG));
+    b.disabled = l.id === LANG;
+    b.addEventListener('click', () => choose(l.id));
+    section.append(b);
+  }
+  return section;
 }
 
 /** About: what the game is, in a few lines, and where its code lives. */

@@ -1,7 +1,8 @@
 import type { Season } from './calendar';
 
 /**
- * The tent camp in the big park: people with nowhere else to go. Outside
+ * The tent camps: in the big park, and a second by the railway station just
+ * outside the district, which keeps growing in winter too. People with nowhere else to go. Outside
  * winter it grows when the shelter is shut or crowded (people turned away set
  * up tents) and in a crisis; in winter people look for somewhere indoors
  * instead. It shrinks while the shelter is open and outreach keeps in touch. `size` runs 0 (none) to 1 (the
@@ -31,6 +32,12 @@ export const CAMP = {
   squatDemand: 0.8,
   /** Above this size the council may order the camp cleared. */
   sweepAt: 0.6,
+  /** By the railway station: grows at this share of the park camp's pace... */
+  stationShare: 0.6,
+  /** ...and, unlike the park, in winter too (per clock hour), as the station hall gives some shelter. */
+  stationWinter: 0.015,
+  /** Together with the park camp, counted at this weight for outreach demand, harm and police. */
+  stationWeight: 0.6,
 } as const;
 
 export interface CampInput {
@@ -43,7 +50,10 @@ export interface CampInput {
 }
 
 export class Camp {
+  /** The park camp. */
   size = 0.15;
+  /** The camp by the railway station, just outside the district, 0 to 1. */
+  station = 0.1;
   /** How full the squat is, 0 to 1: in winter people move in from the park and the street. */
   squat = 0.2;
 
@@ -56,6 +66,13 @@ export class Camp {
     const moving = warm ? 0 : Math.min(this.size, CAMP.toSquat * hours);
     this.size = Math.min(1, Math.max(0, this.size + (grow - shrink) * hours - moving));
     this.squat = Math.min(1, Math.max(0, this.squat + (warm ? -CAMP.squatEmpties : CAMP.squatFills) * hours + moving));
+    const stationGrow = grow * CAMP.stationShare + (warm ? 0 : CAMP.stationWinter * (inp.shelterOpen ? 0.5 : 1));
+    this.station = Math.min(1, Math.max(0, this.station + (stationGrow - shrink * 0.8) * hours));
+  }
+
+  /** Both camps together, the station's weighted: what drives outreach demand, harm outdoors and police load. */
+  get outdoors(): number {
+    return Math.min(1, this.size + CAMP.stationWeight * this.station);
   }
 
   /** People living in the camp, for the cards (about 2 per tent, up to 14 tents). */

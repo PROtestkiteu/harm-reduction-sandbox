@@ -89,6 +89,90 @@ const material = new ShaderMaterial({
 
 const baseGeo = new CircleGeometry(1, 20).rotateX(-Math.PI / 2);
 
+/**
+ * River water, sharing the puddles' sky, view and time: deeper in the middle,
+ * paler by the stone banks, ripples drifting downstream (towards +z), the sky
+ * catching more at a glancing angle, and the promenade lamps (a row at
+ * `lampX`, every `step` metres from `z0`, `height` up) shimmering as streaks
+ * after dark. The mesh's uv runs across (x, 0 to 1) and along (y) the river.
+ */
+export function riverMaterial(lampX: number, z0: number, step: number, height: number): ShaderMaterial {
+  return new ShaderMaterial({
+    uniforms: {
+      ...UniformsUtils.clone(UniformsLib.fog),
+      uView: material.uniforms.uView,
+      uSky: material.uniforms.uSky,
+      uRim: material.uniforms.uRim,
+      uLamp: material.uniforms.uLamp,
+      uTime: material.uniforms.uTime,
+      uLamps: { value: new Vector3(lampX, z0, step) },
+      uLampH: { value: height },
+    },
+    fog: true,
+    vertexShader: /* glsl */ `
+      #include <common>
+      #include <fog_pars_vertex>
+      varying vec2 vUv;
+      varying vec3 vWorld;
+      void main() {
+        vUv = uv;
+        vec4 wp = modelMatrix * vec4(position, 1.0);
+        vWorld = wp.xyz;
+        vec4 mvPosition = viewMatrix * wp;
+        gl_Position = projectionMatrix * mvPosition;
+        #include <fog_vertex>
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      #include <common>
+      #include <fog_pars_fragment>
+      uniform vec3 uView;
+      uniform vec3 uSky;
+      uniform vec3 uRim;
+      uniform vec3 uLamp;
+      uniform float uTime;
+      uniform vec3 uLamps;
+      uniform float uLampH;
+      varying vec2 vUv;
+      varying vec3 vWorld;
+      void main() {
+        vec2 p = vWorld.xz;
+        float t = uTime;
+        // Ripples: crossing waves of a few sizes, the whole pattern drifting downstream.
+        float w = sin(p.x * 1.7 + p.y * 0.6 - t * 1.4) * 0.5
+                + sin(p.x * -0.9 + p.y * 1.3 - t * 1.9) * 0.35
+                + sin(p.x * 3.1 - p.y * 2.3 - t * 2.6) * 0.2
+                + sin(p.y * 0.35 - t * 0.8) * 0.4;
+        // Deep in the middle, shallower and paler by the banks.
+        float edge = min(vUv.x, 1.0 - vUv.x);
+        // Linear colours: these come out about three times brighter on screen.
+        vec3 deep = mix(vec3(0.006, 0.016, 0.022), vec3(0.012, 0.03, 0.036), smoothstep(0.0, 0.25, 0.5 - edge));
+        vec3 shallow = vec3(0.022, 0.042, 0.046);
+        vec3 col = mix(shallow, deep, smoothstep(0.0, 0.18, edge));
+        // The sky in the surface, more of it where the ripples tilt towards the viewer.
+        float sheen = 0.35 + 0.25 * (1.0 - clamp(-uView.y, 0.0, 1.0)) + 0.12 * w;
+        col = mix(col, mix(uSky, uRim, 0.5 + 0.25 * w) * 0.6, clamp(sheen, 0.0, 0.8) * 0.4);
+        // Lamp images: follow the view ray down to the lamps' depth, then find the nearest lamp in the row.
+        float h = uLampH - vWorld.y;
+        vec2 q = p + uView.xz * (h / max(-uView.y, 0.2));
+        float k = floor((q.y - uLamps.y) / uLamps.z + 0.5);
+        vec2 d = q - vec2(uLamps.x, uLamps.y + k * uLamps.z);
+        vec2 dir = normalize(uView.xz + vec2(1e-4));
+        float along = dot(d, dir);
+        float across = dot(d, vec2(-dir.y, dir.x)) + 0.25 * w;
+        float glow = exp(-(across * across / 0.12 + along * along / 6.0)) * (0.75 + 0.35 * w);
+        col += uLamp * glow * 0.9;
+        // A pale line where the water laps the stone.
+        col += vec3(0.04, 0.05, 0.05) * (1.0 - smoothstep(0.0, 0.012, edge)) * (0.6 + 0.4 * sin(p.y * 2.0 - t * 2.0));
+        gl_FragColor = vec4(col, 1.0);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+        #include <fog_fragment>
+      }
+    `,
+  });
+}
+
 /** A lamp head a puddle can mirror, in world coordinates. */
 export interface LampHead { x: number; y: number; z: number }
 

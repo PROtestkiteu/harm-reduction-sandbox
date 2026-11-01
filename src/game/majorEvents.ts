@@ -1,4 +1,5 @@
 import type { Simulation } from '../sim/simulation';
+import type { EventPlace } from '../config/eventPlaces';
 import type { ServiceId } from '../sim/types';
 import { CAMP } from '../sim/camp';
 import { t } from '../i18n';
@@ -19,6 +20,8 @@ export interface Choice {
 export interface MajorEvent {
   id: string;
   title: string;
+  /** Where it plays out, brought into view when it pops up. */
+  place?: EventPlace;
   lines: string[];
   /** Whether it can happen now (for example, relief only after a crackdown). */
   eligible(w: EventWorld): boolean;
@@ -34,7 +37,20 @@ export interface EventWorld {
   random(): number;
   /** Sends a police car or an ambulance to where a place stands, with a reason for its card. */
   dispatchTo(kind: 'police' | 'ambulance', service: ServiceId, reason: string): void;
+  /** Plays an event out on the street, not only in text. */
+  show(s: Spectacle): void;
 }
+
+/** What an event looks like on the street, for the world to draw. */
+export type Spectacle =
+  | { kind: 'rave'; theme: 'wixapol' | 'hazel' }
+  | { kind: 'raid'; at: ServiceId; hours: number }
+  | { kind: 'sweep'; hours: number }
+  | { kind: 'alert'; at: ServiceId; hours: number }
+  | { kind: 'press'; at: ServiceId; hours: number }
+  | { kind: 'coins'; at: ServiceId; count: number }
+  /** Police cars posted at the services. */
+  | { kind: 'patrol' };
 
 const tire = (w: EventWorld, by: number) => {
   for (const m of w.sim.team.members) m.energy = Math.max(0, m.energy - by);
@@ -43,6 +59,7 @@ const tire = (w: EventWorld, by: number) => {
 export const MAJOR_EVENTS: readonly MajorEvent[] = [
   {
     id: 'hostileGovernment',
+    place: 'dropIn',
     title: t('A new government takes office'),
     lines: [
       t('It won on a tough-on-drugs ticket. Its first order: police to patrol near health services and stop people on their way in.'),
@@ -52,7 +69,7 @@ export const MAJOR_EVENTS: readonly MajorEvent[] = [
     choices: [
       {
         label: t('Brief the team and carry on'),
-        apply: (w) => { w.setFactor('policing', 'visible'); tire(w, 0.1); return t('Police are now posted near the services.'); },
+        apply: (w) => { w.setFactor('policing', 'visible'); w.show({ kind: 'patrol' }); tire(w, 0.1); return t('Police are now posted near the services.'); },
       },
       {
         label: t('Lobby the city for a police agreement'),
@@ -61,6 +78,7 @@ export const MAJOR_EVENTS: readonly MajorEvent[] = [
           w.sim.org.spend(150, false);
           if (w.random() < 0.5) { w.setFactor('policing', 'agreement'); return t('The city brokered an agreement: patrols keep clear of entrances.'); }
           w.setFactor('policing', 'visible');
+          w.show({ kind: 'patrol' });
           return t('The city would not intervene. Police are now posted near the services.');
         },
       },
@@ -68,6 +86,7 @@ export const MAJOR_EVENTS: readonly MajorEvent[] = [
   },
   {
     id: 'mediaAttack',
+    place: 'dropIn',
     title: t('A politician attacks the project in the media'),
     lines: [
       t('A conservative politician calls your drop-in "a drug den" on television and in the papers.'),
@@ -78,16 +97,17 @@ export const MAJOR_EVENTS: readonly MajorEvent[] = [
       {
         label: t('Answer with your data and a statement'),
         cost: 100,
-        apply: (w) => { w.sim.org.spend(100, false); w.sim.mediaAttack(0.8, 2, 0.1); return t('Your answer took the edge off: funders are a little warier for two nights.'); },
+        apply: (w) => { w.sim.org.spend(100, false); w.sim.mediaAttack(0.8, 2, 0.1); w.show({ kind: 'press', at: 'dropIn', hours: 2 }); return t('Your answer took the edge off: funders are a little warier for two nights.'); },
       },
       {
         label: t('Stay out of it'),
-        apply: (w) => { w.sim.mediaAttack(0.55, 4, 0.25); return t('The story ran unanswered: grant chances are down for four nights and the team is drained.'); },
+        apply: (w) => { w.sim.mediaAttack(0.55, 4, 0.25); w.show({ kind: 'press', at: 'dropIn', hours: 4 }); return t('The story ran unanswered: grant chances are down for four nights and the team is drained.'); },
       },
     ],
   },
   {
     id: 'courtRuling',
+    place: 'dropIn',
     title: t('A court rules for the services'),
     lines: [
       t('Judges find that policing the doors of health services breaks patients\' rights.'),
@@ -98,6 +118,7 @@ export const MAJOR_EVENTS: readonly MajorEvent[] = [
   },
   {
     id: 'campSweep',
+    place: 'camp',
     title: t('The council orders the park camp cleared'),
     lines: [
       t('Neighbours complained about the tents in the park. Council workers and police are due in the morning to clear them.'),
@@ -118,6 +139,7 @@ export const MAJOR_EVENTS: readonly MajorEvent[] = [
         label: t('Stay out of it'),
         apply: (w) => {
           w.sim.camp.size = 0.1;
+          w.show({ kind: 'sweep', hours: 3 });
           w.sim.triggerEvent('afterCrackdown');
           return t('The camp was cleared. People scattered to hidden corners, where overdoses go unseen.');
         },
@@ -126,6 +148,7 @@ export const MAJOR_EVENTS: readonly MajorEvent[] = [
   },
   {
     id: 'badBatch',
+    place: 'drugChecking',
     title: t('A bad batch is going round'),
     lines: [
       t('Several people have collapsed after using the same supply. Something much stronger than usual is in it.'),
@@ -140,6 +163,7 @@ export const MAJOR_EVENTS: readonly MajorEvent[] = [
           w.sim.org.spend(80, false);
           w.sim.triggerEvent('opioidContamination');
           w.sim.triggerEvent('checkingRush');
+          w.show({ kind: 'alert', at: 'drugChecking', hours: 3 });
           return t('The alert is out: more people are bringing samples to check.');
         },
       },
@@ -147,6 +171,8 @@ export const MAJOR_EVENTS: readonly MajorEvent[] = [
         label: t('Warn your clients quietly'),
         apply: (w) => {
           w.sim.triggerEvent('opioidContamination');
+          w.show({ kind: 'alert', at: 'dropIn', hours: 3 });
+          for (let i = 0; i < 2; i++) w.dispatchTo('ambulance', w.sim.busiest.service, t('A bad batch: someone collapsed after using.'));
           return t('Your clients know. Everyone else finds out the hard way.');
         },
       },
@@ -154,6 +180,7 @@ export const MAJOR_EVENTS: readonly MajorEvent[] = [
   },
   {
     id: 'wixapol',
+    place: 'park',
     title: t('Wixapol: a flash rave in the park'),
     lines: [
       t('Speakers on bikes, a few hundred people, dancing until the sun comes up. It spread by word of mouth an hour ago.'),
@@ -168,6 +195,7 @@ export const MAJOR_EVENTS: readonly MajorEvent[] = [
           w.sim.org.spend(80, false);
           w.sim.triggerEvent('popUpParty');
           w.sim.triggerEvent('checkingRush');
+          w.show({ kind: 'rave', theme: 'wixapol' });
           return t('Your team hands out water, earplugs and test kits. The night stays a party.');
         },
       },
@@ -176,6 +204,7 @@ export const MAJOR_EVENTS: readonly MajorEvent[] = [
         apply: (w) => {
           w.sim.triggerEvent('popUpParty');
           w.sim.triggerEvent('highDosePills');
+          w.show({ kind: 'rave', theme: 'wixapol' });
           return t('The rave goes on without you. Strong pills are going round.');
         },
       },
@@ -183,6 +212,7 @@ export const MAJOR_EVENTS: readonly MajorEvent[] = [
   },
   {
     id: 'djHazel',
+    place: 'park',
     title: t('DJ Hazel in memoriam'),
     lines: [
       t('Friends of DJ Hazel organise a memorial rave in her honour, with her music, all night.'),
@@ -197,6 +227,7 @@ export const MAJOR_EVENTS: readonly MajorEvent[] = [
           w.sim.org.spend(100, false);
           w.sim.triggerEvent('popUpParty');
           w.sim.triggerEvent('checkingRush');
+          w.show({ kind: 'rave', theme: 'hazel' });
           w.sim.org.budget += 60;
           return t('A night to remember her by. People bring samples to check, and the organisers pass round a hat for you (+60).');
         },
@@ -205,6 +236,7 @@ export const MAJOR_EVENTS: readonly MajorEvent[] = [
         label: t('Not tonight'),
         apply: (w) => {
           w.sim.triggerEvent('popUpParty');
+          w.show({ kind: 'rave', theme: 'hazel' });
           return t('The memorial goes ahead without harm reduction on site.');
         },
       },
@@ -212,6 +244,7 @@ export const MAJOR_EVENTS: readonly MajorEvent[] = [
   },
   {
     id: 'raid',
+    place: 'busiest',
     title: t('Police raid'),
     lines: [
       t('Too many people gathered in one place: police cars swarm the area, and officers stop and arrest people who use drugs.'),
@@ -220,7 +253,7 @@ export const MAJOR_EVENTS: readonly MajorEvent[] = [
     // Only where possession is still an offence, without a police agreement or a favour keeping police away, and where people crowd together.
     eligible: (w) =>
       (w.factor('law') === 'criminal' || w.factor('law') === 'discretionary') && w.factor('policing') !== 'agreement' && !w.sim.policeAway &&
-      (w.sim.busiest.queue >= 5 || w.sim.camp.size >= 0.5 || w.sim.neighbourhood.state.streetMarket >= 0.5),
+      (w.sim.busiest.queue >= 5 || w.sim.camp.outdoors >= 0.5 || w.sim.neighbourhood.state.streetMarket >= 0.5),
     choices: [
       {
         label: t('Send outreach after them, with lawyers\' numbers'),
@@ -245,16 +278,18 @@ export const MAJOR_EVENTS: readonly MajorEvent[] = [
   },
   {
     id: 'donation',
+    place: 'dropIn',
     title: t('A donation'),
     lines: [t('A local business owner, whose brother was helped by your outreach team, sends a donation.')],
     eligible: () => true,
-    choices: [{ label: t('Thank them'), apply: (w) => { w.sim.org.budget += 400; return t('400 added to the budget.'); } }],
+    choices: [{ label: t('Thank them'), apply: (w) => { w.sim.org.budget += 400; w.show({ kind: 'coins', at: 'dropIn', count: 16 }); return t('400 added to the budget.'); } }],
   },
 ];
 
 /** Police cars swarm the busiest place, lights on. */
 function raidCars(w: EventWorld): void {
   const at = w.sim.busiest.service;
+  w.show({ kind: 'raid', at, hours: 1.5 });
   for (let i = 0; i < 3; i++) w.dispatchTo('police', at, t('A raid: too many people gathered here, and the law makes their drug use an offence.'));
 }
 

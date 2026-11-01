@@ -30,7 +30,7 @@ import {
 } from './details';
 import { add, bench, bin, bollard, box, cylinder, planter, signBoard, setFoliageSeason, setLampNight, streetLight, tree } from './kit';
 import { setPuddleLight, tickPuddles } from './puddles';
-import { AID_BUS, CAMPER_SPOTS, SQUAT_SPOT, moveCamper as moveCamperFrame, CROSSING, HALF, HOME_CAMPER, HOME_CLUB, LOTS, NODES, PAVE_E, PAVE_W, ROAD, VENUE_FACE, VENUES_AT_HOME, type P2 } from './layout';
+import { AID_BUS, CAMPER_SPOTS, SQUAT_SPOT, STATION_CAMP, moveCamper as moveCamperFrame, CROSSING, HALF, HOME_CAMPER, HOME_CLUB, LOTS, NODES, PAVE_E, PAVE_W, ROAD, VENUE_FACE, VENUES_AT_HOME, type P2 } from './layout';
 import { buildBlockGround, buildOutskirts, buildStreets } from './district';
 import { lightPool, setPoolDaylight } from './dressing';
 import { buildInfill } from './infill';
@@ -42,6 +42,8 @@ import { Weather } from './weather';
 import { buildCityBeyond } from './cityBeyond';
 import { setKitSeason, type Kits } from './kits';
 import { buildAmbient, type AmbientKind, type VehicleInfo } from './ambient';
+import { Traffic } from './traffic';
+import { TrafficLights } from './trafficLights';
 import type { Figure } from '../agents/character';
 import { Letting, type UnitLook } from './letting';
 import { allBuildings, cityBuilding, type CityBuilding } from './cityBuildings';
@@ -69,6 +71,8 @@ export interface World {
   update(dt: number, time: number): void;
   /** 0 at dusk, 1 in deep night: dims the low sun and cools the ambient light. */
   setNight(night: number, day?: number): void;
+  /** The haze colour at the horizon now, as CSS hex: the page around the scene takes it. */
+  hazeHex(): string;
   /** Trees, snow, light and what drifts in the air for the time of year. */
   setSeason(season: Season, profile: SeasonProfile): void;
   /** Drifting snow and leaves hold still when reduced motion is preferred. */
@@ -83,6 +87,8 @@ export interface World {
   setShops(kinds: readonly ShopKind[]): void;
   /** City traffic waits for anyone on the road ahead (asked of the crowd). */
   setTrafficYield(ahead: (x: number, z: number, dx: number, dz: number) => boolean): void;
+  /** Every vehicle on the road: the crowd's cars report here too. */
+  readonly traffic: Traffic;
   /** Sends an ambulance or a police car to a spot: it drives in, stops with lights flashing, then leaves. */
   dispatch(kind: 'ambulance' | 'police', x: number, z: number, reason: string): boolean;
   /** Police cars and ambulances on screen, for picking, and what each is doing. */
@@ -94,8 +100,8 @@ export interface World {
   setExtraCampers(spots: readonly number[]): void;
   /** Shows a harm reduction point's sign on a building, or takes it down (null). */
   setPoint(building: number, look: UnitLook | null): void;
-  /** The park camp at `size` (0 to 1): up to 14 tents, the first ones nearest the district. */
-  setCamp(size: number): void;
+  /** The park camp at `size` and the station camp at `station` (0 to 1): up to 14 and 10 tents, nearest the district first. */
+  setCamp(size: number, station: number): void;
   /** Shows the warming bus (parked, lit) and the water and shade point while they run. */
   setAid(bus: boolean, water: boolean): void;
   /** Lights up the kerb spots marked free (by index), for picking a new spot on the map; null hides them. */
@@ -109,7 +115,7 @@ export interface World {
   /** Shows the first `open` new venues' signs (partnered ones with a star). */
   setNightlife(open: number, partnered: ReadonlySet<number>): void;
   /** Building ids of the public hospital and the sobering-up centre. */
-  landmarks: { hospital: number; sobering: number };
+  landmarks: { hospital: number; sobering: number; police: number };
   /** The city building that is a squat this launch, by id. */
   squat: number | null;
   /** Where people stand at the counter of the camper on `spot`. */
@@ -154,14 +160,17 @@ const SHOP_SIGN: Record<ShopKind, { sign: string; fg: string; bg: string }> = {
   casino: { sign: 'CASINO', fg: '#ffd84a', bg: '#4a1060' },
 };
 
-/** Tents for the park camp, west of the park's cross path, sorted nearest the district first. */
-function campTents(random: () => number): Group[] {
+/**
+ * Tents for a camp: `count` of them in rows of five from (x0, z0), `dz` between
+ * rows, sorted nearest the district first (the park camp grows away from it).
+ */
+function campTents(random: () => number, count: number, x0: number, z0: number, dz: number): Group[] {
   const tarps = [0x3a5a7a, 0x6a7a3a, 0x8a4a3a, 0x5a5a5a, 0x7a6a4a, 0x2f5a5a];
   const out: { g: Group; z: number }[] = [];
-  for (let i = 0; i < 14; i++) {
+  for (let i = 0; i < count; i++) {
     const g = dynamic(new Group());
-    const x = -30 + (i % 5) * 4.2 + (random() - 0.5) * 1.6;
-    const z = 55 + Math.floor(i / 5) * 4 + (random() - 0.5) * 1.4;
+    const x = x0 + (i % 5) * 4.2 + (random() - 0.5) * 1.6;
+    const z = z0 + Math.floor(i / 5) * dz + (random() - 0.5) * 1.4;
     const tent = add(g, new Mesh(new ConeGeometry(1.3, 1.4, 4), mat(tarps[i % tarps.length])), Math.PI / 4 + (random() - 0.5) * 0.5);
     tent.position.y = 0.7;
     tent.scale.set(1, 1, 1.4);
@@ -170,7 +179,7 @@ function campTents(random: () => number): Group[] {
     g.visible = false;
     out.push({ g, z });
   }
-  return out.sort((a, b) => a.z - b.z).map((t) => t.g);
+  return out.sort((a, b) => Math.abs(a.z) - Math.abs(b.z)).map((t) => t.g);
 }
 
 /** A shade canopy over a table of water bottles, with a sign. */
@@ -237,7 +246,10 @@ export function buildWorld(random: Random): World {
   // A fresh seed each launch: the city round the district is never quite the same twice.
   const launch = (Math.random() * 0x7fffffff) | 0;
   const beyond = buildCityBeyond(scene, mulberry(29 ^ launch));
-  const ambient = buildAmbient(scene, mulberry(31));
+  // Every vehicle on the road reports here, so none drives through another.
+  const traffic = new Traffic();
+  const lights = new TrafficLights(scene, traffic);
+  const ambient = buildAmbient(scene, mulberry(31), traffic);
   let detail = 0.2;
   buildStreets(scene, mulberry(29));
   buildBlockGround(scene, mulberry(31));
@@ -333,8 +345,11 @@ export function buildWorld(random: Random): World {
   // Harm reduction points the player opens in ordinary buildings: a sign each, made when first needed.
   const pointSigns = new Map<number, Letting>();
   // The park camp: tents of tarps and old canvas, nearest the district first.
-  const tents = campTents(mulberry(71));
+  const tents = campTents(mulberry(71), 14, -30, 55, 4);
   for (const t of tents) scene.add(t);
+  // The station camp: on the forecourt south of the tracks, just outside the district.
+  const stationTents = campTents(mulberry(73), 10, STATION_CAMP.x0 + 4, STATION_CAMP.z0 + 2, 4);
+  for (const t of stationTents) scene.add(t);
   // The warming bus parks on the east street; the water and shade point stands in the pocket park.
   const aid = { bus: dynamic(bus()), water: dynamic(waterPoint()) };
   aid.bus.position.set(AID_BUS.x, 0.02, AID_BUS.z);
@@ -410,6 +425,8 @@ export function buildWorld(random: Random): World {
       });
     },
     setTrafficYield: (ahead) => ambient.setYield(ahead),
+    traffic,
+    hazeHex: () => `#${(scene.fog as Fog).color.getHexString()}`,
     vehicles: () => ambient.vehicles(),
     vehicle: (id) => ambient.vehicle(id),
     dispatch(kind, x, z, reason) {
@@ -476,9 +493,11 @@ export function buildWorld(random: Random): World {
       }
       sign.set(look);
     },
-    setCamp(size) {
-      const n = Math.round(size * tents.length);
-      tents.forEach((t, i) => { if (t.visible !== i < n) t.visible = i < n; });
+    setCamp(size, station) {
+      for (const [set, k] of [[tents, size], [stationTents, station]] as const) {
+        const n = Math.round(k * set.length);
+        set.forEach((t, i) => { if (t.visible !== i < n) t.visible = i < n; });
+      }
     },
     setAid(busOn, waterOn) {
       aid.bus.visible = busOn;
@@ -530,6 +549,7 @@ export function buildWorld(random: Random): World {
       residentialWindows.update(dt, 0.55);
       outskirts.update(dt, 0.35);
       beyond.update(dt);
+      lights.update(dt);
       ambient.update(dt);
       for (const w of beyond.windows) w.update(dt, 0.4);
       for (const w of infill) w.update(dt, 0.45);
@@ -706,7 +726,7 @@ function buildProps(scene: Scene): void {
   ];
   for (const [x, z, dir] of lamps) {
     add(g, streetLight(dir).group).position.set(x, 0.12, z);
-    lightPool(g, x + dir * 0.82, z, 6, 6);
+    lightPool(g, x + dir * 0.82, z, 10, 10);
   }
 
   // Trees kept to the edges so they never hide entrances or queues.
@@ -778,7 +798,7 @@ function buildParkedCars(scene: Scene): void {
 
 const DUSK = { sky: new Color(0x8fa4b4), ground: new Color(0x5a4a3c), hemi: 1.8, sun: new Color(0xffb07a), sunIntensity: 2.4 };
 /** Night: moonlit, blue and readable; lamps and windows still carry the warm light. */
-const NIGHT = { sky: new Color(0x6a7ca0), ground: new Color(0x3a3430), hemi: 1.55, sun: new Color(0xa8bce0), sunIntensity: 1.15 };
+const NIGHT = { sky: new Color(0x6a7ca0), ground: new Color(0x3a3430), hemi: 1.9, sun: new Color(0xa8bce0), sunIntensity: 1.35 };
 /** Overcast city daylight: bright, a little grey, the sun high and white. */
 const DAY = { sky: new Color(0xc4d0dc), ground: new Color(0x7a6c5c), hemi: 3.1, sun: new Color(0xfff4e6), sunIntensity: 3.8 };
 

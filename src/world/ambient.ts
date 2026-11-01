@@ -4,6 +4,8 @@ import type { Random } from '../sim/random';
 import { ROAD, STREETS } from './layout';
 import { bus, car, CAR_COLOURS, emergencyVehicle, rollWheels, type EmergencyVehicle } from './vehicles';
 import { dynamic } from './mergeStatic';
+import { approach } from './animated';
+import { speedForGap, type Traffic, type TrafficCar } from './traffic';
 import type { Figure } from '../agents/character';
 import { t } from '../i18n';
 
@@ -58,14 +60,22 @@ const POOL = QUALITY.figures;
 const TINY_PX = 9;
 
 interface Run { from: Vector3; to: Vector3 }
-interface Driver { group: Group; run: Run; t: number; speed: number; length: number; /** Seconds off the road before its next run. */ wait?: number }
+interface Driver {
+  group: Group; run: Run; t: number;
+  /** Cruising speed for this run, and the speed it is doing now (it slows for traffic and people). */
+  speed: number; v: number;
+  length: number;
+  car: TrafficCar;
+  /** Seconds off the road before its next run. */
+  wait?: number;
+}
 interface Walker { run: Run; t: number; speed: number; length: number; phase: number; height: number }
 
 const FAR = 250;
 /** Bridges lift the road over the river (x 56 to 76): deck top at 0.37. */
 const RIVER = { x0: 55, x1: 77 };
 
-export function buildAmbient(scene: Object3D, random: Random): Ambient {
+export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic): Ambient {
   const runs: Run[] = [];
   const lane = (a: [number, number], b: [number, number]) => runs.push({ from: new Vector3(a[0], 0, a[1]), to: new Vector3(b[0], 0, b[1]) });
   // Through-traffic, one way per street, horizon to horizon, so no car ever
@@ -92,7 +102,8 @@ export function buildAmbient(scene: Object3D, random: Random): Ambient {
     const dir = new Vector3().subVectors(run.to, run.from);
     group.rotation.y = Math.atan2(dir.x, dir.z);
     g.add(group);
-    drivers.push({ group, run, t: random(), speed: 8 + random() * 7, length: dir.length() });
+    const speed = 8 + random() * 7;
+    drivers.push({ group, run, t: random(), speed, v: speed, length: dir.length(), car: traffic.add(i % 7 === 6 ? 5.2 : 2.2) });
   }
 
   // Walkers: where people stroll outside the district.
@@ -147,14 +158,14 @@ export function buildAmbient(scene: Object3D, random: Random): Ambient {
   let parkOverdoseIn = 60 + random() * 120;
   let market = 0;
   // Emergency vehicles: a small pool, sent where needed.
-  const fleet: { v: EmergencyVehicle; kind: 'ambulance' | 'police'; path: Vector3[]; leg: number; hold: number; busy: boolean; reason: string }[] = [];
+  const fleet: { v: EmergencyVehicle; kind: 'ambulance' | 'police'; path: Vector3[]; leg: number; hold: number; busy: boolean; reason: string; car: TrafficCar; speed: number }[] = [];
   // Enough police cars for a raid to swarm a place.
   for (const kind of ['ambulance', 'ambulance', 'police', 'police', 'police', 'police'] as const) {
     const v = emergencyVehicle(kind);
     v.group.visible = false;
     v.group.traverse((o) => { o.castShadow = false; });
     g.add(v.group);
-    fleet.push({ v, kind, path: [], leg: 0, hold: 0, busy: false, reason: '' });
+    fleet.push({ v, kind, path: [], leg: 0, hold: 0, busy: false, reason: '', car: traffic.add(kind === 'ambulance' ? 2.8 : 2.3), speed: 0 });
   }
   // Two police cars on routine patrol among the traffic.
   const patrols: Group[] = [];
@@ -167,7 +178,7 @@ export function buildAmbient(scene: Object3D, random: Random): Ambient {
     v.group.traverse((o) => { o.castShadow = false; });
     g.add(v.group);
     patrols.push(v.group);
-    drivers.push({ group: v.group, run, t: random(), speed: 8, length: dir.length() });
+    drivers.push({ group: v.group, run, t: random(), speed: 8, v: 8, length: dir.length(), car: traffic.add(2.3) });
   }
   /** A route in from the city's edge to the road nearest (x, z), to stop there. */
   const routeTo = (x: number, z: number): Vector3[] => {
@@ -299,18 +310,28 @@ export function buildAmbient(scene: Object3D, random: Random): Ambient {
   return {
     update(dt) {
       for (const d of drivers) {
+        const inv = 1 / d.length;
+        const hx = (d.run.to.x - d.run.from.x) * inv;
+        const hz = (d.run.to.z - d.run.from.z) * inv;
         if (d.wait && d.wait > 0) {
           d.wait -= dt;
+          // Sets out only once the start of its road is clear.
+          if (d.wait <= 0) {
+            Object.assign(d.car, { x: d.run.from.x, z: d.run.from.z, dx: hx, dz: hz });
+            if (traffic.gapAhead(d.car) < 8) d.wait = 1;
+          }
+          d.car.active = false;
           continue;
         }
-        // Someone on the road just ahead (at a zebra or not): wait for them.
-        if (yieldTo && d.t > 0) {
-          at.lerpVectors(d.run.from, d.run.to, d.t);
-          const inv = 1 / d.length;
-          if (yieldTo(at.x, at.z, (d.run.to.x - d.run.from.x) * inv, (d.run.to.z - d.run.from.z) * inv)) continue;
-        }
-        d.t += (dt * d.speed) / d.length;
-        rollWheels(d.group, d.speed * dt);
+        at.lerpVectors(d.run.from, d.run.to, d.t);
+        Object.assign(d.car, { x: at.x, z: at.z, dx: hx, dz: hz, active: true });
+        // Slows for the car or crossing traffic ahead, and stops for anyone on the road just ahead.
+        const gap = traffic.gapAhead(d.car);
+        let target = speedForGap(d.speed, gap);
+        if (yieldTo && d.t > 0 && yieldTo(at.x, at.z, hx, hz)) target = 0;
+        d.v = gap < 1.2 ? 0 : approach(d.v, target, target < d.v ? 12 : 4, dt);
+        d.t += (dt * d.v) / d.length;
+        rollWheels(d.group, d.v * dt);
         if (d.t >= 1) {
           // A new journey each time: another road and direction, another pace, after a pause off screen.
           d.t = 0;
@@ -319,8 +340,10 @@ export function buildAmbient(scene: Object3D, random: Random): Ambient {
           d.length = dir.length();
           d.group.rotation.y = Math.atan2(dir.x, dir.z);
           d.speed = 8 + random() * 7;
+          d.v = d.speed;
           d.wait = random() * 5;
           d.group.visible = false;
+          d.car.active = false;
           continue;
         }
         at.lerpVectors(d.run.from, d.run.to, d.t);
@@ -415,6 +438,7 @@ export function buildAmbient(scene: Object3D, random: Random): Ambient {
       // Emergency vehicles: drive in, hold with lights on, drive off out of the city.
       for (const f of fleet) {
         f.v.tick(dt);
+        f.car.active = f.busy;
         if (!f.busy) continue;
         const pos = f.v.group.position;
         if (f.hold > 0) {
@@ -430,11 +454,16 @@ export function buildAmbient(scene: Object3D, random: Random): Ambient {
           continue;
         }
         const target = f.path[f.leg + 1];
-        if (!target) { f.busy = false; f.v.group.visible = false; continue; }
+        if (!target) { f.busy = false; f.car.active = false; f.v.group.visible = false; continue; }
         const dir = at.subVectors(target, pos);
         if (dir.lengthSq() > 1e-4) f.v.group.rotation.y = Math.atan2(dir.x, dir.z);
-        rollWheels(f.v.group, 14 * dt);
-        if (step(pos, target, 14, dt)) {
+        const h = f.v.group.rotation.y;
+        Object.assign(f.car, { x: pos.x, z: pos.z, dx: Math.sin(h), dz: Math.cos(h) });
+        // Blue lights or not, it does not drive through a queue: it slows behind it.
+        const gap = traffic.gapAhead(f.car);
+        f.speed = gap < 1.2 ? 0 : approach(f.speed, speedForGap(14, gap), 12, dt);
+        rollWheels(f.v.group, f.speed * dt);
+        if (step(pos, target, f.speed, dt)) {
           f.leg++;
           if (f.leg === f.path.length - 1 && f.v.flashing) f.hold = 28;
         }

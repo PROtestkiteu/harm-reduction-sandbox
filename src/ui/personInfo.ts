@@ -92,7 +92,7 @@ const PLACE_PL: Record<ServiceId | 'club', Record<PlaceCase, string>> = {
 };
 
 const placeOf = (id: ServiceId | 'club', form: PlaceCase) =>
-  LANG === 'pl' ? PLACE_PL[id][form] : id === 'club' ? 'the club door' : SERVICE_TEXT[id].place;
+  LANG === 'pl' ? PLACE_PL[id][form] : id === 'club' ? t('the club door') : SERVICE_TEXT[id].place;
 
 /** Walk-in services: queue outside, go in, come out. */
 const isWalkIn = (id: ServiceId | undefined): id is WalkInServiceId => !!id && (WALK_IN_SERVICE_IDS as readonly string[]).includes(id);

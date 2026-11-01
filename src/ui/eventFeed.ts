@@ -7,6 +7,8 @@ export interface EventFeedCallbacks {
   onTrigger(id: EventId): void;
   /** Open the sandbox panel at the slider or option a hint names. */
   onHint(hint: Hint): void;
+  /** An event's card was opened: bring where it happens into view. */
+  onFocus(id: EventId): void;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -145,12 +147,15 @@ export class EventFeed {
     root.dataset.kind = def.kind;
     // Collapsed to one line; opening a card shows the details and the sliders that help.
     root.open = false;
+    root.addEventListener('toggle', () => { if (root.open) this.cb.onFocus(e.id); });
     const summary = el('summary');
     summary.append(el('span', 'event-kind', KIND_LABELS[def.kind]), el('span', 'event-title', def.label));
     const status = el('p', 'event-status');
     const counts = el('p', 'event-counts');
     const body = el('div', 'event-body');
-    body.append(el('p', undefined, def.happens), el('p', 'event-mitigation', def.mitigation));
+    // Open, a card shows only what to do (the settings that help); the story and sources wait behind "More".
+    const more = el('details', 'event-more');
+    more.append(el('summary', undefined, t('More')), el('p', undefined, def.happens), el('p', 'event-mitigation', def.mitigation));
     const hints = el('div', 'event-hints');
     hints.append(el('span', 'hints-label', t('Helps:')));
     for (const h of def.hints) {
@@ -171,7 +176,8 @@ export class EventFeed {
       list.append(li);
     }
     sources.append(list);
-    body.append(hints, sources);
+    more.append(sources);
+    body.append(hints, more);
     root.append(summary, status, counts, body);
     this.cards.set(e, { root, status, counts, statusText: '', countsText: '' });
     return root;

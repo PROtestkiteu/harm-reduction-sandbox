@@ -122,6 +122,14 @@ export class CityCards {
         }],
       };
     }
+    if (id === world.landmarks.police) {
+      return {
+        title: displayName('building', id, t('Police station')),
+        said: t('The police station, just past the district. Patrols, stops and raids set out from here; when officers are stretched, the council leans on your funders.'),
+        facts: [[t('Police under pressure'), pct(sim.cityStress.police)]],
+        renamable: true,
+      };
+    }
     if (id === world.landmarks.sobering) {
       return {
         title: displayName('building', id, t('Sobering-up centre')),

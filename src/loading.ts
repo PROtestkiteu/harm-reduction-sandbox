@@ -6,6 +6,7 @@
  */
 // The stylesheet comes with this first, tiny script, so the loading screen is styled (and themed) at once.
 import './style.css';
+import { LANG, loadCatalogue } from './i18n';
 
 const EN = [
   'Teaching pigeons to read the timetable',
@@ -44,15 +45,46 @@ const PL = [
   'Uczymy tramwaje stać w kolejce',
 ];
 
-function lang(): 'pl' | 'en' {
-  const forced = new URLSearchParams(location.search).get('lang');
-  if (forced) return forced.toLowerCase().startsWith('pl') ? 'pl' : 'en';
-  return (navigator.languages?.[0] ?? navigator.language ?? '').toLowerCase().startsWith('pl') ? 'pl' : 'en';
-}
+const ES = [
+  'Enseñando a las palomas a leer el horario',
+  'Echando hormigón para los charcos de mañana',
+  'Desenredando los cables del tranvía',
+  'Contando las farolas dos veces, por si acaso',
+  'Convenciendo al río de que baje',
+  'Doblando la noche en cuadrados',
+  'Dando a la luna un permiso de aparcamiento',
+  'Planchando los pasos de cebra',
+  'Calentando el neón del kebab',
+  'Negociando con una grúa muy cansada',
+  'Reticulando los callejones',
+  'Preguntando a las alcantarillas qué han visto',
+  'Inflando la colina',
+  'Regando las plantas de plástico',
+  'Sobornando a la torre del reloj con galletas',
+  'Enseñando a los tranvías a hacer cola',
+];
+const PT = [
+  'A ensinar os pombos a ler o horário',
+  'A deitar betão para as poças de amanhã',
+  'A desenredar os fios do elétrico',
+  'A contar os candeeiros duas vezes, por via das dúvidas',
+  'A convencer o rio a correr para baixo',
+  'A dobrar a noite em quadrados',
+  'A dar à lua uma licença de estacionamento',
+  'A passar a ferro as passadeiras',
+  'A aquecer o néon do kebab',
+  'A negociar com uma grua muito cansada',
+  'A reticular os becos',
+  'A perguntar aos esgotos o que viram',
+  'A encher a colina',
+  'A regar as plantas de plástico',
+  'A subornar a torre do relógio com bolachas',
+  'A ensinar os elétricos a fazer fila',
+];
 
 const line = document.querySelector<HTMLElement>('#loading .loading-line');
 if (line) {
-  const phrases = lang() === 'pl' ? PL : EN;
+  const phrases = { en: EN, pl: PL, es: ES, pt: PT }[LANG];
   let i = Math.floor(Math.random() * phrases.length);
   const show = () => { line.textContent = `${phrases[i % phrases.length]}…`; i++; };
   show();
@@ -62,5 +94,5 @@ if (line) {
   }, 1400);
 }
 
-// The game: its own chunk, fetched now.
-void import('./main');
+// The game: its own chunk, fetched once the language's text is in (t() reads it as modules load).
+void loadCatalogue().catch(() => { /* offline mid-load: English */ }).then(() => import('./main'));

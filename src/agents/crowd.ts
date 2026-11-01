@@ -30,6 +30,7 @@ import {
 import { bus, car, CAR_COLOURS, rollWheels } from '../world/vehicles';
 import type { CityHappening, PasserbyKind } from '../sim/cityLife';
 import { approach } from '../world/animated';
+import { speedForGap, type TrafficCar } from '../world/traffic';
 import { PALETTE } from '../config/palette';
 import { CharacterRig, randomAppearance, type Appearance, type Archetype, type Figure, type Pose } from './character';
 import { HumanFigure, peopleLibrary } from './humanFigure';
@@ -168,6 +169,8 @@ interface Car {
   /** The night bus stops once at the shelter. */
   stopAt?: number;
   stopLeft?: number;
+  /** Its place in the city's traffic, so cross traffic sees it and it sees cross traffic. */
+  rec: TrafficCar;
 }
 
 const isWalkIn = (id: ServiceId | undefined): id is WalkInServiceId => !!id && (WALK_IN_SERVICE_IDS as readonly string[]).includes(id);
@@ -1206,7 +1209,7 @@ export class Crowd {
     const group = car(pick(this.random, CAR_COLOURS), true);
     group.position.set(ROAD.laneX, 0.02, -CAR_RUN);
     this.world.scene.add(group);
-    this.cars.push({ group, z: -CAR_RUN, speed: 5.5, half: 2, cruise: 4.5 + this.random() * 2.8 });
+    this.cars.push({ group, z: -CAR_RUN, speed: 5.5, half: 2, cruise: 4.5 + this.random() * 2.8, rec: this.world.traffic.add(2.2) });
   }
 
   // City life: night bus, cleaners, street incidents
@@ -1224,7 +1227,7 @@ export class Crowd {
     const z = -CAR_RUN - 2.5;
     group.position.set(ROAD.laneX, 0.02, z);
     this.world.scene.add(group);
-    this.cars.push({ group, z, speed: 5, half: 4.5, cruise: 5, stopAt: BUS_STOP_Z, stopLeft: 7 });
+    this.cars.push({ group, z, speed: 5, half: 4.5, cruise: 5, stopAt: BUS_STOP_Z, stopLeft: 7, rec: this.world.traffic.add(5.2) });
   }
 
   /** The bus is at the stop: people waiting board, and a few people get off. */
@@ -1335,13 +1338,19 @@ export class Crowd {
       }
       const ahead = this.cars[i - 1];
       if (ahead) target = Math.min(target, Math.max(0, (ahead.z - c.z - ahead.half - c.half - 2) * 1.5));
-      c.speed = approach(c.speed, target, 3, dt);
+      // Cross traffic on the side streets: wait for it at the junction.
+      Object.assign(c.rec, { x: ROAD.laneX, z: c.z, dx: 0, dz: 1, active: true });
+      const gap = this.world.traffic.gapAhead(c.rec);
+      target = Math.min(target, speedForGap(c.cruise, gap));
+      c.speed = gap < 1.2 ? 0 : approach(c.speed, target, 3, dt);
       c.z += c.speed * dt;
       rollWheels(c.group, c.speed * dt);
       c.group.position.z = c.z;
     }
     while (this.cars.length && this.cars[0].z > CAR_RUN) {
-      this.world.scene.remove(this.cars.shift()!.group);
+      const gone = this.cars.shift()!;
+      this.world.scene.remove(gone.group);
+      this.world.traffic.remove(gone.rec);
     }
   }
 

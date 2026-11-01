@@ -65,6 +65,11 @@ export const BLOCKS = {
   se: r(32, DISTRICT, 24, DISTRICT),
 } as const satisfies Record<string, Rect>;
 
+/** Just outside the district, north: the forecourt by the railway station where a second camp gathers. */
+export const STATION_CAMP: Rect = r(-46, -14, -59, -51);
+/** The police station, just past the district's north edge between the main and east roads. */
+export const POLICE_STATION: Rect = r(6, 20, -59.5, -51);
+
 export const PAVEMENT_TOP = 0.12;
 export const ROAD_TOP = 0.02;
 
