@@ -858,11 +858,16 @@ export class Simulation {
     return true;
   }
 
+  /** Chance the club agrees to pay for the stand now: warier while the street is in crisis. */
+  get clubAcceptChance(): number {
+    return HUSTLE.clubAccepts * (1 - 0.5 * this.crisis);
+  }
+
   /** Asks the club to pay for the stand; it may say no. */
   proposeClubContract(): boolean {
     if (this.clubContract) return true;
     if (this.org.now < this.clubAskAgainAt) return false;
-    if (this.random() >= HUSTLE.clubAccepts) {
+    if (this.random() >= this.clubAcceptChance) {
       this.clubAskAgainAt = this.org.now + HUSTLE.clubAskAgain;
       this.org.notice(this.clockMinutes, t('The club would not pay for the stand this time. Ask again in a few hours.'));
       return false;
@@ -870,19 +875,6 @@ export class Simulation {
     this.clubContract = true;
     this.org.notice(this.clockMinutes, t('The club pays {fee} an hour while the stand is open.', { fee: HUSTLE.clubFeePerHour }));
     return true;
-  }
-
-  /** A paid stand is a deal the club can walk away from, above all when the stand is not there. */
-  private tickClubContract(dtMinutes: number): void {
-    if (!this.clubContract || dtMinutes <= 0) return;
-    const missing = this.clubOpen && this.services.clubHr.status !== 'open';
-    const perHour = missing ? HUSTLE.clubDropsWithoutStand : HUSTLE.clubDropsPerHour;
-    if (this.random() >= perHour * (dtMinutes / 60)) return;
-    this.clubContract = false;
-    this.clubAskAgainAt = this.org.now + HUSTLE.clubAskAgain;
-    this.org.notice(this.clockMinutes, missing
-      ? t('The club stopped paying for the stand: it was not there while the club was open.')
-      : t('The club stopped paying for the stand: the money is going elsewhere for now.'));
   }
 
   endClubContract(): void {
@@ -1427,7 +1419,6 @@ export class Simulation {
     this.tickUpgrades(dt * this.minuteRate);
     this.tickExposure(dt * this.minuteRate);
     this.tickPlaceIncome(dt * this.minuteRate);
-    this.tickClubContract(dt * this.minuteRate);
     if (this.driveUntil !== null && this.org.now >= this.driveUntil) this.endDonationDrive();
     // When a favour's police arrangement or a concession's posted officer ends, the street goes back to the usual.
     const policeNow = (this.org.now < this.policeAwayUntil ? 1 : 0) + (this.org.now < this.policePostedUntil ? 2 : 0);

@@ -321,9 +321,9 @@ export const PL: Record<string, string> = {
   '{n} set out but turned back before arriving': 'Wyruszyło, ale zawróciło przed dotarciem: {n}',
   'Tonight so far': 'Tej nocy do tej pory',
   'Club pays +{price}/h': 'Klub płaci +{price}/h',
-  'Ask the club to pay': 'Poproś klub o opłatę',
+  'Ask the club to pay ({chance}% yes)': 'Poproś klub o opłatę ({chance}% na tak)',
   'The club pays while the stand is open. Click to end the deal.': 'Klub płaci, póki stoisko jest otwarte. Kliknij, aby zakończyć umowę.',
-  'The club pays {price} an hour while the stand is open, if it agrees.': 'Klub płaci {price} za godzinę otwarcia stoiska, jeśli się zgodzi.',
+  'The club may say no. If it agrees, it pays {price} an hour while the stand is open. Fewer say yes while the street is in crisis.': 'Klub może odmówić. Jeśli się zgodzi, płaci {price} za godzinę otwarcia stoiska. W czasie kryzysu na ulicy rzadziej się zgadza.',
   'Stand, tonight so far': 'Stoisko, tej nocy do tej pory',
 
   // Welcome
@@ -677,8 +677,6 @@ export const PL: Record<string, string> = {
   '{agree} You have earned a favour with city hall.': '{agree} Ratusz jest ci winien przysługę.',
   'The club pays {fee} an hour while the stand is open.': 'Klub płaci {fee} za godzinę, gdy stoisko jest otwarte.',
   'The club no longer pays for the stand.': 'Klub już nie płaci za stoisko.',
-  'The club stopped paying for the stand: it was not there while the club was open.': 'Klub przestał płacić za stoisko: nie było go, gdy klub był otwarty.',
-  'The club stopped paying for the stand: the money is going elsewhere for now.': 'Klub przestał płacić za stoisko: na razie przeznacza te pieniądze na co innego.',
   'Drug checking now charges {fee} a check. Fewer people come, and fewer results reach the early warning.': 'Testowanie substancji kosztuje teraz {fee} za test. Przychodzi mniej osób, a do systemu wczesnego ostrzegania trafia mniej wyników.',
   'Drug checking is free again.': 'Testowanie substancji znowu jest bezpłatne.',
   'Not enough money to run a donation drive.': 'Za mało pieniędzy na zbiórkę.',

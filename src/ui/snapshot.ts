@@ -75,7 +75,7 @@ function serviceSnapshot(id: LocationId, s: ServiceModel, sim?: Simulation): Loc
           ? { on: true, enabled: true, short: t('Club pays.'), label: t('Club pays +{price}/h', { price: price(HUSTLE.clubFeePerHour) }), hint: t('The club pays while the stand is open. Click to end the deal.') }
           : sim.org.now < sim.clubAskAgainAt
             ? { on: false, enabled: false, short: t('Club said no.'), label: t('The club said no: ask again later'), hint: t('The club turned the stand down for now. It can be asked again in a few hours.') }
-            : { on: false, enabled: true, short: t('Ask the club.'), label: t('Ask the club to pay'), hint: t('The club pays {price} an hour while the stand is open, if it agrees.', { price: price(HUSTLE.clubFeePerHour) }) }
+            : { on: false, enabled: true, short: t('Ask the club.'), label: t('Ask the club to pay ({chance}% yes)', { chance: Math.round(sim.clubAcceptChance * 100) }), hint: t('The club may say no. If it agrees, it pays {price} an hour while the stand is open. Fewer say yes while the street is in crisis.', { price: price(HUSTLE.clubFeePerHour) }) }
         // Charging only makes sense where there are lab checks to charge for.
         : s.id === 'drugChecking' && sim.context.checkingAllowed
           ? {

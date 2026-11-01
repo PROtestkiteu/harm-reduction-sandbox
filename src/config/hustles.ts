@@ -5,16 +5,10 @@
 export const HUSTLE = {
   /** The club pays for the harm reduction stand, per clock hour while the stand is open. */
   clubFeePerHour: 25,
-  /** Chance the club agrees when asked. */
+  /** Chance the club agrees when asked, on a calm street; a crisis halves it at worst. */
   clubAccepts: 0.7,
   /** After a no, clock minutes before the club can be asked again. */
   clubAskAgain: 180,
-  /**
-   * Chance per clock hour the club stops paying: small any hour, high while it is open and the
-   * stand it pays for is not there.
-   */
-  clubDropsPerHour: 0.02,
-  clubDropsWithoutStand: 0.3,
   /** A donation drive: what it costs to run, how long it runs, the range it can bring in. */
   driveCost: 40,
   driveHours: 3,
