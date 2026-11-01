@@ -1763,3 +1763,12 @@ body:has(.sandbox-toggle[aria-expanded='true']) .portrait { display: none; }
 .crisis-title { display: block; color: var(--law); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; font-size: 12px; }
 .crisis-box[data-state='rising'] .crisis-title { color: var(--closing); }
 .crisis-line { color: var(--text); }
+
+/* Need icons on priced replies: which city meters a spend eases, coloured as the meter is now. */
+.needs { display: inline-flex; gap: 3px; flex: none; margin-left: 6px; vertical-align: -2px; color: var(--muted); }
+.needs[hidden] { display: none; }
+.need { display: inline-flex; width: 12px; height: 12px; }
+.need svg { width: 100%; height: 100%; }
+[data-need-police='mid'] .need[data-need='police'], [data-need-medics='mid'] .need[data-need='medics'], [data-need-sobering='mid'] .need[data-need='sobering'] { color: var(--closing); }
+[data-need-police='high'] .need[data-need='police'], [data-need-medics='high'] .need[data-need='medics'], [data-need-sobering='high'] .need[data-need='sobering'] { color: var(--law); }
+.need[data-need='district'] { color: var(--open, #6cc28a); }

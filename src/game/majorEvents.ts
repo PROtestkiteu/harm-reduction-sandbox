@@ -1,3 +1,4 @@
+import type { Need } from '../config/needs';
 import type { Simulation } from '../sim/simulation';
 import type { EventPlace } from '../config/eventPlaces';
 import type { ServiceId } from '../sim/types';
@@ -14,6 +15,8 @@ export interface Choice {
   label: string;
   /** Money it costs now; the choice is greyed out when it cannot be paid. */
   cost?: number;
+  /** The city's needs a paid choice eases (icons beside its price). */
+  helps?: readonly Need[];
   apply(w: EventWorld): string | void;
 }
 
@@ -75,6 +78,7 @@ export const MAJOR_EVENTS: readonly MajorEvent[] = [
       },
       {
         label: t('Lobby the city for a police agreement'),
+        helps: ['police'],
         cost: 150,
         apply: (w) => {
           w.sim.org.spend(150, false);
@@ -132,6 +136,7 @@ export const MAJOR_EVENTS: readonly MajorEvent[] = [
     choices: [
       {
         label: t('Negotiate time to find people places'),
+        helps: ['police'],
         cost: 150,
         apply: (w) => {
           w.sim.org.spend(150, false);
@@ -163,6 +168,7 @@ export const MAJOR_EVENTS: readonly MajorEvent[] = [
     choices: [
       {
         label: t('Put out a public alert and invite people to check'),
+        helps: ['medics'],
         cost: 80,
         apply: (w) => {
           w.sim.org.spend(80, false);
@@ -195,6 +201,7 @@ export const MAJOR_EVENTS: readonly MajorEvent[] = [
     choices: [
       {
         label: t('Send the stand team and the camper over'),
+        helps: ['medics'],
         cost: 80,
         apply: (w) => {
           w.sim.org.spend(80, false);
@@ -227,6 +234,7 @@ export const MAJOR_EVENTS: readonly MajorEvent[] = [
     choices: [
       {
         label: t('Be there: a stand, checking and water'),
+        helps: ['medics'],
         cost: 100,
         apply: (w) => {
           w.sim.org.spend(100, false);
@@ -263,6 +271,7 @@ export const MAJOR_EVENTS: readonly MajorEvent[] = [
     choices: [
       {
         label: t('Send outreach after them, with lawyers\' numbers'),
+        helps: ['medics', 'police'],
         cost: 60,
         apply: (w) => {
           w.sim.org.spend(60, false);

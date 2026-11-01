@@ -4,6 +4,7 @@ import type { Simulation } from '../sim/simulation';
 import { PROPERTY, SATELLITE_SERVICES, type SatelliteService } from '../sim/property';
 import { plural, t } from '../i18n';
 import { QUESTS, type InstitutionId } from '../config/institutionQuests';
+import { PARTNER_NEEDS, QUEST_NEEDS, serviceNeeds } from '../config/needs';
 import type { BuildingCard } from '../ui/hud';
 import { price } from '../ui/money';
 import { displayName } from '../ui/names';
@@ -125,6 +126,7 @@ export class CityCards {
           label: t('Partner with the venue ({cost}; it pays {fee}/h)', { cost: price(VITALITY.partnerCost), fee: price(VITALITY.partnerFeePerHour) }),
           short: t('Partner.'),
           enabled: sim.org.budget >= VITALITY.partnerCost,
+          helps: PARTNER_NEEDS,
         }],
       };
     }
@@ -235,7 +237,7 @@ export class CityCards {
     return {
       said: next ? ` ${q.title}: ${q.goal}${learnt}` : ` ${q.done}${learnt}`,
       facts: [[t('Allies'), next ? t('{done} of {all} steps', { done, all: q.steps.length }) : t('Yes')]],
-      actions: next ? [{ id: `quest:${id}`, label: next.cost ? t('{step} ({price})', { step: next.label, price: price(next.cost) }) : next.label, short: next.short, enabled: this.sim.org.budget >= next.cost }] : [],
+      actions: next ? [{ id: `quest:${id}`, label: next.cost ? t('{step} ({price})', { step: next.label, price: price(next.cost) }) : next.label, short: next.short, enabled: this.sim.org.budget >= next.cost, helps: QUEST_NEEDS[id] }] : [],
     };
   }
 
@@ -266,7 +268,7 @@ export class CityCards {
       return {
         fact: [t('Harm reduction point'), t('{point}, level {level}', { point: POINT_NAME[q.service], level: q.level })],
         actions: [
-          ...(q.level < p.maxLevel ? [{ id: 'pointUp', label: t('Grow the point to level {level} ({price}; {places})', { level: q.level + 1, price: price(p.upgrade), places: placesPlus(p.placesPerLevel) }), short: t('Grow it.'), enabled: sim.org.budget >= p.upgrade }] : []),
+          ...(q.level < p.maxLevel ? [{ id: 'pointUp', label: t('Grow the point to level {level} ({price}; {places})', { level: q.level + 1, price: price(p.upgrade), places: placesPlus(p.placesPerLevel) }), short: t('Grow it.'), enabled: sim.org.budget >= p.upgrade, helps: serviceNeeds(q.service) }] : []),
           { id: 'pointClose', label: t('Close the point.'), short: t('Close it.'), enabled: true },
         ],
       };
@@ -280,6 +282,7 @@ export class CityCards {
           : t('Open a {point} ({fitOut}, then {rent}/h; {places}).', { point: POINT_NAME[s], fitOut: price(p.fitOut), rent: price(p.rentPerHour), places: placesPlus(p.placesAtZero) }),
         short: t('Open a {point}.', { point: POINT_NAME[s] }),
         enabled: sim.org.budget >= p.fitOut && (s !== 'drugChecking' || allowed),
+        helps: serviceNeeds(s),
       })),
     };
   }
@@ -301,6 +304,7 @@ export class CityCards {
           label: t('Rent it and open a {unit} ({cost}; {places}).', { unit: UNIT_NAME[s], cost, places: placesPlus(PROPERTY.satellitePlaces) }),
           short: t('Open a {point}.', { point: POINT_NAME[s] }),
           enabled: sim.org.budget >= PROPERTY.fitOut,
+          helps: serviceNeeds(s),
         })),
       };
     }

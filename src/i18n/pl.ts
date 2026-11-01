@@ -69,6 +69,7 @@ export const PL: Record<string, string> = {
   'Medics': 'Medycy',
   'Overdoses nobody reached, people harmed outdoors and people turned away from services fill ambulances and A&E; overstretched, fewer survive.': 'Przedawkowania bez pomocy, osoby poszkodowane na zewnątrz i osoby odesłane z usług zapełniają karetki i SOR; gdy są przeciążone, mniej osób przeżywa.',
   'Sobering': 'Izba',
+  'Eases: {needs}': 'Odciąża: {needs}',
   'Drunk club leavers taken to the sobering-up centre (izba wytrzeźwień), more of them when the club service turns people away.': 'Pijane osoby wychodzące z klubu, odwożone do izby wytrzeźwień; więcej, gdy punkt w klubie odsyła ludzi.',
 
   // Focus and person

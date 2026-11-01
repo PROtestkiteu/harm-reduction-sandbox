@@ -3,8 +3,8 @@ import { PALETTE } from '../config/palette';
 import type { ServiceId } from '../sim/types';
 import { add, box, cylinder, pixelTextTexture, signBoard } from './kit';
 import { EDGE, HOME_CAMPER, ROAD, VENUE_FRAME, toWorld, type Frame } from './layout';
-import { glowMat, mat } from './materials';
-import { car } from './vehicles';
+import { mat } from './materials';
+import { emergencyVehicle, type EmergencyVehicle } from './vehicles';
 
 /** What the context makes visible in the world. Derived from simulation state, never set on its own. */
 export interface WorldContext {
@@ -45,7 +45,7 @@ export class ContextProps {
   private readonly alarms = new Map<string, CanvasTexture>();
   private alarm = this.alarmTexture('ALERT');
   private readonly policeCar: Group;
-  private readonly lightBar: [MeshLambertMaterial, MeshLambertMaterial];
+  private readonly patrol: EmergencyVehicle;
   private alertLeft = 0;
   private alertShown = false;
   private camperAway = 0;
@@ -88,13 +88,11 @@ export class ContextProps {
     this.board.position.set(2.25, 0.12, -0.35);
 
     // Patrol car parked between the crossing and the camper, light bar on.
-    this.policeCar = add(root, car(PALETTE.policeVest, false));
-    const blue = glowMat(0x2a3a7a, 0x5a8aff, 1.6);
-    const red = glowMat(0x6a2a2a, 0xff5a4a, 0.2);
-    add(this.policeCar, box(0.5, 0.12, 0.3, blue, -0.3, 1.32, -0.25));
-    add(this.policeCar, box(0.5, 0.12, 0.3, red, 0.3, 1.32, -0.25));
-    add(this.policeCar, box(1.82, 0.14, 1.2, mat(PALETTE.policeBand), 0, 0.55, 0.4));
-    this.lightBar = [blue, red];
+    // The same car as the patrols and raids, so the light bar sits on its measured roof.
+    this.patrol = emergencyVehicle('police');
+    this.patrol.flashing = true;
+    this.patrol.tick(0);
+    this.policeCar = add(root, this.patrol.group);
     this.policeCar.position.set(ROAD.parkX, 0.02, -0.9);
 
     this.set({ checkingSites: [], collectionPoint: false, publicAlerts: false, policeCar: false, camperPermitted: true });
@@ -142,10 +140,9 @@ export class ContextProps {
       changed = true;
     }
 
+    // Reduced motion: the lamps stay lit as they are, without flashing.
     if (this.policeCar.visible && !this.reducedMotion()) {
-      const phase = Math.floor(this.time * 3) % 2;
-      this.lightBar[0].emissiveIntensity = phase ? 1.6 : 0.2;
-      this.lightBar[1].emissiveIntensity = phase ? 0.2 : 1.6;
+      this.patrol.tick(dt);
       changed = true;
     }
 

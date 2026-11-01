@@ -1,3 +1,4 @@
+import { needsFor } from './needIcons';
 import type { Choice, MajorEvent } from '../game/majorEvents';
 import { price } from './money';
 import { t } from '../i18n';
@@ -38,7 +39,7 @@ export class EventPopup {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'welcome-start event-choice';
-      b.textContent = c.cost ? t('{choice} ({price})', { choice: c.label, price: price(c.cost) }) : c.label;
+      b.append(c.cost ? t('{choice} ({price})', { choice: c.label, price: price(c.cost) }) : c.label, needsFor(c.helps));
       b.disabled = (c.cost ?? 0) > budget;
       b.addEventListener('click', () => this.result(choose(c) ?? ''));
       return b;

@@ -1,3 +1,5 @@
+import { serviceNeeds } from '../config/needs';
+import { needsFor } from './needIcons';
 import { GRANT_IDS, GRANTS, ORG, RECRUIT, type ApplicationContext, type GrantId, type RecruitId } from '../config/organisation';
 import { price } from './money';
 import { LOCALE, plural, t } from '../i18n';
@@ -89,7 +91,7 @@ export class OrgPanel {
   private readonly grants = {} as Record<GrantId, GrantRow>;
   private readonly recruitBtns = {} as Record<RecruitId, HTMLButtonElement>;
   private readonly closed: HTMLElement;
-  private readonly reopen = {} as Record<Relaunchable, HTMLButtonElement>;
+  private readonly reopen = {} as Record<Relaunchable, { button: HTMLButtonElement; label: HTMLElement }>;
   private readonly teamList: HTMLElement;
   private readonly nameInput: HTMLInputElement;
   private readonly moneyStat: HTMLElement;
@@ -162,13 +164,15 @@ export class OrgPanel {
     this.closed.hidden = true;
     this.closed.append(el('h3', 'level', t('Closed down')));
     for (const id of Object.keys(RELAUNCH) as Relaunchable[]) {
-      const b = el('button', 'btn org-action', t(RELAUNCH[id].offer, { price: price(ORG.reopen.cost), hours: Math.round(ORG.reopen.minutes / 60) }));
+      const b = el('button', 'btn org-action');
+      const label = el('span', undefined, t(RELAUNCH[id].offer, { price: price(ORG.reopen.cost), hours: Math.round(ORG.reopen.minutes / 60) }));
+      b.append(label, needsFor(serviceNeeds(id)));
       b.type = 'button';
       b.id = `org-reopen-${id}`;
       b.hidden = true;
       b.addEventListener('click', () => cb.onReopen(id));
       this.closed.append(b);
-      this.reopen[id] = b;
+      this.reopen[id] = { button: b, label };
     }
 
     const grants = el('div', 'org-grants');
@@ -230,10 +234,11 @@ export class OrgPanel {
     for (const id of Object.keys(this.reopen) as Relaunchable[]) {
       const pending = o.reopening.find((r) => r.id === id);
       const show = o.closedDown.has(id);
-      if (this.reopen[id].hidden === show) this.reopen[id].hidden = !show;
+      const r = this.reopen[id];
+      if (r.button.hidden === show) r.button.hidden = !show;
       const label = pending ? t(RELAUNCH[id].pending, { time: formatClock(o.clockAt(pending.readyAt, v.clock)) }) : t(RELAUNCH[id].offer, { price: price(ORG.reopen.cost), hours: Math.round(ORG.reopen.minutes / 60) });
-      setText(this.reopen[id], label);
-      this.reopen[id].disabled = !!pending || o.budget < ORG.reopen.cost;
+      setText(r.label, label);
+      r.button.disabled = !!pending || o.budget < ORG.reopen.cost;
     }
     setText(this.moneyStat, `${money(o.budget)} ${signed(o.netPerHour)}/h`);
     this.moneyStat.dataset.state = o.broke ? 'broke' : o.netPerHour < 0 ? 'falling' : 'ok';

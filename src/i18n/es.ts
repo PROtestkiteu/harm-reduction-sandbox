@@ -863,6 +863,7 @@ export const ES: Record<string, string> = {
   'District': 'Barrio',
   'How well the district is doing: harm reduction that works brings more people out and new venues.': 'Cómo le va al barrio: una reducción de daños que funciona atrae a más gente y nuevos locales.',
   'Sobering': 'Desintox.',
+  'Eases: {needs}': 'Alivia: {needs}',
   'Drunk club leavers taken to the sobering-up centre (izba wytrzeźwień), more of them when the club service turns people away.': 'Personas ebrias que salen del club llevadas al centro de desintoxicación etílica (izba wytrzeźwień), más cuando el servicio del club rechaza a gente.',
   'Continue the simulation (Space)': 'Reanudar la simulación (Espacio)',
   'Pause the simulation (Space)': 'Pausar la simulación (Espacio)',

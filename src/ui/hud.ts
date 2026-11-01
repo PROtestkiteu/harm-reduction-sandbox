@@ -2,6 +2,8 @@ import { CAMPER_PATH, CAMPER_PATH_IDS, type CamperPath } from '../config/camperP
 import { ACTIVITY, MIX_MAX, type Activity } from '../config/serviceMix';
 import type { FavourId } from '../config/favours';
 import { ORG, RECRUIT } from '../config/organisation';
+import { AID_NEEDS, PATH_NEEDS, serviceNeeds, type Need } from '../config/needs';
+import { NEED_ICONS, needTag, needsFor, setNeeds } from './needIcons';
 import { price } from './money';
 import { SERVICE_TEXT } from '../config/places';
 import type { Insets } from '../render/camera';
@@ -145,13 +147,6 @@ const SPARK_H = 14;
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const NARROW = '(max-width: 760px)';
 
-/** Small icons for the city-service meters, drawn in the text colour: a police badge, a medical cross, a bed, a house. */
-const STRESS_ICONS: Record<'police' | 'medics' | 'sobering' | 'district', string> = {
-  police: '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 1l6 2.2v4.3c0 3.6-2.6 6.3-6 7.5-3.4-1.2-6-3.9-6-7.5V3.2z"/></svg>',
-  medics: '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M6 1.5h4v4.5h4.5v4H10v4.5H6V10H1.5V6H6z"/></svg>',
-  sobering: '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M1 4h2v5h12v5h-2v-2H3v2H1zm3 1.5a1.8 1.8 0 1 1 0 3.6 1.8 1.8 0 0 1 0-3.6zM7 6h6.5a1.5 1.5 0 0 1 1.5 1.5V8H7z"/></svg>',
-  district: '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 1.5l6.5 5.5H13v7.5H9.5V10h-3v4.5H3V7H1.5z"/></svg>',
-};
 
 /** A place's counts as icons: people being helped, people waiting, staff, people who turned back, the venue's crowd, the door. */
 export type ChipIcon = 'inside' | 'queue' | 'staff' | 'back' | 'venue' | 'door';
@@ -197,7 +192,7 @@ export interface BuildingCard {
   said: string;
   facts: [string, string][];
   /** Things to do here (rent a closed shop, give it back). */
-  actions?: { id: string; label: string; short: string; enabled: boolean }[];
+  actions?: { id: string; label: string; short: string; enabled: boolean; helps?: readonly Need[] }[];
   /** False for things with no name of their own to change (a passing police car). */
   renamable?: boolean;
 }
@@ -264,6 +259,7 @@ export class Hud {
   private readonly driveBtn: HTMLButtonElement;
   private readonly driveLong: HTMLElement;
   private readonly aidBtn: HTMLButtonElement;
+  private readonly staffGroupNeeds: HTMLElement;
   private readonly aidLong: HTMLElement;
   private readonly reviewName: HTMLElement;
   private readonly reviewShort: HTMLElement;
@@ -280,9 +276,9 @@ export class Hud {
   private readonly pathOpts: { li: HTMLLIElement; button: HTMLButtonElement; long: HTMLElement; short: HTMLElement; id: CamperPath }[] = [];
   private mixOpen = false;
   /** One row per activity slot: a labelled slider, its share, and a set-up button when it needs one. */
-  private readonly mixRows: { li: HTMLLIElement; label: HTMLLabelElement; input: HTMLInputElement; out: HTMLOutputElement; note: HTMLElement; setup: HTMLButtonElement; id: Activity | null; editingUntil: number }[] = [];
+  private readonly mixRows: { li: HTMLLIElement; label: HTMLLabelElement; input: HTMLInputElement; out: HTMLOutputElement; note: HTMLElement; setup: HTMLButtonElement; setupLabel: HTMLElement; setupNeeds: HTMLElement; id: Activity | null; editingUntil: number }[] = [];
   private readonly spotOpts: { li: HTMLLIElement; button: HTMLButtonElement; long: HTMLElement; short: HTMLElement }[] = [];
-  private readonly actionOpts = {} as Record<PlaceAction, { li: HTMLLIElement; button: HTMLButtonElement; label: HTMLElement; short: HTMLElement }>;
+  private readonly actionOpts = {} as Record<PlaceAction, { li: HTMLLIElement; button: HTMLButtonElement; label: HTMLElement; short: HTMLElement; needs: HTMLElement }>;
   private readonly focusBtn: HTMLButtonElement;
   private readonly focusLong: HTMLElement;
   private readonly focusShort: HTMLElement;
@@ -291,7 +287,7 @@ export class Hud {
   /** Whether the open building card's subject can be renamed. */
   private renamable = true;
   private renameInput: HTMLInputElement | null = null;
-  private readonly buildingOpts: { li: HTMLLIElement; button: HTMLButtonElement; long: HTMLElement; short: HTMLElement; id: string }[] = [];
+  private readonly buildingOpts: { li: HTMLLIElement; button: HTMLButtonElement; long: HTMLElement; short: HTMLElement; needs: HTMLElement; id: string }[] = [];
   private readonly resetOpt: HTMLElement;
   private readonly labels = {} as Record<LocationId, HTMLButtonElement>;
   private readonly labelWidths = {} as Record<LocationId, number>;
@@ -438,7 +434,8 @@ export class Hud {
     this.staffGroupLong = el('span', 'long');
     const groupShort = el('span', 'short', t('Staffing.'));
     groupShort.setAttribute('aria-hidden', 'true');
-    this.staffGroupBtn.append(this.staffGroupLong, groupShort);
+    this.staffGroupNeeds = needTag();
+    this.staffGroupBtn.append(this.staffGroupLong, groupShort, this.staffGroupNeeds);
     this.staffGroupBtn.setAttribute('aria-expanded', 'false');
     this.staffGroupBtn.addEventListener('click', () => {
       this.staffOpen = !this.staffOpen;
@@ -453,7 +450,8 @@ export class Hud {
       const long = el('span', 'long');
       const short = el('span', 'short', ACTION_SHORT[action]);
       short.setAttribute('aria-hidden', 'true');
-      b.append(long, short);
+      const needs = needTag();
+      b.append(long, short, needs);
       b.addEventListener('click', () => {
         const levers = this.mode?.kind === 'location' ? this.lastSnapshot?.locations[this.mode.id].actions : undefined;
         if (action === 'camper' || action === 'mix' || action === 'path') {
@@ -466,7 +464,7 @@ export class Hud {
         }
         if (levers) cb.onAction(levers.service, action);
       });
-      this.actionOpts[action] = { li: opt(b), button: b, label: long, short };
+      this.actionOpts[action] = { li: opt(b), button: b, label: long, short, needs };
       if (STAFF_ACTIONS.includes(action)) this.actionOpts[action].li.classList.add('nested');
     }
     // The selected building's own actions, filled per card.
@@ -475,8 +473,9 @@ export class Hud {
       const long = el('span', 'long');
       const short = el('span', 'short');
       short.setAttribute('aria-hidden', 'true');
-      b.append(long, short);
-      const slot = { li: opt(b), button: b, long, short, id: '' };
+      const needs = needTag();
+      b.append(long, short, needs);
+      const slot = { li: opt(b), button: b, long, short, needs, id: '' };
       slot.li.hidden = true;
       b.addEventListener('click', () => { if (slot.id) cb.onBuildingAction(slot.id); });
       this.buildingOpts.push(slot);
@@ -506,7 +505,7 @@ export class Hud {
       const long = el('span', 'long');
       const short = el('span', 'short', `${CAMPER_PATH[id].short}.`);
       short.setAttribute('aria-hidden', 'true');
-      b.append(long, short);
+      b.append(long, short, needsFor(PATH_NEEDS[id]));
       b.title = CAMPER_PATH[id].does;
       b.addEventListener('click', () => { cb.onCamperPath(id); this.pathOpen = false; });
       const li = opt(b);
@@ -534,7 +533,10 @@ export class Hud {
       const note = el('span', 'mix-note');
       const setup = button('opt mix-setup');
       setup.hidden = true;
-      const row = { li, label, input, out, note, setup, id: null as Activity | null, editingUntil: 0 };
+      const setupLabel = el('span');
+      const setupNeeds = needTag();
+      setup.append(setupLabel, setupNeeds);
+      const row = { li, label, input, out, note, setup, setupLabel, setupNeeds, id: null as Activity | null, editingUntil: 0 };
       input.addEventListener('input', () => {
         row.editingUntil = performance.now() + 1200;
         const levers = this.mode?.kind === 'location' ? this.lastSnapshot?.locations[this.mode.id].actions : undefined;
@@ -572,7 +574,7 @@ export class Hud {
     this.aidLong = el('span', 'long');
     const aidShort = el('span', 'short', t('Aid.'));
     aidShort.setAttribute('aria-hidden', 'true');
-    this.aidBtn.append(this.aidLong, aidShort);
+    this.aidBtn.append(this.aidLong, aidShort, needsFor(AID_NEEDS));
     this.aidBtn.addEventListener('click', () => { const k = this.lastSnapshot?.aid?.kind; if (k) cb.onAid(k); });
     this.aidOpt = opt(this.aidBtn);
     // A donation drive, offered when nothing is selected.
@@ -680,7 +682,7 @@ export class Hud {
       bar.append(fill);
       // An icon per service, coloured by how stretched it is; the name is in the tooltip.
       const icon = el('span', 'stress-icon');
-      icon.innerHTML = STRESS_ICONS[key];
+      icon.innerHTML = NEED_ICONS[key];
       m.append(icon, el('span', 'stress-name', name), bar);
       this.stressMeters[key] = m;
       meters.append(m);
@@ -830,6 +832,7 @@ export class Hud {
       if (!a) return;
       setText(o.long, a.label);
       setText(o.short, a.short);
+      setNeeds(o.needs, a.helps);
       if (o.button.disabled === a.enabled) o.button.disabled = !a.enabled;
     });
     const text = card.facts.map(([k, v]) => `${k}:${v}`).join('|');
@@ -1020,7 +1023,12 @@ export class Hud {
         const w = `${Math.round(v * 100)}%`;
         if (f.style.width !== w) f.style.width = w;
         const state = key === 'district' ? 'good' : v >= 0.7 ? 'high' : v >= 0.4 ? 'mid' : 'low';
-        if (f.dataset.state !== state) { f.dataset.state = state; this.stressMeters[key].dataset.state = state; }
+        if (f.dataset.state !== state) {
+          f.dataset.state = state;
+          this.stressMeters[key].dataset.state = state;
+          // Need icons on priced replies take the meter's colour, so the pressing needs stand out.
+          document.documentElement.dataset[`need${key[0].toUpperCase()}${key.slice(1)}`] = state;
+        }
       }
     }
     const aid = s.aid;
@@ -1127,6 +1135,10 @@ export class Hud {
       return;
     }
     const afford = (cost: number) => a.budget >= cost;
+    // Every spend here eases what people turned away from this service would have needed.
+    const helps = serviceNeeds(a.service);
+    for (const action of SPEND_ACTIONS) setNeeds(this.actionOpts[action].needs, helps);
+    setNeeds(this.staffGroupNeeds, helps);
     const staffRoom = a.wanted < a.staffMax;
     const waitRoom = a.waiting < a.waitingMax;
     show('moreStaff', !a.closedDown && !locked, staffRoom ? t('One more on shift ({n})', { n: a.wanted }) : t('{n} on shift, the most', { n: a.wanted }), staffRoom, t('Ask for one more staff member on shift here.'));
@@ -1190,7 +1202,8 @@ export class Hud {
       const showSetup = m.lock === 'setup';
       if (r.setup.hidden === showSetup) r.setup.hidden = !showSetup;
       if (showSetup) {
-        setText(r.setup, t('Set it up ({price}).', { price: price(m.setupCost) }));
+        setText(r.setupLabel, t('Set it up ({price}).', { price: price(m.setupCost) }));
+        setNeeds(r.setupNeeds, helps);
         r.setup.disabled = !afford(m.setupCost);
       }
     });
@@ -1315,6 +1328,8 @@ export class Hud {
   }
 }
 
+/** Replies that spend money (now or by the hour) on the selected place. */
+const SPEND_ACTIONS: readonly PlaceAction[] = ['moreStaff', 'hire', 'volunteer', 'camper', 'invest', 'relaunch'];
 const ACTIONS: readonly PlaceAction[] = ['moreStaff', 'hire', 'volunteer', 'camper', 'moreWaiting', 'move', 'path', 'mix', 'hustle', 'invest', 'donations', 'relaunch'];
 /** Most camper spots the replies offer. */
 const MAX_SPOTS = 6;
