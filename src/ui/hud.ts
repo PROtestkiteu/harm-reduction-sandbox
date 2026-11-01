@@ -1038,7 +1038,8 @@ export class Hud {
         const f = this.stressFill[key];
         const w = `${Math.round(v * 100)}%`;
         if (f.style.width !== w) f.style.width = w;
-        const state = key === 'district' ? 'good' : v >= 0.7 ? 'high' : v >= 0.4 ? 'mid' : 'low';
+        // Green, amber, red: pressure on a service is bad high; the district doing well is good high.
+        const state = key === 'district' ? (v >= 0.55 ? 'low' : v >= 0.3 ? 'mid' : 'high') : v >= 0.7 ? 'high' : v >= 0.4 ? 'mid' : 'low';
         if (f.dataset.state !== state) {
           f.dataset.state = state;
           this.stressMeters[key].dataset.state = state;

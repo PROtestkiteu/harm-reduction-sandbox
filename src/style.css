@@ -1575,7 +1575,7 @@ body:has(.sandbox-toggle[aria-expanded='true']) .portrait { display: none; }
 .stress { display: flex; align-items: center; gap: 5px; flex: 1 1 auto; min-width: 0; }
 .stress-name { white-space: nowrap; }
 .stress-bar { flex: 1; height: 4px; min-width: 32px; background: color-mix(in srgb, var(--muted) 28%, transparent); border-radius: 2px; overflow: hidden; }
-.stress-fill { display: block; height: 100%; width: 0; background: var(--muted); transition: width 0.4s; }
+.stress-fill { display: block; height: 100%; width: 0; background: var(--open); transition: width 0.4s; }
 .stress-fill[data-state='mid'] { background: var(--closing); }
 .stress-fill[data-state='high'] { background: var(--law); }
 @media (prefers-reduced-motion: reduce) { .stress-fill { transition: none; } }
@@ -1590,7 +1590,6 @@ body:has(.sandbox-toggle[aria-expanded='true']) .portrait { display: none; }
  */
 .column-right { flex: 1 1 0; min-width: min-content; margin-left: auto; flex-direction: row; flex-wrap: wrap; justify-content: flex-end; align-items: center; column-gap: 8px; }
 .column-sub { justify-content: flex-end; flex-wrap: wrap; row-gap: 1px; max-width: 100%; }
-.stress-fill[data-state='good'] { background: var(--open, #6cc28a); }
 
 /* Small phones: a tighter top line, the city-service meters two by two, a compact title. */
 @media (max-width: 480px) {
@@ -1777,15 +1776,21 @@ body:has(.sandbox-toggle[aria-expanded='true']) .portrait { display: none; }
 @keyframes fx-pulse { from { opacity: 0.45; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .fx-tag::before { animation: none; } }
 
-/* A new version is out: a slim bar over the top middle of the screen. */
+/* A new version is out: a calm banner across the top, the text left and a compact Reload right. */
 .update-bar {
-  position: fixed; z-index: 30; left: 50%; top: max(8px, env(safe-area-inset-top)); transform: translateX(-50%);
-  display: flex; align-items: center; gap: 10px; max-width: calc(100vw - 24px);
-  padding: 6px 6px 6px 14px; border-radius: 999px;
-  background: rgba(14, 12, 10, 0.92); color: #f4ecdc; font: 500 13px/1.3 var(--body);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  position: fixed; z-index: 30;
+  top: max(8px, env(safe-area-inset-top));
+  left: max(12px, env(safe-area-inset-left)); right: max(12px, env(safe-area-inset-right));
+  max-width: 520px; margin: 0 auto;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 6px 6px 6px 12px;
+  border-left: 3px solid var(--bar); border-radius: 6px;
+  background: var(--grain), rgba(14, 12, 10, 0.95); color: #f4ecdc; font: 500 14px/1.3 var(--body);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  pointer-events: auto;
 }
-.update-go { min-height: 34px; padding: 0 14px; border-radius: 999px; background: var(--bar); color: var(--bar-text); border: 0; font-weight: 600; white-space: nowrap; }
+.update-bar > span { flex: 1; min-width: 0; }
+.update-go { flex: none; min-height: 36px; padding: 0 14px; border-radius: 4px; background: var(--bar); color: var(--bar-text); border: 0; font: 600 14px var(--body); white-space: nowrap; }
 
 /* Reset all settings: at the bottom of the panel, apart from the close button. */
 .sandbox-reset-row { margin: 18px 0 4px; display: flex; justify-content: flex-start; }

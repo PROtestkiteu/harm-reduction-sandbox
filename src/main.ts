@@ -113,7 +113,8 @@ const hazeDir = new Vector3();
 const hazePoint = new Vector3();
 const rig = new CameraRig(world.frame.full.getCenter(new Vector3()), DISTRICT - 4);
 // Phones (narrow, or short in landscape) see less at once: zoomed out no further than about the
-// inner blocks, with the haze drawn in closer, so the screen never fills with a tiny far city.
+// inner blocks, so the screen never fills with a tiny far city. (Closer haze was tried: in portrait
+// the top of the screen is the far distance, and it fogged a tall band.)
 const phone = window.matchMedia('(max-width: 760px), (max-height: 500px)');
 const fitPhone = () => rig.setMinZoom(phone.matches ? PHONE_MIN_ZOOM : MIN_ZOOM);
 fitPhone();
@@ -997,7 +998,7 @@ function applyView(): void {
   camera.getWorldDirection(hazeDir);
   setPuddleView(hazeDir);
   const focusDepth = hazePoint.set(rig.focus.x, 0, rig.focus.z).sub(camera.position).dot(hazeDir);
-  world.setHaze(focusDepth + (phone.matches ? 100 : 150), focusDepth + (phone.matches ? 230 : 330));
+  world.setHaze(focusDepth + 150, focusDepth + 330);
   pipeline.setCameraDepth(framing.near, framing.far, framing.worldPerPixel, rig.view.elevationDeg);
   pipeline.setSkyShift(rig.view.azimuthDeg);
   const points = {} as Record<LocationId, { x: number; y: number; below?: boolean }>;
