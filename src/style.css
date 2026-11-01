@@ -141,8 +141,8 @@ html, body {
   /* The scene's horizon colour once the game runs (set from main.ts); the theme's until then. */
   background: var(--page, var(--bg));
   overscroll-behavior: none;
-  /* Panning lists scrolls; pinching never zooms the page (the camera has its own zoom). */
-  touch-action: pan-x pan-y;
+  /* Page zoom is blocked by the viewport and by cancelling Safari's pinch (src/loading.ts), not by
+     touch-action here: on iPhone a page-wide pan-x pan-y took one-finger drags from the map. */
   -webkit-text-size-adjust: 100%;
 }
 
