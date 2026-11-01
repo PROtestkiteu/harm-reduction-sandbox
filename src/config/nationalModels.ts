@@ -6,6 +6,7 @@
  */
 import type { Citation, ContextSelection, FactorId } from './contextFactors';
 import { FACTORS, defaultContext } from './contextFactors';
+import { t } from '../i18n';
 
 export interface NationalModel {
   id: string;
@@ -27,15 +28,15 @@ export interface NationalModel {
 export const NATIONAL_MODELS: readonly NationalModel[] = [
   {
     id: "nl",
-    label: "Netherlands",
+    label: t("Netherlands"),
     confidence: "high",
     summary: "A health-led, pragmatic national policy in which use is not an offence let the Ministry of Health build checking into the addiction-prevention infrastructure from 1992, with a national coordinator and lab. Because ecstasy is legally a hard drug, legitimacy rested on justice agreements, a dealer exclusion rule and a monitoring framing, which made the early warning function central. The resulting model is institutional (weekly office hours, lab send-away) and reaches mostly highly educated nightlife users rather than marginalised groups.",
-    options: {checkingSite: "fixed", alerts: "public", law: "depenalised", checkingLaw: "licensed", policing: "agreement", funding: "stable", council: "supportive", neighbourhood: "supportive", anonymity: "anonymous"},
+    options: {checkingSite: "fixed", alerts: "public", law: "depenalised", cannabisMarket: "coffeeshops", checkingLaw: "licensed", policing: "agreement", funding: "stable", council: "supportive", neighbourhood: "supportive", anonymity: "anonymous"},
     evidence: [{ref: "Possession law", type: "profile", note: "depenalised or diverted (cannabis: tolerated retail under formal prohibition)", source: "Brunt_2011b drug  information monitoring system in the netherlands DIMS.pdf p1; 2004_NEIL_HUNT_harm reduction review.pdf p27, p28 to p29"}, {ref: "Drug checking law", type: "profile", note: "licensed or explicitly legal (state-coordinated national network)", source: "2001_EMCDDA_Pill_Testing_Fact_Files.pdf p10, p18; Brunt_2011b drug  information monitoring system in the netherlands DIMS.pdf p1"}, {ref: "Policing", type: "profile", note: "cooperative or formal agreement", source: "2001_EMCDDA_Pill_Testing_Fact_Files.pdf p10; Vogels et al 2009.pdf p3, p7"}, {ref: "Funding", type: "profile", note: "stable national", source: "2001_EMCDDA_Pill_Testing_Fact_Files.pdf p18; 2019_Measham_Drug safety testing, disposals and dealing in an English field...pdf p3"}, {ref: "Council and community", type: "profile", note: "supportive", source: "Brunt_2011b drug  information monitoring system in the netherlands DIMS.pdf p1"}, {ref: "Anonymity and cost", type: "profile", note: "anonymous; small fee (EUR 3 per stationary analysis in 2000; no later figure in library)", source: "Brunt_2011b drug  information monitoring system in the netherlands DIMS.pdf p3; RPJ_Koning_Dutch_drug_checking_system_AAM.docx Introduction section; 2001_EMCDDA_Pill_Testing_Fact_Files.pdf p19"}, {ref: "Service model", type: "profile", note: "fixed site, lab send-away, festival or nightlife (historical, 1992 to 1998, restart planned 2000/2001)", source: "RPJ_Koning_Dutch_drug_checking_system_AAM.docx Introduction section (docx, unpaginated); Brunt_2011b drug  information monitoring system in the netherlands DIMS.pdf p2; 2001_EMCDDA_Pill_Testing_Fact_Files.pdf p10, p18 to p19"}, {ref: "Early warning", type: "profile", note: "yes, core function", source: "Brunt_2011b drug  information monitoring system in the netherlands DIMS.pdf p2, p5, p8; Vogels et al 2009.pdf p8 to p9"}, {ref: "Key outcomes", type: "profile", note: "large-scale market monitoring; warnings linked to disappearance of dangerous tablets (observational)", source: "RPJ_Koning_Dutch_drug_checking_system_AAM.docx Introduction section; Brunt_2011b drug  information monitoring system in the netherlands DIMS.pdf p1; Vogels et al 2009.pdf p1, p8 to p9; 2001_EMCDDA_Pill_Testing_Fact_Files.pdf p18; 2016_Australia_Pill-Testing-Report.pdf p25; 2021_Hirschfeld_Safer Tripping Serotonergic Psychedelics and Drug Checking...pdf p3"}],
   },
   {
     id: "ch",
-    label: "Switzerland",
+    label: t("Switzerland"),
     confidence: "high",
     summary: "Switzerland's pragmatic harm reduction policy and explicit legal anchoring let cities run checking as an ordinary municipal social or health service, with anonymous, free testing and compulsory counselling. Zurich's large party economy after hospitality-law relaxation drove early on-site work, while the legal low-THC market created a specific synthetic-cannabinoid risk that the services were positioned to detect. The legal clarity also allowed scope extension to new groups such as steroid users.",
     options: {checkingSite: "fixedNightlife", alerts: "public", law: "depenalised", checkingLaw: "licensed", policing: "agreement", funding: "stable", council: "supportive", neighbourhood: "supportive", anonymity: "anonymous"},
@@ -43,7 +44,7 @@ export const NATIONAL_MODELS: readonly NationalModel[] = [
   },
   {
     id: "at",
-    label: "Austria",
+    label: t("Austria"),
     confidence: "medium",
     summary: "A federal state without a national drug policy concept left checking to the provinces, so Vienna's majority-backed policy produced the first stable, publicly funded service. The legal condition that a scientific institution must analyse and staff must not handle substances shaped the hospital-toxicology partnership and self-scraping HPLC procedure. Concentration in a few cities leaves rural users with high unmet need. No evidence in the library for: possession law; those factors keep their defaults.",
     options: {checkingSite: "fixedNightlife", alerts: "public", checkingLaw: "licensed", policing: "agreement", funding: "stable", council: "supportive", neighbourhood: "supportive", anonymity: "anonymous"},
@@ -51,7 +52,7 @@ export const NATIONAL_MODELS: readonly NationalModel[] = [
   },
   {
     id: "be",
-    label: "Belgium",
+    label: t("Belgium"),
     confidence: "low",
     summary: "Split competences (research federal, prevention communal) gave checking a research-only legitimacy without local political cover, while local police actively deterred attendance. The result in 2001 was a festival-based, research-framed service that depended on organisers and short-term money. The library has no later evidence to show how this evolved. Preset: 2001 evidence; depenalisation documented for cannabis only. No evidence in the library for: anonymity and cost; those factors keep their defaults.",
     options: {checkingSite: "fixedNightlife", alerts: "none", law: "depenalised", checkingLaw: "grey", policing: "visible", funding: "project", council: "tolerant", neighbourhood: "mixed"},
@@ -59,7 +60,7 @@ export const NATIONAL_MODELS: readonly NationalModel[] = [
   },
   {
     id: "es",
-    label: "Spain",
+    label: t("Spain"),
     confidence: "medium",
     summary: "Legal ambiguity combined with strong local political and police support in Barcelona let an NGO grow from rave reagent testing into lab, postal, international and sexual-health services. With no explicit national framework, the model stayed NGO-led and modestly funded, and it relies on monitoring outputs (early warning notifications) for legitimacy. Tolerance of private possession is documented only in a dated source. Preset: Council support reflects Barcelona.",
     options: {checkingSite: "everywhere", alerts: "public", law: "depenalised", checkingLaw: "grey", policing: "agreement", funding: "project", council: "supportive", neighbourhood: "mixed", anonymity: "anonymous"},
@@ -67,7 +68,7 @@ export const NATIONAL_MODELS: readonly NationalModel[] = [
   },
   {
     id: "pt",
-    label: "Portugal",
+    label: t("Portugal"),
     confidence: "medium",
     summary: "Decriminalisation and a 2001 harm reduction decree that explicitly allowed testing gave Portugal a legal basis, yet in the library checking grows out of one festival's care culture and partnership funding rather than a national fixed network. Austerity-era disinvestment and divergent city policies (Porto versus Lisbon) limit how far the model travels beyond events. No evidence in the library for: policing, anonymity and cost; those factors keep their defaults.",
     options: {checkingSite: "nightlife", alerts: "none", law: "decriminalised", checkingLaw: "licensed", funding: "project", council: "tolerant", neighbourhood: "mixed"},
@@ -75,7 +76,7 @@ export const NATIONAL_MODELS: readonly NationalModel[] = [
   },
   {
     id: "si",
-    label: "Slovenia",
+    label: t("Slovenia"),
     confidence: "high",
     summary: "Legal barriers to field checking pushed Slovenia toward collection points and a forensic or national laboratory, which made the early warning system the backbone. Sustained NGO advocacy got checking written into the national drug programme, turning EU project money into state funding and national reach. The price of a laboratory-only model is a multi-day wait that rules out pre-party decisions. No evidence in the library for: possession law; those factors keep their defaults.",
     options: {checkingSite: "collection", alerts: "public", checkingLaw: "labOnly", policing: "neutral", funding: "stable", council: "supportive", neighbourhood: "supportive", anonymity: "anonymous"},
@@ -83,7 +84,7 @@ export const NATIONAL_MODELS: readonly NationalModel[] = [
   },
   {
     id: "fr",
-    label: "France",
+    label: t("France"),
     confidence: "medium",
     summary: "France combined prohibition with state-funded harm reduction, which produced a long-standing paradox: the state paid for sample collection and national monitoring (SINTES) while restricting what users could be told. Peer and community associations (Techno Plus, AIDES, Bus 31/32) carried the user-facing work in harm reduction centres and party settings, and formal integration and postal access arrived only recently. Preset: Policing and funding values are from 2001 sources.",
     options: {checkingSite: "everywhere", alerts: "public", law: "criminal", checkingLaw: "grey", policing: "visible", funding: "stable", council: "tolerant", neighbourhood: "mixed", anonymity: "anonymous"},
@@ -91,7 +92,7 @@ export const NATIONAL_MODELS: readonly NationalModel[] = [
   },
   {
     id: "fi",
-    label: "Finland",
+    label: t("Finland"),
     confidence: "medium",
     summary: "Because handling drugs for harm reduction is practically unlicensable, Finnish services test residue on used bags and equipment and send it monthly to a state forensic lab. The legal workaround makes results too slow for decisions before use, so the value shifts to conversation at submission and to publicly posted market summaries. Preset: Checking drugs is effectively prohibited; the lab-only option stands for residue testing of used equipment, with results in weeks. No evidence in the library for: possession law, policing; those factors keep their defaults.",
     options: {checkingSite: "integrated", alerts: "public", checkingLaw: "labOnly", funding: "project", council: "tolerant", neighbourhood: "mixed", anonymity: "anonymous"},
@@ -99,7 +100,7 @@ export const NATIONAL_MODELS: readonly NationalModel[] = [
   },
   {
     id: "uk-eng",
-    label: "United Kingdom (England)",
+    label: t("United Kingdom (England)"),
     confidence: "medium",
     summary: "Criminal possession and strict handling rules leave two routes: a costly Home Office licence that forces sample destruction, or a police tolerance negotiated event by event. England therefore developed a festival model embedded in multi-agency safety partnerships and staffed by volunteers, while community services remain small pilots. Preset: Festival route (police tolerance event by event); the licensed community pilot is smaller.",
     options: {checkingSite: "nightlife", alerts: "public", law: "criminal", checkingLaw: "grey", policing: "agreement", funding: "project", council: "tolerant", neighbourhood: "mixed", anonymity: "anonymous"},
@@ -107,7 +108,7 @@ export const NATIONAL_MODELS: readonly NationalModel[] = [
   },
   {
     id: "uk-sct",
-    label: "United Kingdom (Scotland)",
+    label: t("United Kingdom (Scotland)"),
     confidence: "low",
     summary: "Scotland in the library is a pre-implementation case: community checking is planned inside existing low-threshold harm reduction services for higher-risk users, with police stance and public attitudes seen as the main external risks. Criminalisation and the risk environment are expected to mediate whether information changes behaviour. Preset: Pre-implementation: no service operating in the evidence period. No evidence in the library for: policing, funding, anonymity and cost; those factors keep their defaults.",
     options: {checkingSite: "fixed", alerts: "none", law: "criminal", checkingLaw: "prohibited", council: "supportive", neighbourhood: "mixed"},
@@ -115,7 +116,7 @@ export const NATIONAL_MODELS: readonly NationalModel[] = [
   },
   {
     id: "au",
-    label: "Australia",
+    label: t("Australia"),
     confidence: "high",
     summary: "A federal funding mix dominated by law enforcement and highly visible festival policing created a deterrent environment in which checking was long politically blocked. Change came from a small progressive jurisdiction (ACT Labor-Greens government, a health-run laboratory, and health and police leaders) through sustained advocacy, followed by state-by-state trials. As a result, services are time-limited, government-approved trials whose survival tracks state politics. Preset: ACT-style government trial; elsewhere drug detection dogs and no legal checking.",
     options: {checkingSite: "nightlife", alerts: "public", law: "discretionary", checkingLaw: "licensed", policing: "agreement", funding: "project", council: "tolerant", neighbourhood: "mixed", anonymity: "anonymous"},
@@ -123,7 +124,7 @@ export const NATIONAL_MODELS: readonly NationalModel[] = [
   },
   {
     id: "ca-bc",
-    label: "Canada (British Columbia)",
+    label: t("Canada (British Columbia)"),
     confidence: "high",
     summary: "The overdose public health emergency produced federal exemptions, provincial operating funds and later a decriminalisation pilot, so checking is framed as overdose prevention for people who use unregulated opioids. That framing places services inside supervised consumption and harm reduction sites, favours fast point-of-care technology and engages sellers as a market lever. Criminalisation stigma and fear of police persist despite institutional support. Preset: Clients still fear police despite institutional cooperation.",
     options: {checkingSite: "everywhere", alerts: "public", law: "decriminalised", checkingLaw: "licensed", policing: "neutral", funding: "stable", council: "supportive", neighbourhood: "mixed", anonymity: "anonymous"},
@@ -131,7 +132,7 @@ export const NATIONAL_MODELS: readonly NationalModel[] = [
   },
   {
     id: "us",
-    label: "United States",
+    label: t("United States"),
     confidence: "medium",
     summary: "An overdose crisis met criminal possession and state-by-state paraphernalia rules, so US checking grew as low-cost strips and SSP-embedded services backed by mail-in labs. Programmes often keep a low profile or go mobile to avoid scrutiny, and some states route strip distribution through police, which brings funding and reach but conflicts with clients' fear of police. Preset: State patchwork; police range from strip distributors to confiscation.",
     options: {checkingSite: "integrated", alerts: "public", law: "criminal", checkingLaw: "grey", policing: "neutral", funding: "project", council: "tolerant", neighbourhood: "mixed", anonymity: "anonymous"},
@@ -139,7 +140,7 @@ export const NATIONAL_MODELS: readonly NationalModel[] = [
   },
   {
     id: "mx-latam",
-    label: "Mexico and Latin America",
+    label: t("Mexico and Latin America"),
     confidence: "medium",
     summary: "Legal ambiguity, scarce public money, confiscation and cartel violence keep Latin American checking small, NGO-run, mobile and reagent-based, focused on nightlife in capitals. On the Mexico-US border the same constraints produce integrated harm reduction hubs for people who inject, and in Argentina digital tools were adopted partly to reduce police exposure. Preset: Small-quantity decriminalisation inconsistently enforced, so modelled as discretionary.",
     options: {checkingSite: "mobileNightlife", alerts: "none", law: "discretionary", checkingLaw: "grey", policing: "visible", funding: "volunteer", council: "tolerant", neighbourhood: "mixed", anonymity: "anonymous"},
@@ -147,7 +148,7 @@ export const NATIONAL_MODELS: readonly NationalModel[] = [
   },
   {
     id: "pl",
-    label: "Poland",
+    label: t("Poland"),
     confidence: "low",
     summary: "Criminal liability for any quantity, high and stable police detection, and repeated expansion of NPS controls leave no documented legal space for checking in the library. Fear of legal consequences also distorts clinical disclosure in poisonings. As a sandbox preset this is a no-service baseline with hidden demand. Preset: No checking service is documented in the library; modelled as not permitted. Routine patrols stand for high detection (31,838 possession offences detected in 2017). No evidence in the library for: service model, early warning, funding, council and community, neighbourhood, anonymity and cost; those factors keep their defaults.",
     options: {law: "criminal", checkingLaw: "prohibited", policing: "neutral"},
@@ -155,7 +156,7 @@ export const NATIONAL_MODELS: readonly NationalModel[] = [
   },
   {
     id: "de",
-    label: "Germany",
+    label: t("Germany"),
     confidence: "low",
     summary: "In 2001 German checking survived only where a local prosecutor agreed or courts stopped investigations, so services were isolated city projects without federal backing. Preset: 2001 evidence; local exceptions existed by prosecutor agreement. No evidence in the library for: early warning, funding, anonymity and cost; those factors keep their defaults.",
     options: {checkingSite: "fixedNightlife", law: "depenalised", checkingLaw: "prohibited", policing: "visible", council: "tolerant", neighbourhood: "opposed"},
@@ -163,7 +164,7 @@ export const NATIONAL_MODELS: readonly NationalModel[] = [
   },
   {
     id: "nz",
-    label: "New Zealand",
+    label: t("New Zealand"),
     confidence: "medium",
     summary: "Overwhelming public support and a volunteer festival service pushed New Zealand from a legal grey area to permanent legislation, but in the evidence period capacity was limited by volunteer staffing and equipment. Preset: Permanent legislation from 2020; volunteer staffing limited capacity. No evidence in the library for: early warning, possession law, anonymity and cost; those factors keep their defaults.",
     options: {checkingSite: "fixedNightlife", checkingLaw: "licensed", policing: "neutral", funding: "volunteer", council: "supportive", neighbourhood: "supportive"},

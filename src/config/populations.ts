@@ -11,6 +11,7 @@
  */
 import type { CalendarDate, Season } from '../sim/calendar';
 import { dayOf } from '../sim/calendar';
+import { t } from '../i18n';
 
 export type PopulationId =
   | 'residents' | 'dogWalkers' | 'commuters' | 'diners' | 'workers' | 'clubbers'
@@ -49,51 +50,51 @@ export const paydayWeekend = (d: CalendarDate) => (d.weekday === 4 || d.weekday 
 
 export const POPULATIONS: readonly Population[] = [
   {
-    id: 'residents', label: 'Residents', permanence: 'permanent', weight: 1.0, clubPull: 0,
+    id: 'residents', label: t('Residents'), permanence: 'permanent', weight: 1.0, clubPull: 0,
     hours: [[18 * H, 21 * H, 1.3], [21 * H, 24 * H, 0.7], [24 * H, 30 * H, 0.15], [30 * H, 33 * H, 0.8], [33 * H, 42 * H, 1.4]],
     weekdays: [1, 1, 1, 1, 1, 1.1, 1.1], seasons: { winter: 0.7, spring: 1, summer: 1.3, autumn: 0.9 },
   },
   {
-    id: 'dogWalkers', label: 'Dog walkers', permanence: 'permanent', weight: 0.35, clubPull: 0,
+    id: 'dogWalkers', label: t('Dog walkers'), permanence: 'permanent', weight: 0.35, clubPull: 0,
     hours: [[18 * H, 20.5 * H, 1.4], [22 * H, 23.5 * H, 0.8], [29 * H, 31.5 * H, 1.4], [36 * H, 38 * H, 0.8]],
     weekdays: [1, 1, 1, 1, 1, 1, 1], seasons: all(1),
   },
   {
-    id: 'commuters', label: 'Commuters', permanence: 'permanent', weight: 0.9, clubPull: 0,
+    id: 'commuters', label: t('Commuters'), permanence: 'permanent', weight: 0.9, clubPull: 0,
     hours: [[18 * H, 20 * H, 1.6], [20 * H, 22 * H, 0.4], [29 * H, 30 * H, 0.8], [30.5 * H, 33.5 * H, 2.6], [33.5 * H, 40 * H, 0.5], [40 * H, 42 * H, 2.2]],
     weekdays: [1, 1, 1, 1, 0.9, 0.3, 0.2], seasons: { winter: 1, spring: 1, summer: 0.8, autumn: 1 },
   },
   {
-    id: 'diners', label: 'Diners', permanence: 'permanent', weight: 0.6, clubPull: 0.1,
+    id: 'diners', label: t('Diners'), permanence: 'permanent', weight: 0.6, clubPull: 0.1,
     hours: [[19 * H, 23 * H, 1.3], [36 * H, 38.5 * H, 1.6]],
     weekdays: [0.6, 0.7, 0.8, 1, 1.4, 1.5, 1.1], seasons: { winter: 0.8, spring: 1, summer: 1.4, autumn: 0.9 },
   },
   {
-    id: 'workers', label: 'Night and early-shift workers', permanence: 'permanent', weight: 0.5, clubPull: 0,
+    id: 'workers', label: t('Night and early-shift workers'), permanence: 'permanent', weight: 0.5, clubPull: 0,
     hours: [[22 * H, 24 * H, 0.6], [27 * H, 30 * H, 1.6], [30 * H, 42 * H, 0.9]],
     weekdays: [1, 1, 1, 1, 1, 0.8, 0.6], seasons: all(1),
   },
   {
-    id: 'clubbers', label: 'Clubbers', permanence: 'permanent', weight: 0.8, clubPull: 1,
+    id: 'clubbers', label: t('Clubbers'), permanence: 'permanent', weight: 0.8, clubPull: 1,
     hours: [[21 * H, 23 * H, 0.8], [23 * H, 27 * H, 1.6], [27 * H, 29 * H, 0.8]],
     weekdays: [0.4, 0.4, 0.6, 1, 1.6, 1.8, 0.6], seasons: { winter: 0.9, spring: 1, summer: 1.2, autumn: 1 },
     special: (d) => (paydayWeekend(d) ? 1.3 : 1),
   },
   {
-    id: 'students', label: 'Students', permanence: 'temporary', weight: 0.7, clubPull: 0.8,
+    id: 'students', label: t('Students'), permanence: 'temporary', weight: 0.7, clubPull: 0.8,
     hours: [[20 * H, 23 * H, 1.2], [23 * H, 27 * H, 1.3], [32 * H, 41 * H, 1.1]],
     weekdays: [1.1, 1.0, 1.3, 1.4, 1.0, 0.9, 0.6], seasons: all(1),
     special: (d) => (!inTerm(d) ? 0.15 : between(d, dayOf(8, 20), dayOf(8, 27)) ? 4 : 1),
   },
   {
-    id: 'tourists', label: 'Tourists', permanence: 'temporary', weight: 0.4, clubPull: 0.4,
+    id: 'tourists', label: t('Tourists'), permanence: 'temporary', weight: 0.4, clubPull: 0.4,
     hours: [[18 * H, 23 * H, 1.3], [23 * H, 26 * H, 0.7], [33 * H, 42 * H, 1.6]],
     weekdays: [0.8, 0.8, 0.8, 0.9, 1.2, 1.4, 1.1], seasons: { winter: 0.4, spring: 0.9, summer: 2.2, autumn: 0.8 },
     // Christmas markets in December.
     special: (d) => (between(d, dayOf(11, 1), dayOf(11, 23)) ? 3 : 1),
   },
   {
-    id: 'fans', label: 'Football fans', permanence: 'wave', weight: 0, clubPull: 0.2,
+    id: 'fans', label: t('Football fans'), permanence: 'wave', weight: 0, clubPull: 0.2,
     hours: [[18.5 * H, 20 * H, 1.5], [22 * H, 24 * H, 1.5]],
     weekdays: [1, 1, 1, 1, 1, 1, 1], seasons: all(1),
     // Match nights: Wednesdays and Saturdays in the season.

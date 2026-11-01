@@ -28,7 +28,7 @@ export interface ServiceParams {
 
 export const ILLUSTRATIVE = {
   /** Clock minutes shown per real second at 1x. Walking stays real time. */
-  clockMinutesPerSecond: 0.5,
+  clockMinutesPerSecond: 1,
   clockStartMinutes: 19 * 60,
   seed: 20261031,
 

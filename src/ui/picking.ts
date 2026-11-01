@@ -4,15 +4,20 @@ import { clientToNdc, worldToClient } from '../render/camera';
 import type { RenderFrame } from '../render/frame';
 import { LOCATION_IDS, type LocationId } from '../sim/types';
 import type { LocationVisual } from '../world/buildings';
+import { pickBuilding } from '../world/cityBuildings';
 
 /** Something the pointer can hover or select. */
 export type Target =
   | { kind: 'location'; id: LocationId; part?: 'stand' }
-  | { kind: 'person'; id: number };
+  | { kind: 'person'; id: number }
+  | { kind: 'building'; id: number }
+  | { kind: 'vehicle'; id: number };
 
 export function sameTarget(a: Target | null, b: Target | null): boolean {
   if (!a || !b) return a === b;
   if (a.kind === 'person') return b.kind === 'person' && a.id === b.id;
+  if (a.kind === 'building') return b.kind === 'building' && a.id === b.id;
+  if (a.kind === 'vehicle') return b.kind === 'vehicle' && a.id === b.id;
   return b.kind === 'location' && a.id === b.id && a.part === b.part;
 }
 
@@ -31,14 +36,44 @@ export class ScenePicker {
   private readonly head = new Vector3();
   private readonly mid = new Vector3();
 
-  constructor(locations: Record<LocationId, LocationVisual>, private readonly crowd: Crowd) {
+  /** `extras`: more objects that belong to a place (extra campers), named by its id. */
+  constructor(
+    locations: Record<LocationId, LocationVisual>,
+    private readonly crowd: Crowd,
+    private readonly extras: () => readonly Object3D[] = () => [],
+    /** Police cars and ambulances out on the streets. */
+    private readonly vehicles: () => readonly { id: number; root: Object3D }[] = () => [],
+  ) {
     this.roots = LOCATION_IDS.map((id) => locations[id].root);
+  }
+
+  /** The id of whichever of `targets` is under the pointer (nearest first), or null. */
+  pickAmong(clientX: number, clientY: number, camera: OrthographicCamera, frame: RenderFrame, targets: readonly { id: number; root: Object3D }[]): number | null {
+    this.raycaster.setFromCamera(clientToNdc(clientX, clientY, frame), camera);
+    let best: { id: number; d: number } | null = null;
+    for (const t of targets) {
+      const h = this.raycaster.intersectObject(t.root, true)[0];
+      if (h && (!best || h.distance < best.d)) best = { id: t.id, d: h.distance };
+    }
+    return best?.id ?? null;
   }
 
   pick(clientX: number, clientY: number, camera: OrthographicCamera, frame: RenderFrame, coarse: boolean): Target | null {
     this.raycaster.setFromCamera(clientToNdc(clientX, clientY, frame), camera);
     const ray = this.raycaster.ray;
-    const hit = this.raycaster.intersectObjects(this.roots, true)[0];
+    const extras = this.extras();
+    const placeHit = this.raycaster.intersectObjects(extras.length ? [...this.roots, ...extras] : this.roots, true)[0];
+    const buildingHit = pickBuilding(ray);
+    // A police car or ambulance in front of everything else wins.
+    let vehicle: { id: number; distance: number } | null = null;
+    for (const v of this.vehicles()) {
+      const h = this.raycaster.intersectObject(v.root, true)[0];
+      if (h && (!vehicle || h.distance < vehicle.distance)) vehicle = { id: v.id, distance: h.distance };
+    }
+    if (vehicle && vehicle.distance <= Math.min(placeHit?.distance ?? Infinity, buildingHit?.distance ?? Infinity)) return { kind: 'vehicle', id: vehicle.id };
+    // Whichever is nearer along the ray: a service's building or an ordinary one.
+    const hit = placeHit && (!buildingHit || placeHit.distance <= buildingHit.distance) ? placeHit : null;
+    const nearest = Math.min(placeHit?.distance ?? Infinity, buildingHit?.distance ?? Infinity);
 
     let best: { id: number; score: number; depth: number } | null = null;
     const minRadius = coarse ? 20 : 7;
@@ -54,14 +89,14 @@ export class ScenePicker {
       if (d > radius) return;
       const depth = this.mid.addVectors(this.foot, this.head).multiplyScalar(0.5).sub(ray.origin).dot(ray.direction);
       // A building surface clearly in front of this person hides them.
-      if (hit && hit.distance < depth - 0.5) return;
+      if (nearest < depth - 0.5) return;
       const score = d / radius;
       if (!best || score < best.score - 0.05 || (Math.abs(score - best.score) <= 0.05 && depth < best.depth)) {
         best = { id: p.id, score, depth };
       }
     });
     if (best) return { kind: 'person', id: (best as { id: number }).id };
-    if (!hit) return null;
+    if (!hit) return buildingHit ? { kind: 'building', id: buildingHit.building.id } : null;
 
     let part: 'stand' | undefined;
     for (let o: Object3D | null = hit.object; o; o = o.parent) {

@@ -1,4 +1,4 @@
-import { EDGES, NODES, type NodeId, type P2 } from '../world/layout';
+import { EDGES, NODES, nearestNodeTo, type NodeId, type P2 } from '../world/layout';
 
 /** Shortest paths over the small pavement graph, precomputed once (Floyd-Warshall). */
 const ids = Object.keys(NODES) as NodeId[];
@@ -24,13 +24,8 @@ for (let k = 0; k < n; k++)
       }
 
 export function nearestNode(p: P2): NodeId {
-  let best: NodeId = ids[0];
-  let bestD = Infinity;
-  for (const id of ids) {
-    const d = Math.hypot(NODES[id].x - p.x, NODES[id].z - p.z);
-    if (d < bestD) { bestD = d; best = id; }
-  }
-  return best;
+  // The nearest node on this side of the road: people walk to a zebra to cross.
+  return nearestNodeTo(p);
 }
 
 /** Node sequence from `from` to `to`, inclusive. */

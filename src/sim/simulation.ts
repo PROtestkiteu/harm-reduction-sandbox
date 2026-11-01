@@ -1,3 +1,38 @@
+import { Exposure, EXPOSURE, exposureNow, type ExposureHarm } from './exposure';
+import { ServiceMix } from './serviceMix';
+import { CRISIS } from '../config/crisis';
+import { HUSTLE } from '../config/hustles';
+import { CONCESSIONS, FAVOUR, FAVOURS, type ConcessionId, type FavourId } from '../config/favours';
+import { CAMP, Camp } from './camp';
+import { CityStress, STRESS } from './cityStress';
+import { VENUE_KINDS, VITALITY, Vitality, type VenueKind } from './vitality';
+import { ACTIVITY, type Activity } from '../config/serviceMix';
+import { Team, type Assignment, type Member } from './team';
+
+/** What a donation box brings in, per staff member on shift per clock hour. ILLUSTRATIVE. */
+export const DONATION_PER_STAFF_HOUR = 3;
+/** What the new venues are called on the street and in the feed. */
+export const VENUE_NAMES: Record<VenueKind, string> = { bar: t('bar'), cafe: t('café'), club: t('club'), live: t('live music venue') };
+/** Money per coin shown over a place. */
+const MONEY_LUMP = 1;
+
+/** Investing in a service. ILLUSTRATIVE prices and rates. */
+export const INVEST = {
+  cost: 150,
+  /** Share of the bar one investment fills. */
+  step: 0.25,
+  maxLevel: 3,
+  placesPerLevel: 2,
+  /** Upkeep per level above 1, per clock hour. */
+  upkeepPerLevelHour: 8,
+  /** Share of the bar lost per clock hour without money. */
+  decayPerHour: 0.12,
+  /** Wear and tear per person served: busy places need investment to hold their level. */
+  wearPerVisit: 0.003,
+};
+
+const SERVICE_LABEL: Record<ServiceId, string> = { dropIn: t('Drop-in centre'), outreach: t('Outreach camper'), clubHr: t('Club stand'), pharmacy: t('Pharmacy'), drugChecking: t('Drug checking'), shelter: t('Shelter'), clinic: t('Clinic') };
+import { Property, PROPERTY, SATELLITE_NAME, type SatelliteService } from './property';
 import { SEASON_PROFILES } from '../config/seasons';
 import type { Season } from './calendar';
 import { ILLUSTRATIVE, type ServiceParams } from '../config/illustrative';
@@ -7,13 +42,14 @@ import { CLUB_CLOSES, CLUB_OPENS, DAY_END, DAY_START, MORNING } from './clock';
 import { ACUTE, EVENTS, INJECTING_SHARE, PROFILE_MIX, type EventId, type Profile, type Substance } from '../config/randomEvents';
 import { EventEngine, combineEventEffects, type ActiveEvent, type EventMods } from './eventEngine';
 import { ORG, type ApplicationContext, type GrantId, type RecruitId } from '../config/organisation';
-import { Organisation, type OrgNotice } from './organisation';
+import { Organisation, SERVICE_NAMES, type OrgNotice } from './organisation';
 import { Neighbourhood } from './neighbourhood';
 import { CityLife, type CityHappening, type PasserbyKind } from './cityLife';
 import { Calendar } from './calendar';
 import { CALENDAR_WAVES, SEASONAL_EVENT_RATE } from '../config/populations';
 import { createRandom, nextArrival, range, type Random } from './random';
 import { SERVICE_IDS, WALK_IN_SERVICE_IDS, type ServiceId, type ServiceStatus, type WalkInServiceId } from './types';
+import { plural, t } from '../i18n';
 
 /**
  * Service model with no rendering knowledge. The crowd layer reports physical
@@ -49,7 +85,11 @@ export type SimEvent =
   /** Staff at posts `fromPost` and above leave. */
   | { type: 'staffRelease'; service: ServiceId; fromPost: number }
   | { type: 'clubAdmitted'; visitor: VisitorId }
-  | { type: 'clubLeaver'; intoxicated: boolean; acute: AcuteOutcome | null };
+  | { type: 'clubLeaver'; intoxicated: boolean; acute: AcuteOutcome | null }
+  /** Someone outdoors was harmed by the cold or the heat; an ambulance is called. */
+  | { type: 'exposure'; harm: ExposureHarm }
+  /** Money moved at a place: in (positive) or out (negative), one unit at a time, for the coins over it. */
+  | { type: 'money'; service: ServiceId; amount: number };
 
 /** An acute harm (overdose, collapse) during a supply event, and whether staff reached the person. */
 export interface AcuteOutcome {
@@ -120,6 +160,10 @@ export class ServiceModel {
   assigned = 0;
   paidAssigned = 0;
   staffOnSite = 0;
+  /** Places added by satellites in rented units, or extra campers. */
+  extraPlaces = 0;
+  /** How good tonight's crew is here: the mean of their fit (1 is ordinary). */
+  skill = 1;
   readonly queue: Waiting[] = [];
   readonly inService = new Map<VisitorId, number>();
   readonly metrics = emptyMetrics();
@@ -142,7 +186,7 @@ export class ServiceModel {
 
   get capacity(): number {
     if (this.staffOnSite === 0) return 0;
-    return Math.max(1, Math.floor(this.staffOnSite * this.params.capacityPerStaff));
+    return Math.max(1, Math.floor(this.staffOnSite * this.params.capacityPerStaff * this.skill)) + this.extraPlaces;
   }
 
   get status(): ServiceStatus {
@@ -207,6 +251,71 @@ export class Simulation {
   readonly org: Organisation;
   private policy: PolicyInfo = { council: 1, policeAgreement: false, criminalPossession: true, funding: 'project', neighbourhood: 1, anonymous: true };
   readonly neighbourhood: Neighbourhood;
+  /** Shop units that close and go to let, and the space the organisation rents. */
+  readonly property: Property;
+  /** What each place spends its visits on (checking, kits, naloxone, counselling, basics). */
+  readonly mix = new ServiceMix();
+  /** Weather harm to people outdoors, and the two remedies the organisation can run. */
+  readonly exposure: Exposure;
+  warmingBus = false;
+  coolingPoint = false;
+  /** Favours with city hall: at most one held; using it means a concession is asked later. */
+  favours = 1;
+  /** When city hall will ask for its concession (`org.now` minutes), or null when nothing is owed. */
+  concessionAt: number | null = null;
+  /** Police keep away from the services until this time. */
+  private policeAwayUntil = 0;
+  /** An officer is posted by the services until this time (a concession). */
+  private policePostedUntil = 0;
+  private policeState = 0;
+  /** No clearing of the park camp until this time. */
+  campHoldUntil = 0;
+  /** The club pays for the stand while it is open. */
+  clubContract = false;
+  /** The drug checking service sells its checks: a little money, less public good. */
+  commercialChecking = false;
+  /** A donation drive runs until this time (`org.now` minutes), or null. */
+  driveUntil: number | null = null;
+  /** How well the district is doing: grows with harm reduction that works, opens new venues. */
+  readonly vitality = new Vitality();
+  /** Pressure on the city's police, ambulances and sobering-up centre. */
+  readonly cityStress = new CityStress();
+  /** The tent camp in the big park. */
+  readonly camp = new Camp();
+  private campStage = 0;
+  /** When each person in the last 24 clock hours left without being served (`org.now` minutes). */
+  private readonly unmetLog: number[] = [];
+  private inCrisis = false;
+
+  /** People who left without being served in the last 24 clock hours. */
+  get unmet24(): number {
+    const since = this.org.now - 24 * 60;
+    let drop = 0;
+    while (drop < this.unmetLog.length && this.unmetLog[drop] < since) drop++;
+    if (drop) this.unmetLog.splice(0, drop);
+    return this.unmetLog.length;
+  }
+
+  /**
+   * How deep the crisis is, from unmet need over the last day: 0 below
+   * CRISIS.calm, 1 at CRISIS.full and above. A crisis feeds itself: more
+   * random events, warier funders, more harm outdoors (illustrative).
+   */
+  get crisis(): number {
+    return Math.min(1, Math.max(0, (this.unmet24 - CRISIS.calm) / (CRISIS.full - CRISIS.calm)));
+  }
+
+  /** A camper (the first or an extra one) stands by the squat: its residents come to the counter. */
+  squatCovered = false;
+  /** The outreach camper is driving to a new spot: closed until then (in `org.now` minutes). */
+  private movingUntil: number | null = null;
+  private movingWasOn = true;
+  /** The people behind the staff numbers: qualities, energy and who works where. */
+  readonly team: Team;
+  /** This game so far, for saves and the leaderboard: people served and nights run. */
+  readonly totals = { helped: 0, nights: 0 };
+  /** Each service's level (1 to 3) and progress toward the next (0..1): money in fills it, going broke drains it. */
+  readonly upgrades = Object.fromEntries(SERVICE_IDS.map((id) => [id, { level: 1, progress: 0.3 }])) as Record<ServiceId, { level: number; progress: number }>;
   readonly city: CityLife;
   readonly calendar = new Calendar();
   /** Calendar waves already started tonight. */
@@ -229,8 +338,11 @@ export class Simulation {
   constructor(seed: number = ILLUSTRATIVE.seed) {
     this.random = createRandom(seed);
     this.events = new EventEngine(this.random);
+    this.exposure = new Exposure(this.random);
     this.org = new Organisation(this.random, (notice) => this.emit({ type: 'orgNotice', notice }));
     this.neighbourhood = new Neighbourhood(this.random);
+    this.property = new Property(this.random);
+    this.team = new Team(seed);
     this.city = new CityLife(this.random);
     const p = ILLUSTRATIVE.services;
     this.services = {
@@ -272,6 +384,7 @@ export class Simulation {
   }
 
   private emit(e: SimEvent): void {
+    this.cityStress.note(e);
     for (const l of this.listeners) l(e);
   }
 
@@ -357,7 +470,13 @@ export class Simulation {
     // Seasonal demand for the services (illustrative); passers-by and the club follow the calendar above.
     const sd = SEASON_PROFILES[this.season].demand;
     const seasonal = id === 'dropIn' ? sd.dropIn : id === 'outreach' ? sd.outreach : id === 'shelter' ? sd.shelter : 1;
-    return this.rates[id] * boost * street * seasonal;
+    // People living in a squat come to a camper parked by it (illustrative).
+    const squat = id === 'outreach' ? (this.squatCovered ? 1.5 * (1 + CAMP.squatDemand * this.camp.squat) : 1) * (1 + CAMP.outreachDemand * this.camp.size) : 1;
+    // Paying for a check puts some people off.
+    const fee = id === 'drugChecking' && this.commercialChecking ? HUSTLE.commercialDemand : 1;
+    // A thriving district brings more people out, and more people needing the services.
+    const v = id === 'passerby' || id === 'club' ? this.vitality.footfall * (1 + 0.15 * this.vitality.venues) : this.vitality.demand;
+    return this.rates[id] * boost * street * seasonal * squat * fee * v;
   }
 
   private setStaff(id: ServiceId, staff: number): void {
@@ -372,28 +491,53 @@ export class Simulation {
    * and re-staffs services to match.
    */
   private reallocate(): void {
-    const avail = this.org.available;
-    let paidLeft = avail.paid;
-    let volLeft = avail.volunteers;
-    let paidTotal = 0;
-    const plan = {} as Record<ServiceId, { reason: ClosedReason | null; assigned: number; paid: number }>;
+    // Draw up the rota from named people: pinned workers go where they were
+    // sent, then the rest fill each service's request, paid first, best fit first.
+    this.team.sync(this.org.paid, this.org.volunteers);
+    const pool = this.team.available(!this.org.broke);
+    for (const m of this.team.members) m.workingAt = null;
+    const reasons = {} as Record<ServiceId, ClosedReason | null>;
+    const crew = {} as Record<ServiceId, Member[]>;
     for (const id of SERVICE_IDS) {
+      reasons[id] = this.closedReason(id);
+      crew[id] = [];
+    }
+    for (const m of pool) if (m.assignment !== 'auto' && m.assignment !== 'rest' && !reasons[m.assignment]) crew[m.assignment].push(m);
+    const free = pool.filter((m) => m.assignment === 'auto');
+    for (const id of SERVICE_IDS) {
+      if (reasons[id]) continue;
       const s = this.services[id];
-      let reason = this.closedReason(id);
-      let paid = 0;
-      let vol = 0;
-      if (!reason) {
-        paid = Math.min(s.requested, paidLeft);
-        paidLeft -= paid;
-        vol = Math.min(s.requested - paid, volLeft);
-        volLeft -= vol;
-        if (paid + vol === 0) reason = 'noStaff';
+      while (crew[id].length < s.requested && free.length) {
+        free.sort((a, b) => Number(b.paid) - Number(a.paid) || Team.fit(b, id) - Team.fit(a, id));
+        crew[id].push(free.shift()!);
       }
+    }
+    let paidTotal = 0;
+    for (const id of SERVICE_IDS) {
+      const c = crew[id];
+      for (const m of c) m.workingAt = id;
+      const paid = c.filter((m) => m.paid).length;
       paidTotal += paid;
-      plan[id] = { reason, assigned: paid + vol, paid };
+      const reason = reasons[id] ?? (c.length === 0 ? 'noStaff' : null);
+      this.applyPlan(id, { reason, assigned: c.length, paid });
     }
     this.paidOnShift = paidTotal;
-    for (const id of SERVICE_IDS) this.applyPlan(id, plan[id]);
+    this.updateSkill();
+  }
+
+  /** Each service's crew quality, from who works there and how tired they are. */
+  private updateSkill(): void {
+    for (const id of SERVICE_IDS) {
+      let sum = 0;
+      let n = 0;
+      for (const m of this.team.members) if (m.workingAt === id) { sum += Team.fit(m, id); n++; }
+      this.services[id].skill = n ? sum / n : 1;
+    }
+  }
+
+  /** Sends a named worker to a service, to rest, or back to automatic placement. */
+  assignMember(id: number, to: Assignment): void {
+    if (this.team.assign(id, to)) this.reallocate();
   }
 
   private applyPlan(id: ServiceId, p: { reason: ClosedReason | null; assigned: number; paid: number }): void {
@@ -432,7 +576,342 @@ export class Simulation {
     this.reallocate();
   }
 
-  /** Relaunches a service that closed down when the money ran out. */
+  /** Closes a place down by choice to save money: no running costs or staff there until relaunched. */
+  closeDownPlace(id: ServiceId): void {
+    if (this.org.closedDown.has(id)) return;
+    this.org.closedDown.add(id);
+    this.reallocate();
+    this.org.notice(this.clockMinutes, t('The {service} has closed down to save money. People who came there now go without.', { service: SERVICE_NAMES[id] }));
+  }
+
+  /** Takes a place down one level of investment: less upkeep, fewer places. */
+  downgrade(id: ServiceId): void {
+    const u = this.upgrades[id];
+    if (u.level <= 1) return;
+    u.level--;
+    u.progress = 0;
+    this.syncExtraPlaces();
+    this.org.notice(this.clockMinutes, t('The {service} is scaled back a level: less upkeep, fewer places.', { service: SERVICE_NAMES[id] }));
+  }
+
+  /** Rents a vacant shop unit and opens a satellite of `service` in it. */
+  rentUnit(unit: number, service: SatelliteService): boolean {
+    if (this.property.units[unit]?.kind !== 'vacant') return false;
+    if (!this.org.spend(PROPERTY.fitOut, false)) {
+      this.org.notice(this.clockMinutes, t('Not enough money to fit out the unit.'));
+      return false;
+    }
+    this.property.rent(unit, service);
+    this.org.notice(this.clockMinutes, t('Rented an empty shop: a {name} opens there.', { name: SATELLITE_NAME[service] }));
+    this.syncExtraPlaces();
+    return true;
+  }
+
+  /** Gives a rented unit back. */
+  releaseUnit(unit: number): void {
+    this.property.release(unit, this.org.now);
+    this.syncExtraPlaces();
+  }
+
+  /** Opens a harm reduction point in an ordinary building (level 0); checking only where the law allows it. */
+  openPoint(building: number, service: SatelliteService): boolean {
+    if (service === 'drugChecking' && !this.context.checkingAllowed) {
+      this.org.notice(this.clockMinutes, t('The law does not allow drug checking here.'));
+      return false;
+    }
+    if (!this.org.spend(PROPERTY.point.fitOut, false)) {
+      this.org.notice(this.clockMinutes, t('Not enough money to open a point.'));
+      return false;
+    }
+    this.property.openPoint(building, service);
+    this.org.notice(this.clockMinutes, t('A small {name} point opens in the building.', { name: SATELLITE_NAME[service].replace(/ point$/, '') }));
+    this.syncExtraPlaces();
+    return true;
+  }
+
+  upgradePoint(building: number): boolean {
+    const q = this.property.pointAt(building);
+    if (!q || q.level >= PROPERTY.point.maxLevel) return false;
+    if (!this.org.spend(PROPERTY.point.upgrade, false)) {
+      this.org.notice(this.clockMinutes, t('Not enough money to grow the point.'));
+      return false;
+    }
+    const ok = this.property.upgradePoint(building);
+    if (ok) this.syncExtraPlaces();
+    return ok;
+  }
+
+  closePoint(building: number): void {
+    const q = this.property.closePoint(building);
+    if (q) this.org.notice(this.clockMinutes, t('The {name} point has closed.', { name: SATELLITE_NAME[q.service].replace(/ point$/, '') }));
+    this.syncExtraPlaces();
+  }
+
+  /** Sends another outreach camper out to spot `spot` (an index the world defines). */
+  sendCamper(spot: number): boolean {
+    if (this.property.extraCampers >= PROPERTY.maxExtraCampers || this.property.campers.includes(spot)) return false;
+    if (!this.org.spend(PROPERTY.camperCost, false)) {
+      this.org.notice(this.clockMinutes, t('Not enough money for another camper.'));
+      return false;
+    }
+    this.property.campers.push(spot);
+    this.org.notice(this.clockMinutes, t('Another outreach camper is on the road.'));
+    this.syncExtraPlaces();
+    return true;
+  }
+
+  private syncExtraPlaces(): void {
+    for (const id of Object.keys(this.services) as ServiceId[]) {
+      this.services[id].extraPlaces = this.property.extraPlaces(id) + (this.upgrades[id].level - 1) * INVEST.placesPerLevel;
+    }
+  }
+
+  /** After a saved game is applied: places, rota and crew quality follow the loaded state. */
+  refreshAfterLoad(): void {
+    this.syncExtraPlaces();
+    this.reallocate();
+  }
+
+  /** Puts money into a service: fills its level bar, and at 100% it goes up a level. */
+  invest(id: ServiceId): boolean {
+    const u = this.upgrades[id];
+    if (u.level >= INVEST.maxLevel && u.progress >= 1) return false;
+    if (!this.org.spend(INVEST.cost, false)) {
+      this.org.notice(this.clockMinutes, t('Not enough money to invest.'));
+      return false;
+    }
+    u.progress += INVEST.step;
+    if (u.progress >= 1 && u.level < INVEST.maxLevel) {
+      u.level++;
+      u.progress -= 1;
+      this.org.notice(this.clockMinutes, t('{service} upgraded to level {level}: {places}.', { service: SERVICE_LABEL[id], level: u.level, places: plural(INVEST.placesPerLevel, ['{n} more place', '{n} more places'], ['{n} miejsce więcej', '{n} miejsca więcej', '{n} miejsc więcej']) }));
+      this.syncExtraPlaces();
+    }
+    u.progress = Math.min(1, u.progress);
+    return true;
+  }
+
+  /**
+   * Upkeep for upgraded services; without money the bars drain, and an empty
+   * bar costs a level.
+   */
+  private tickUpgrades(dtMinutes: number): void {
+    const hours = dtMinutes / 60;
+    if (hours <= 0) return;
+    const upkeep = SERVICE_IDS.reduce((n, id) => n + (this.upgrades[id].level - 1), 0) * INVEST.upkeepPerLevelHour * hours;
+    const paid = upkeep <= 0 || this.org.spend(upkeep);
+    for (const id of SERVICE_IDS) {
+      const neglected = this.org.broke || !paid || this.org.closedDown.has(id);
+      if (neglected) this.wear(id, INVEST.decayPerHour * hours);
+    }
+  }
+
+  /** Takes from a service's level bar; an empty bar costs a level. */
+  private wear(id: ServiceId, amount: number): void {
+    const u = this.upgrades[id];
+    u.progress -= amount;
+    if (u.progress >= 0) return;
+    if (u.level > 1) {
+      u.level--;
+      u.progress += 1;
+      this.org.notice(this.clockMinutes, t('{service} went down to level {level}: worn out and short of money.', { service: SERVICE_LABEL[id], level: u.level }));
+      this.syncExtraPlaces();
+    } else u.progress = 0;
+  }
+
+  /**
+   * `base + per x` the average, over the places that can offer it, of how much
+   * of `a` they offer against an even split (1 = even).
+   */
+  private mixAverage(a: Activity, base: number, per: number): number {
+    let sum = 0;
+    let n = 0;
+    for (const id of SERVICE_IDS) {
+      const r = this.mix.relative(id, a, this.context.checkingAllowed);
+      if (r === null) continue;
+      sum += r;
+      n++;
+    }
+    return base + per * (n ? sum / n : 1);
+  }
+
+  /** Changes how much a place spends on one activity (0 to MIX_MAX). */
+  setMix(id: ServiceId, a: Activity, weight: number): void {
+    this.mix.setWeight(id, a, weight);
+  }
+
+  /** Pays a place's one-off set-up for an activity (checking equipment). */
+  setUpMix(id: ServiceId, a: Activity): boolean {
+    const cost = ACTIVITY[a].setup ?? 0;
+    if (this.mix.isSetUp(id, a)) return true;
+    if (!this.org.spend(cost, false)) {
+      this.org.notice(this.clockMinutes, t('Not enough money to set up {activity} here.', { activity: ACTIVITY[a].label.toLowerCase() }));
+      return false;
+    }
+    this.mix.markSetUp(id, a);
+    this.org.notice(this.clockMinutes, t('{activity} is set up at the {service}.', { activity: ACTIVITY[a].label, service: SERVICE_NAMES[id] }));
+    return true;
+  }
+
+  /** Police are keeping their distance (a favour from city hall). */
+  get policeAway(): boolean {
+    return this.org.now < this.policeAwayUntil;
+  }
+
+  /** The place with the longest queue now, and its length. */
+  get busiest(): { service: ServiceId; queue: number } {
+    let best: { service: ServiceId; queue: number } = { service: 'dropIn', queue: 0 };
+    for (const id of SERVICE_IDS) if (this.services[id].queue.length > best.queue) best = { service: id, queue: this.services[id].queue.length };
+    return best;
+  }
+
+  /** A police raid: `arrests` stops that end in arrest, then a crackdown on the street. */
+  raid(arrests: number): void {
+    for (let i = 0; i < arrests; i++) this.emit({ type: 'policeStop', arrest: true });
+    this.triggerEvent('crackdown');
+  }
+
+  /** Uses the favour held: done now, and city hall will ask for a concession later. */
+  askFavour(id: FavourId): boolean {
+    if (this.favours < 1) return false;
+    this.favours--;
+    const [lo, hi] = FAVOUR.askAfterHours;
+    this.concessionAt = this.org.now + (lo + this.random() * (hi - lo)) * 60;
+    if (id === 'funding') this.org.budget += FAVOUR.emergencyFunding;
+    else if (id === 'police') { this.policeAwayUntil = this.org.now + FAVOUR.policeHours * 60; this.applyContext(); }
+    else this.campHoldUntil = this.org.now + FAVOUR.campHoldHours * 60;
+    this.org.notice(this.clockMinutes, t('{done} City hall will want something back.', { done: FAVOURS[id].done }));
+    return true;
+  }
+
+  /** City hall's concession is due now (the big-event pop-up asks it). */
+  get concessionDue(): boolean {
+    return this.concessionAt !== null && this.org.now >= this.concessionAt;
+  }
+
+  /** Agreeing earns the next favour; refusing leaves funders cooler for a while. */
+  answerConcession(id: ConcessionId, agree: boolean): string {
+    this.concessionAt = null;
+    if (!agree) {
+      Object.assign(this.mediaHit, { factor: 0.8, until: this.org.now + 2 * 24 * 60 });
+      return t('City hall will remember: no favours for now, and funders are a little cooler for two days.');
+    }
+    if (id === 'postedOfficer') { this.policePostedUntil = this.org.now + FAVOUR.policeHours * 60; this.applyContext(); }
+    else if (id === 'cleanUp') this.org.spend(FAVOUR.cleanUpCost, false);
+    else this.moveOutreach(FAVOUR.camperOffHours * 60);
+    this.favours = 1;
+    return t('{agree} You have earned a favour with city hall.', { agree: CONCESSIONS[id].agree });
+  }
+
+  /** Partners with a new venue: harm reduction info and water there; the venue pays by the hour. */
+  partnerVenue(i: number): boolean {
+    if (i >= this.vitality.venues || this.vitality.partners.has(i)) return false;
+    if (!this.org.spend(VITALITY.partnerCost, false)) {
+      this.org.notice(this.clockMinutes, t('Not enough money to set up the partnership.'));
+      return false;
+    }
+    this.vitality.partners.add(i);
+    this.org.notice(this.clockMinutes, t('Partnership with the {venue}: harm reduction info and water there, and the venue pays {fee} an hour.', { venue: VENUE_NAMES[VENUE_KINDS[i]], fee: VITALITY.partnerFeePerHour }));
+    return true;
+  }
+
+  /** Asks the club to pay for the stand; it may say no. */
+  proposeClubContract(): boolean {
+    if (this.clubContract) return true;
+    if (this.random() >= HUSTLE.clubAccepts) {
+      this.org.notice(this.clockMinutes, t('The club would not pay for the stand this time. Ask again another night.'));
+      return false;
+    }
+    this.clubContract = true;
+    this.org.notice(this.clockMinutes, t('The club pays {fee} an hour while the stand is open.', { fee: HUSTLE.clubFeePerHour }));
+    return true;
+  }
+
+  endClubContract(): void {
+    if (!this.clubContract) return;
+    this.clubContract = false;
+    this.org.notice(this.clockMinutes, t('The club no longer pays for the stand.'));
+  }
+
+  /** Sells checks at the drug checking service, or stops. */
+  setCommercialChecking(on: boolean): void {
+    if (this.commercialChecking === on) return;
+    this.commercialChecking = on;
+    this.org.notice(this.clockMinutes, on
+      ? t('Drug checking now charges {fee} a check. Fewer people come, and fewer results reach the early warning.', { fee: HUSTLE.checkFee })
+      : t('Drug checking is free again.'));
+  }
+
+  /** A donation drive: staff and volunteers collect for a few hours; donation boxes bring in more meanwhile. */
+  startDonationDrive(): boolean {
+    if (this.driveUntil !== null) return false;
+    if (!this.org.spend(HUSTLE.driveCost, false)) {
+      this.org.notice(this.clockMinutes, t('Not enough money to run a donation drive.'));
+      return false;
+    }
+    this.driveUntil = this.org.now + HUSTLE.driveHours * 60;
+    this.org.notice(this.clockMinutes, t('A donation drive is on for {hours}: collection tins out, donation boxes doubled.', { hours: plural(HUSTLE.driveHours, ['{n} hour', '{n} hours'], ['{n} godzinę', '{n} godziny', '{n} godzin']) }));
+    return true;
+  }
+
+  private endDonationDrive(): void {
+    this.driveUntil = null;
+    // A good name brings more in; a crisis on the street brings less.
+    const pull = this.neighbourhood.reputationPull * (1 - 0.6 * this.crisis);
+    const raised = Math.round((HUSTLE.driveMin + this.random() * (HUSTLE.driveMax - HUSTLE.driveMin)) * Math.max(0.3, Math.min(1.5, pull)));
+    this.org.budget += raised;
+    this.org.notice(this.clockMinutes, t('The donation drive raised {amount}.', { amount: raised }));
+  }
+
+  /** The camper drives to a new spot: outreach closes for `minutes`, then opens again if it was on. */
+  moveOutreach(minutes = 20): void {
+    if (this.movingUntil === null) this.movingWasOn = this.services.outreach.switchedOn;
+    this.movingUntil = this.org.now + minutes;
+    this.setEnabled('outreach', false);
+  }
+
+  get outreachMoving(): boolean {
+    return this.movingUntil !== null;
+  }
+
+  private tickExposure(dtMinutes: number): void {
+    const coldNight = this.events.isActive('coldNight');
+    const kind = exposureNow(this.season, this.clockMinutes, coldNight);
+    // The remedies cost money only while they have work to do.
+    const cost = ((this.warmingBus && kind === 'cold' ? EXPOSURE.warmingBusPerHour : 0) + (this.coolingPoint && kind === 'heat' ? EXPOSURE.coolingPointPerHour : 0)) * (dtMinutes / 60);
+    const paid = cost <= 0 || this.org.spend(cost);
+    const harm = this.exposure.tick(dtMinutes, {
+      season: this.season,
+      clock: this.clockMinutes,
+      coldNight,
+      dropInOpen: this.services.dropIn.status === 'open',
+      outreachOpen: this.services.outreach.status === 'open',
+      warmingBus: this.warmingBus && paid,
+      coolingPoint: this.coolingPoint && paid,
+      // More food, drinks and warmth in the places' mix, fewer people harmed outdoors.
+      deathFactor: 1 + STRESS.medicsDeaths * this.cityStress.medics,
+      mixFactor: Math.max(0.5, 1.2 - 0.2 * this.mixAverage('basics', 0, 1)) * (1 + CRISIS.harmBoost * this.crisis) * (1 + CAMP.harm * this.camp.size),
+    });
+    if (!harm) return;
+    const found = harm.kind === 'cold'
+      ? harm.reached ? t('Outreach staff found someone too cold to wake.') : t('A passer-by found someone too cold to wake.')
+      : harm.reached ? t('Outreach staff found someone collapsed in the heat, badly dehydrated.') : t('A passer-by found someone collapsed in the heat, badly dehydrated.');
+    this.org.notice(this.clockMinutes, `${found} ${harm.died ? t('The ambulance came, but they died.') : t('The ambulance took them to hospital.')}`);
+    this.emit({ type: 'exposure', harm });
+  }
+
+  private tickProperty(dtMinutes: number): void {
+    const cost = this.property.costPerHour * (dtMinutes / 60);
+    const paid = cost <= 0 || this.org.spend(cost);
+    for (const e of this.property.tick(dtMinutes, this.org.now, this.neighbourhood.state.shopTrade, paid)) {
+      if (e.kind === 'closed') this.org.notice(this.clockMinutes, t('A shop on the street has closed. The unit is to let.'));
+      else if (e.kind === 'reopened') this.org.notice(this.clockMinutes, t('A new business has taken an empty shop.'));
+      else if (e.kind === 'pointLost') this.org.notice(this.clockMinutes, t('Rent unpaid: a {name} point has closed.', { name: SATELLITE_NAME[e.service].replace(/ point$/, '') }));
+      else this.org.notice(this.clockMinutes, t('Rent unpaid: the {name} in the rented shop has closed.', { name: SATELLITE_NAME[e.service] }));
+    }
+    if (!paid) this.syncExtraPlaces();
+  }
+
   reopen(id: ServiceId): void {
     this.org.reopen(id, this.clockMinutes);
   }
@@ -448,7 +927,50 @@ export class Simulation {
 
   /** Income per clock hour from the national funding option (grants come on top). */
   get fundingIncome(): number {
-    return ORG.incomePerHour[this.policy.funding] ?? 0;
+    const club = (this.clubContract && this.services.clubHr.status === 'open' ? HUSTLE.clubFeePerHour : 0) + this.vitality.partners.size * VITALITY.partnerFeePerHour;
+    const boxes = this.donationIncome * (this.driveUntil !== null ? HUSTLE.driveBoxes : 1);
+    return (ORG.incomePerHour[this.policy.funding] ?? 0) + boxes + club;
+  }
+
+  /** Services with a donation box out (all, to begin with). */
+  readonly donations = new Set<ServiceId>(SERVICE_IDS);
+
+  /** Small change from donation boxes: a little per staff member on shift, per clock hour. ILLUSTRATIVE. */
+  /** Money moved at each place, not yet shown as a coin. */
+  private readonly flowAcc: Partial<Record<ServiceId, number>> = {};
+
+  /** Adds `amount` to a place's money flow; every unit, in or out, becomes one 'money' event. */
+  private flow(id: ServiceId, amount: number): void {
+    let acc = (this.flowAcc[id] ?? 0) + amount;
+    while (Math.abs(acc) >= MONEY_LUMP) {
+      const lump = Math.sign(acc) * MONEY_LUMP;
+      acc -= lump;
+      this.emit({ type: 'money', service: id, amount: lump });
+    }
+    this.flowAcc[id] = acc;
+  }
+
+  /** Income that accrues by the hour at each place: donation boxes (doubled in a drive) and the club's fee for the stand. */
+  private tickPlaceIncome(dtMinutes: number): void {
+    const hours = dtMinutes / 60;
+    const drive = this.driveUntil !== null ? HUSTLE.driveBoxes : 1;
+    for (const id of this.donations) {
+      const s = this.services[id];
+      if (s.status === 'open') this.flow(id, s.staffOnSite * DONATION_PER_STAFF_HOUR * this.vitality.footfall * drive * hours);
+    }
+    if (this.clubContract && this.services.clubHr.status === 'open') this.flow('clubHr', HUSTLE.clubFeePerHour * hours);
+  }
+
+  get donationIncome(): number {
+    let staff = 0;
+    for (const id of this.donations) if (this.services[id].status === 'open') staff += this.services[id].staffOnSite;
+    // More people out on a thriving street, more in the boxes.
+    return staff * DONATION_PER_STAFF_HOUR * this.vitality.footfall;
+  }
+
+  setDonations(id: ServiceId, on: boolean): void {
+    if (on) this.donations.add(id);
+    else this.donations.delete(id);
   }
 
   applicationContext(): ApplicationContext {
@@ -459,7 +981,19 @@ export class Simulation {
       publicAlerts: this.context.publicAlerts,
       checksDone: this.checking.samples,
       criminalPossession: this.policy.criminalPossession,
+      reputation: (this.org.now < this.mediaHit.until ? this.mediaHit.factor : 1) * this.mixAverage('counselling', 0.9, 0.1) * (1 - CRISIS.grantCut * this.crisis) * (1 - STRESS.policeGrantCut * this.cityStress.police),
     };
+  }
+
+  /** After a media attack: grant chances multiplied by `factor` until `until` (organisation minutes). */
+  readonly mediaHit = { factor: 1, until: 0 };
+
+  /** A media storm: funders hesitate for `nights` nights, and answering it costs the team time and energy. */
+  mediaAttack(factor: number, nights: number, energy: number): void {
+    this.mediaHit.factor = factor;
+    this.mediaHit.until = this.org.now + nights * 24 * 60;
+    for (const m of this.team.members) m.energy = Math.max(0, m.energy - energy);
+    this.reallocate();
   }
 
   /** Starts an event now, from the event feed. */
@@ -494,6 +1028,17 @@ export class Simulation {
       c.patrolStyle = 'posted';
     }
     c.deterrence = 1 - (1 - c.deterrence) * (1 - m.deterrence);
+    // A favour keeps police away; a concession posts an officer by the services.
+    if (this.org.now < this.policePostedUntil) {
+      c.patrol = Math.max(c.patrol, 2);
+      c.patrolStyle = 'posted';
+      c.deterrence = Math.max(c.deterrence, 0.5);
+    }
+    if (this.org.now < this.policeAwayUntil) {
+      c.patrol = Math.min(c.patrol, 1);
+      c.patrolStyle = 'clear';
+      c.deterrence = 0;
+    }
     if (m.closesAt !== null) c.closesAt = c.closesAt === null ? m.closesAt : Math.min(c.closesAt, m.closesAt);
     // Without money there are no analyses or kits.
     if (m.checkingDown || this.org.broke) c.checkingAllowed = false;
@@ -542,7 +1087,10 @@ export class Simulation {
     const s = this.services[responder];
     const canReach = s.enabled && s.staffOnSite > 0;
     // Reaching someone in time uses naloxone or first-aid supplies, which cost money.
-    const helped = canReach && this.random() < reach * (this.mods.kitsOut ? 0.5 : 1) && this.org.spend(ORG.costs.overdoseResponse);
+    // More naloxone and first aid in the place's mix, more people reached in time.
+    const nalox = this.mix.relative(responder, 'naloxone', this.context.checkingAllowed);
+    const mixReach = nalox === null ? 1 : Math.min(1.4, 0.4 + 0.6 * nalox);
+    const helped = canReach && this.random() < reach * mixReach * (this.mods.kitsOut ? 0.5 : 1) && this.org.spend(ORG.costs.overdoseResponse);
     event.acuteHarms++;
     this.health.acuteHarms++;
     if (helped) { event.helped++; this.health.helped++; } else { event.alone++; this.health.alone++; }
@@ -644,10 +1192,13 @@ export class Simulation {
       this.clockMinutes -= DAY_END - DAY_START;
       // A new evening: the calendar moves on and tonight's waves can start again.
       this.calendar.nextNight();
+      this.totals.nights++;
       this.wavesTonight.clear();
     }
     const date = this.calendar.date;
-    const { started, ended } = this.events.tick(this.clockMinutes, dt * this.minuteRate, (id) => SEASONAL_EVENT_RATE[id]?.[date.season] ?? 1);
+    // A crisis brings more trouble: random events come more often.
+    const crisisRate = 1 + CRISIS.eventBoost * this.crisis;
+    const { started, ended } = this.events.tick(this.clockMinutes, dt * this.minuteRate, (id) => (SEASONAL_EVENT_RATE[id]?.[date.season] ?? 1) * crisisRate);
     // Calendar waves: dated happenings start in their window, once a night, and end when it closes.
     for (const w of CALENDAR_WAVES) {
       if (this.wavesTonight.has(w.event) || !w.when(date) || this.clockMinutes < w.from || this.clockMinutes >= w.to) continue;
@@ -703,10 +1254,62 @@ export class Simulation {
       for (const e of started) this.emit({ type: 'eventStarted', event: e });
       for (const e of ended) this.emit({ type: 'eventEnded', event: e });
     }
+    this.tickProperty(dt * this.minuteRate);
+    this.tickUpgrades(dt * this.minuteRate);
+    this.tickExposure(dt * this.minuteRate);
+    this.tickPlaceIncome(dt * this.minuteRate);
+    if (this.driveUntil !== null && this.org.now >= this.driveUntil) this.endDonationDrive();
+    // When a favour's police arrangement or a concession's posted officer ends, the street goes back to the usual.
+    const policeNow = (this.org.now < this.policeAwayUntil ? 1 : 0) + (this.org.now < this.policePostedUntil ? 2 : 0);
+    if (policeNow !== this.policeState) { this.policeState = policeNow; this.applyContext(); }
+    this.camp.tick(dt * this.minuteRate, {
+      season: this.season,
+      shelterOpen: this.services.shelter.status === 'open',
+      outreachOpen: this.services.outreach.status === 'open',
+      crisis: this.crisis,
+      shelterCrowded: Math.min(1, this.services.shelter.queue.length / Math.max(1, this.services.shelter.params.waitingSlots)),
+    });
+    this.cityStress.tick(dt * this.minuteRate, this.camp.size, this.crisis);
+    this.cityStress.sobering = Math.max(0, this.cityStress.sobering - this.vitality.partners.size * VITALITY.partnerEasesSobering * (dt * this.minuteRate) / 60);
+    const s = this.cityStress;
+    const venueChange = this.vitality.tick(dt * this.minuteRate, { crisis: this.crisis, unmet24: this.unmet24, stress: (s.police + s.medics + s.sobering) / 3 });
+    if (venueChange) {
+      const kind = VENUE_KINDS[venueChange > 0 ? this.vitality.venues - 1 : this.vitality.venues];
+      this.org.notice(this.clockMinutes, venueChange > 0
+        ? t('The street is doing well: a new {venue} has opened. More people come out at night, and it could use harm reduction.', { venue: VENUE_NAMES[kind] })
+        : t('Things got worse on the street: the {venue} has closed.', { venue: VENUE_NAMES[kind] }));
+      for (const id of ['passerby', 'club'] as const) this.timers[id] = nextArrival(this.random, this.rate(id));
+    }
+    // The feed hears when the camp crosses a size, either way.
+    const stage = this.camp.size >= CAMP.sweepAt ? 2 : this.camp.size >= 0.3 ? 1 : 0;
+    if (stage !== this.campStage) {
+      const grew = stage > this.campStage;
+      this.campStage = stage;
+      this.org.notice(this.clockMinutes, grew
+        ? t('The camp in the park is growing: about {people} in tents now.', { people: plural(this.camp.people, ['{n} person', '{n} people'], ['{n} osoba', '{n} osoby', '{n} osób']) }) + (stage === 2 ? ' ' + t('Neighbours are complaining to the council.') : '')
+        : t('The camp in the park is shrinking: about {people} left in tents.', { people: plural(this.camp.people, ['{n} person', '{n} people'], ['{n} osoba', '{n} osoby', '{n} osób']) }));
+    }
+    const inCrisis = this.crisis > 0;
+    if (inCrisis !== this.inCrisis) {
+      this.inCrisis = inCrisis;
+      this.org.notice(this.clockMinutes, inCrisis
+        ? t('Crisis on the street: {people} turned away in a day. More trouble, warier funders, more harm outdoors until fewer are turned away.', { people: plural(this.unmet24, ['{n} person', '{n} people'], ['{n} osoba', '{n} osoby', '{n} osób']) })
+        : t('The crisis is easing: fewer people are being turned away.'));
+    }
+    if (this.movingUntil !== null && this.org.now >= this.movingUntil) {
+      this.movingUntil = null;
+      this.setEnabled('outreach', this.movingWasOn);
+      this.org.notice(this.clockMinutes, t('The outreach camper has parked at its new spot.'));
+    }
+    const late = this.clockMinutes >= 24 * 60 && this.clockMinutes < MORNING;
+    if (this.team.tick((dt * this.minuteRate) / 60, late)) this.reallocate();
+    else this.updateSkill();
     if (this.openingChanged()) this.reallocate();
     const income = this.fundingIncome;
     const wasBroke = this.org.broke;
-    if (this.org.tick(this.clockMinutes, dt * this.minuteRate, income, this.paidOnShift, this.applicationContext())) {
+    // Every place that is not closed down costs its running costs, staffed or not.
+    const running = SERVICE_IDS.filter((id) => !this.org.closedDown.has(id)).length * ORG.runningPerPlace;
+    if (this.org.tick(this.clockMinutes, dt * this.minuteRate, income, this.paidOnShift, this.applicationContext(), running)) {
       if (this.org.broke !== wasBroke) {
         // The money warning opens when the budget runs out and closes when it recovers.
         if (this.org.broke) this.triggerEvent('fundsRunningOut');
@@ -771,11 +1374,14 @@ export class Simulation {
         s.inService.delete(visitor);
         const c = this.context;
         // The drug checking service always checks; other services only where the context puts checking.
-        const checks = s.id === 'drugChecking' || c.checkingSites.includes(s.id);
-        if (c.checkingAllowed && checks && this.random() < Math.min(1, ILLUSTRATIVE.checkingShare[s.id] * this.mods.checkingBoost)) this.recordCheck(s.id, visitor);
+        // The place's budget mix scales how often checking happens there (and lets places check that otherwise would not).
+        const checkMix = this.mix.relative(s.id, 'checking', c.checkingAllowed);
+        const checks = s.id === 'drugChecking' || c.checkingSites.includes(s.id) || (checkMix ?? 0) > 0;
+        if (c.checkingAllowed && checks && this.random() < Math.min(1, ILLUSTRATIVE.checkingShare[s.id] * this.mods.checkingBoost * (checkMix ?? 1))) this.recordCheck(s.id, visitor);
         if (s.id !== 'clubHr' && this.profiles.get(visitor)?.injects) {
-          // Kits cost money; with none in stock or no money, the person leaves without them.
-          if (this.mods.kitsOut || !this.org.spend(ORG.costs.sterileKit)) this.unsafeInjecting();
+          // Kits cost money; with none in stock, no money, or kits not in this place's mix, the person leaves without them.
+          const kitMix = this.mix.relative(s.id, 'needles', c.checkingAllowed);
+          if (this.mods.kitsOut || (kitMix !== null && this.random() >= kitMix) || !this.org.spend(ORG.costs.sterileKit)) this.unsafeInjecting();
           else {
             this.health.sterileKits++;
             this.neighbourhood.note('kits');
@@ -823,12 +1429,16 @@ export class Simulation {
     c.samples++;
     if (this.context.turnaround === 'lab' && this.random() >= CHECKING.labCollected.value * this.mods.labCollected) return;
     c.resultsReceived++;
+    // Sold checks: the client pays, but results seldom reach the early warning and there is less advice.
+    const sold = this.commercialChecking && service === 'drugChecking';
+    if (sold) { this.org.budget += HUSTLE.checkFee; this.flow('drugChecking', HUSTLE.checkFee); }
     const substance = this.profiles.get(visitor)?.substance ?? 'none';
     const event = this.events.supplyEventFor(substance);
     if (!event && this.random() >= CHECKING.unexpected.value) return;
     c.unexpected++;
-    if (event && event.detectedAt === null) event.detectedAt = this.clockMinutes;
-    if (this.context.publicAlerts) {
+    const warns = !sold || this.random() < HUSTLE.commercialWarning;
+    if (warns && event && event.detectedAt === null) event.detectedAt = this.clockMinutes;
+    if (warns && this.context.publicAlerts) {
       // The first public alert about a batch sends people to check their own.
       if (event && !event.alerted) {
         event.alerted = true;
@@ -836,21 +1446,29 @@ export class Simulation {
       }
       this.emit({ type: 'alert', service, word: event ? EVENTS[event.id].boardWord : 'ALERT' });
     }
-    if (this.random() < CHECKING.changePlans.value) c.changedPlans++;
+    if (this.random() < CHECKING.changePlans.value * (sold ? HUSTLE.commercialAdvice : 1)) c.changedPlans++;
   }
 
   private admit(s: ServiceModel, visitor: VisitorId, notify: boolean): void {
     s.metrics.attended++;
+    this.totals.helped++;
+    // Every visit costs money and wears the place; unpaid, it wears twice as fast.
+    const mix = this.mix.factors(s.id, this.context.checkingAllowed);
+    const cost = (ORG.visitCost[s.id] ?? 0) * mix.cost;
+    const paid = cost <= 0 || this.org.spend(cost);
+    if (paid && cost > 0) this.flow(s.id, -cost);
+    this.wear(s.id, INVEST.wearPerVisit * (paid ? 1 : 2));
     if (s.id !== 'clubHr') {
       this.neighbourhood.note('attended');
       this.neighbourhood.note('demand');
     }
-    s.inService.set(visitor, range(this.random, s.params.serviceSeconds) * this.mods.serviceTime[s.id]);
+    s.inService.set(visitor, range(this.random, s.params.serviceSeconds) * this.mods.serviceTime[s.id] * mix.time);
     if (notify) this.emit({ type: 'admitted', service: s.id, visitor });
   }
 
   private recordUnmet(s: ServiceModel, visitor: VisitorId, notify = true): void {
     s.metrics.unmetNeed++;
+    this.unmetLog.push(this.org.now);
     const adverse = this.random() < ILLUSTRATIVE.adverse.perUnmetNeed * ILLUSTRATIVE.adverse.serviceContactMultiplier;
     if (adverse) s.metrics.adverse++;
     // Only people who came for the drop-in or the outreach camper are modelled as using nearby afterwards.

@@ -15,6 +15,7 @@
  */
 
 import type { ServiceId } from '../sim/types';
+import { t } from '../i18n';
 
 export type FactorLevel =
   | 'national_law'
@@ -26,13 +27,13 @@ export type FactorLevel =
   | 'service_design_access';
 
 export const LEVEL_LABELS: Record<FactorLevel, string> = {
-  national_law: 'National law',
-  enforcement_policing: 'Policing',
-  health_system_funding: 'Health system and funding',
-  local_government_planning: 'Local government',
-  community_attitudes_stigma: 'Neighbourhood',
-  venue_nightlife: 'Nightlife venue',
-  service_design_access: 'Service design',
+  national_law: t('National law'),
+  enforcement_policing: t('Policing'),
+  health_system_funding: t('Health system and funding'),
+  local_government_planning: t('Local government'),
+  community_attitudes_stigma: t('Neighbourhood'),
+  venue_nightlife: t('Nightlife venue'),
+  service_design_access: t('Service design'),
 };
 
 export type EvidenceType = 'SR' | 'ScR' | 'RCT' | 'cohort' | 'survey' | 'qualitative' | 'evaluation' | 'monitoring' | 'guideline' | 'opinion' | 'statistics' | 'profile' | 'none';
@@ -168,222 +169,252 @@ const C = {
 
 export const FACTORS = [
   {
-    id: 'law', level: 'national_law', label: 'Personal possession', default: 0,
+    id: 'law', level: 'national_law', label: t('Personal possession'), default: 0,
     options: [
       {
-        id: 'criminal', label: 'Criminal offence', summary: 'Fear of arrest keeps some people from reaching services; police stop people for possession.',
+        id: 'criminal', label: t('Criminal offence'), summary: t('Fear of arrest keeps some people from reaching services; police stop people for possession.'),
         effects: { deterrence: 0.25, possessionStops: true },
         evidence: [C.davis, C.wallace, C.graceScr, C.puljevic, C.art62],
       },
       {
-        id: 'discretionary', label: 'Discretionary (small amounts)', summary: 'Prosecutors may drop small-amount cases, but police still detect and stop.',
+        id: 'discretionary', label: t('Discretionary (small amounts)'), summary: t('Prosecutors may drop small-amount cases, but police still detect and stop.'),
         effects: { deterrence: 0.2, possessionStops: true },
         evidence: [C.art62a],
       },
       {
-        id: 'depenalised', label: 'Depenalised (not prosecuted)', summary: 'Still formally an offence, but users are not targeted; no possession stops.',
+        id: 'depenalised', label: t('Depenalised (not prosecuted)'), summary: t('Still formally an offence, but users are not targeted; no possession stops.'),
         effects: { deterrence: 0.12 },
         evidence: [C.hunt, { ref: 'Brunt 2011', type: 'monitoring', note: 'Netherlands: use is not an offence and small amounts are not prosecuted; the national monitoring system (DIMS) grew inside that policy.', source: `${HR}Brunt_2011b drug  information monitoring system in the netherlands DIMS p1` }],
       },
       {
-        id: 'decriminalised', label: 'Decriminalised', summary: 'No criminal stops for possession; less fear on the way to services.',
+        id: 'decriminalised', label: t('Decriminalised'), summary: t('No criminal stops for possession; less fear on the way to services.'),
         effects: { deterrence: 0.08 },
         evidence: [C.hunt, C.singh],
       },
       {
-        id: 'cannabisRegulated', label: 'Cannabis legal, others decriminalised', summary: 'As decriminalised; no separate effect of a legal cannabis market is modelled.',
+        id: 'cannabisRegulated', label: t('Cannabis legal, others decriminalised'), summary: t('As decriminalised; no separate effect of a legal cannabis market is modelled.'),
         effects: { deterrence: 0.08 },
         evidence: [NO_EVIDENCE('The library has no study of regulated legal cannabis markets (only Dutch coffeeshop tolerance and pre-2004 civil-penalty schemes).'), C.hunt],
       },
     ],
   },
   {
-    id: 'checkingLaw', level: 'national_law', label: 'Drug checking itself', default: 1,
+    id: 'checkingLaw', level: 'national_law', label: t('Drug checking itself'), default: 1,
     options: [
       {
-        id: 'prohibited', label: 'Not permitted', summary: 'The stand can only give information; no samples are analysed.',
+        id: 'prohibited', label: t('Not permitted'), summary: t('The stand can only give information; no samples are analysed.'),
         effects: { checkingAllowed: false },
         evidence: [C.bird, C.ondocsin],
       },
       {
-        id: 'grey', label: 'Tolerated, legally unclear', summary: 'Checking happens, but services and visitors carry legal risk.',
+        id: 'grey', label: t('Tolerated, legally unclear'), summary: t('Checking happens, but services and visitors carry legal risk.'),
         effects: { deterrence: 0.05 },
         evidence: [C.bird, C.ondocsin, C.hutton],
       },
       {
-        id: 'labOnly', label: 'Permitted, lab analysis only', summary: 'Samples go to a lab; results come days later and many are never collected.',
+        id: 'labOnly', label: t('Permitted, lab analysis only'), summary: t('Samples go to a lab; results come days later and many are never collected.'),
         effects: { turnaround: 'lab' },
         evidence: [C.kaskela, C.barratt17wait],
       },
       {
-        id: 'licensed', label: 'Licensed or state-run', summary: 'On-site checking with results in minutes.',
+        id: 'licensed', label: t('Licensed or state-run'), summary: t('On-site checking with results in minutes.'),
         effects: {},
         evidence: [C.caldicott, C.mullin, C.verdenik26],
       },
     ],
   },
   {
-    id: 'policing', level: 'enforcement_policing', label: 'Police near services', default: 1,
+    id: 'policing', level: 'enforcement_policing', label: t('Police near services'), default: 1,
     options: [
       {
-        id: 'visible', label: 'Visible deterrence', summary: 'Officers posted near entrances; many people turn back.',
+        id: 'visible', label: t('Visible deterrence'), summary: t('Officers posted near entrances; many people turn back.'),
         effects: { patrol: 2, patrolStyle: 'posted', deterrence: 0.5 },
         evidence: [C.barratt17, C.reed24, C.summers, C.emcdda],
       },
       {
-        id: 'neutral', label: 'Routine patrols', summary: 'One officer walks the street; services are not targeted.',
+        id: 'neutral', label: t('Routine patrols'), summary: t('One officer walks the street; services are not targeted.'),
         effects: { patrol: 1, patrolStyle: 'beat', deterrence: 0.06 },
         evidence: [C.emcdda],
       },
       {
-        id: 'agreement', label: 'Agreement with services', summary: 'Patrols keep clear of entrances by agreement.',
+        id: 'agreement', label: t('Agreement with services'), summary: t('Patrols keep clear of entrances by agreement.'),
         effects: { patrol: 1, patrolStyle: 'clear' },
         evidence: [C.barratt17, C.pocuca, C.falzon, C.emcdda],
       },
     ],
   },
   {
-    id: 'funding', level: 'health_system_funding', label: 'Funding', default: 1,
+    id: 'funding', level: 'health_system_funding', label: t('Funding'), default: 1,
     options: [
       {
-        id: 'volunteer', label: 'Volunteer, no funding', summary: 'Services close at 22:00.',
+        id: 'volunteer', label: t('Volunteer, no funding'), summary: t('Services close at 22:00.'),
         effects: { closesAt: 22 * 60 },
         evidence: [C.bird, C.carroll],
       },
       {
-        id: 'project', label: 'Short-term project', summary: 'Services close at 01:00.',
+        id: 'project', label: t('Short-term project'), summary: t('Services close at 01:00.'),
         effects: { closesAt: 25 * 60 },
         evidence: [C.carroll, C.verdenik26],
       },
       {
-        id: 'stable', label: 'Stable national funding', summary: 'Services stay open all night.',
+        id: 'stable', label: t('Stable national funding'), summary: t('Services stay open all night.'),
         effects: {},
         evidence: [C.verdenik26],
       },
     ],
   },
   {
-    id: 'council', level: 'local_government_planning', label: 'City council', default: 1,
+    id: 'council', level: 'local_government_planning', label: t('City council'), default: 1,
     options: [
       {
-        id: 'opposed', label: 'Opposed', summary: 'No parking permit for the outreach camper; a 23:00 curfew for services.',
+        id: 'opposed', label: t('Opposed'), summary: t('No parking permit for the outreach camper; a 23:00 curfew for services.'),
         effects: { outreachPermitted: false, closesAt: 23 * 60 },
         evidence: [C.hutchison, C.pires, C.karden],
       },
       {
-        id: 'tolerant', label: 'Tolerates services', summary: 'Services operate; no extra support.',
+        id: 'tolerant', label: t('Tolerates services'), summary: t('Services operate; no extra support.'),
         effects: {},
         evidence: [C.hutchison],
       },
       {
-        id: 'supportive', label: 'Supports services', summary: 'Services operate with council backing.',
+        id: 'supportive', label: t('Supports services'), summary: t('Services operate with council backing.'),
         effects: {},
         evidence: [C.pires, C.falzon],
       },
     ],
   },
   {
-    id: 'neighbourhood', level: 'community_attitudes_stigma', label: 'Neighbourhood attitudes', default: 1,
+    id: 'neighbourhood', level: 'community_attitudes_stigma', label: t('Neighbourhood attitudes'), default: 1,
     options: [
       {
-        id: 'opposed', label: 'Opposed to the drop-in', summary: 'Residents gather with placards; stigma makes more people turn back.',
+        id: 'opposed', label: t('Opposed to the drop-in'), summary: t('Residents gather with placards; stigma makes more people turn back.'),
         effects: { placards: 3, deterrence: 0.12 },
         evidence: [C.hutchison, C.coulaud, C.davis, C.falzon, C.measham19],
       },
       {
-        id: 'mixed', label: 'Mixed', summary: 'Some stigma, no open opposition.',
+        id: 'mixed', label: t('Mixed'), summary: t('Some stigma, no open opposition.'),
         effects: { deterrence: 0.04 },
         evidence: [C.caluzzi, C.mcallister],
       },
       {
-        id: 'supportive', label: 'Supportive', summary: 'No added barrier from the neighbourhood.',
+        id: 'supportive', label: t('Supportive'), summary: t('No added barrier from the neighbourhood.'),
         effects: {},
         evidence: [C.caluzzi, C.falzon],
       },
     ],
   },
   {
-    id: 'venue', level: 'venue_nightlife', label: 'Club management', default: 1,
+    id: 'venue', level: 'venue_nightlife', label: t('Club management'), default: 1,
     options: [
       {
-        id: 'refuses', label: 'Refuses the stand', summary: 'The harm reduction stand cannot set up on the terrace.',
+        id: 'refuses', label: t('Refuses the stand'), summary: t('The harm reduction stand cannot set up on the terrace.'),
         effects: { standPermitted: false },
         evidence: [NO_EVIDENCE('The library has no study of venue refusal; festival and club services in it all had organiser consent.')],
       },
       {
-        id: 'hosts', label: 'Hosts the stand', summary: 'The stand sets up on the club terrace.',
+        id: 'hosts', label: t('Hosts the stand'), summary: t('The stand sets up on the club terrace.'),
         effects: {},
         evidence: [C.olsen],
       },
     ],
   },
   {
-    id: 'anonymity', level: 'service_design_access', label: 'Anonymity', default: 1,
+    id: 'anonymity', level: 'service_design_access', label: t('Anonymity'), default: 1,
     options: [
       {
-        id: 'registered', label: 'Name or ID recorded', summary: 'Some people turn back rather than be identified.',
+        id: 'registered', label: t('Name or ID recorded'), summary: t('Some people turn back rather than be identified.'),
         effects: { deterrence: 0.1 },
         evidence: [C.barratt17, C.moon, C.graceScr],
       },
       {
-        id: 'anonymous', label: 'Anonymous', summary: 'No identification asked.',
+        id: 'anonymous', label: t('Anonymous'), summary: t('No identification asked.'),
         effects: {},
         evidence: [C.magnolini, C.verdenik26],
       },
     ],
   },
   {
-    id: 'checkingSite', level: 'service_design_access', label: 'Where checking happens', default: 0,
+    id: 'checkingSite', level: 'service_design_access', label: t('Where checking happens'), default: 0,
     options: [
       {
-        id: 'nightlife', label: 'At the club (nightlife stand)', summary: 'Only the stand on the club terrace checks samples.',
+        id: 'nightlife', label: t('At the club (nightlife stand)'), summary: t('Only the stand on the club terrace checks samples.'),
         effects: { checkingSites: ['clubHr'] },
         evidence: [C.olsen, C.barratt17wait],
       },
       {
-        id: 'fixed', label: 'Fixed site (drop-in centre)', summary: 'The drop-in centre checks samples; a sign stands on its forecourt.',
+        id: 'fixed', label: t('Fixed site (drop-in centre)'), summary: t('The drop-in centre checks samples; a sign stands on its forecourt.'),
         effects: { checkingSites: ['dropIn'] },
         evidence: [C.barratt17wait, C.verdenik26],
       },
       {
-        id: 'fixedNightlife', label: 'Fixed site and club', summary: 'Both the drop-in centre and the club stand check samples.',
+        id: 'fixedNightlife', label: t('Fixed site and club'), summary: t('Both the drop-in centre and the club stand check samples.'),
         effects: { checkingSites: ['dropIn', 'clubHr'] },
         evidence: [C.barratt17wait, C.magnolini],
       },
       {
-        id: 'integrated', label: 'Integrated in harm reduction', summary: 'Drop-in and outreach camper check samples alongside their other work.',
+        id: 'integrated', label: t('Integrated in harm reduction'), summary: t('Drop-in and outreach camper check samples alongside their other work.'),
         effects: { checkingSites: ['dropIn', 'outreach'] },
         evidence: [C.berry, C.karamouzian, C.verdenik26],
       },
       {
-        id: 'mobileNightlife', label: 'Mobile and club', summary: 'The outreach camper and the club stand check samples.',
+        id: 'mobileNightlife', label: t('Mobile and club'), summary: t('The outreach camper and the club stand check samples.'),
         effects: { checkingSites: ['outreach', 'clubHr'] },
         evidence: [C.ondocsin, C.bird],
       },
       {
-        id: 'everywhere', label: 'Fixed, mobile and club', summary: 'All three services check samples.',
+        id: 'everywhere', label: t('Fixed, mobile and club'), summary: t('All three services check samples.'),
         effects: { checkingSites: ['dropIn', 'outreach', 'clubHr'] },
         evidence: [C.berry, C.barratt17wait],
       },
       {
-        id: 'collection', label: 'Collection point, lab analysis', summary: 'Samples go into a lab drop box at the drop-in; results come days later.',
+        id: 'collection', label: t('Collection point, lab analysis'), summary: t('Samples go into a lab drop box at the drop-in; results come days later.'),
         effects: { checkingSites: ['dropIn'], collectionPoint: true, turnaround: 'lab' },
         evidence: [C.verdenik26, C.kaskela, C.barratt17wait],
       },
     ],
   },
   {
-    id: 'alerts', level: 'health_system_funding', label: 'Early warning', default: 0,
+    id: 'alerts', level: 'health_system_funding', label: t('Early warning'), default: 0,
     options: [
       {
-        id: 'none', label: 'No public alerts', summary: 'Results stay with the person who brought the sample.',
+        id: 'none', label: t('No public alerts'), summary: t('Results stay with the person who brought the sample.'),
         effects: {},
         evidence: [C.silcox],
       },
       {
-        id: 'public', label: 'Public alerts', summary: 'A street board flashes an alert when a check finds something unexpected.',
+        id: 'public', label: t('Public alerts'), summary: t('A street board flashes an alert when a check finds something unexpected.'),
         effects: { publicAlerts: true },
         evidence: [C.keygan, C.brunt, C.verdenik26, C.silcox],
+      },
+    ],
+  },
+  {
+    id: 'cannabisMarket', level: 'national_law', label: t('Cannabis and new substances market'), default: 1,
+    options: [
+      {
+        id: 'prohibited', label: t('Prohibited'), summary: t('No cannabis or legal-highs shops on the street.'),
+        effects: {},
+        evidence: [NO_EVIDENCE('Shops are shown on the street only; no effect on use or harm is modelled.')],
+      },
+      {
+        id: 'medical', label: t('Medical cannabis on prescription'), summary: t('A medical cannabis dispensary on the street. No separate effect on use or harm is modelled.'),
+        effects: {},
+        evidence: [NO_EVIDENCE('Shops are shown on the street only; no effect on use or harm is modelled.')],
+      },
+      {
+        id: 'legalHighs', label: t('Legal highs sold openly'), summary: t('A smart shop sells new substances before they are controlled. No separate effect is modelled.'),
+        effects: {},
+        evidence: [NO_EVIDENCE('Shops are shown on the street only; no effect on use or harm is modelled.')],
+      },
+      {
+        id: 'coffeeshops', label: t('Tolerated coffeeshops'), summary: t('A coffeeshop sells cannabis to adults under a tolerance policy, beside a medical dispensary. No separate effect is modelled.'),
+        effects: {},
+        evidence: [NO_EVIDENCE('Shops are shown on the street only; no effect on use or harm is modelled.')],
+      },
+      {
+        id: 'regulated', label: t('Regulated cannabis retail'), summary: t('A licensed cannabis store and a medical dispensary. No separate effect is modelled.'),
+        effects: {},
+        evidence: [NO_EVIDENCE('Shops are shown on the street only; no effect on use or harm is modelled.')],
       },
     ],
   },

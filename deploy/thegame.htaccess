@@ -12,7 +12,13 @@ LimitRequestBody 1024
   RewriteCond %{HTTP_HOST} !^(www\.)?protestkit\.eu$ [NC]
   RewriteRule ^ https://protestkit.eu/thegame/ [R=301,L]
 
-  # A static site: reading only.
+  # The leaderboard endpoint is the one script: GET and POST only, nothing else under api/.
+  RewriteRule ^api/(?!board\.php$) - [F,L]
+  RewriteCond %{REQUEST_METHOD} !^(GET|HEAD|POST)$
+  RewriteRule ^api/board\.php$ - [R=405,L]
+
+  # Everything else is a static site: reading only.
+  RewriteCond %{REQUEST_URI} !/api/board\.php$
   RewriteCond %{REQUEST_METHOD} !^(GET|HEAD)$
   RewriteRule ^ - [R=405,L]
 
@@ -28,7 +34,8 @@ LimitRequestBody 1024
 
   # Probes for things this folder never has.
   RewriteRule (^|/)\. - [F,L]
-  RewriteRule \.(php\d?|phtml|asp|aspx|jsp|cgi|pl|env|ini|log|sql|bak|old|orig|swp|map|ts|md|json|yml|yaml|sh)$ - [F,L,NC]
+  RewriteCond %{REQUEST_URI} !/api/board\.php$
+  RewriteRule \.(php\d?|phtml|asp|aspx|jsp|cgi|pl|env|ini|log|sql|sqlite|bak|old|orig|swp|map|ts|md|json|yml|yaml|sh)$ - [F,L,NC]
 </IfModule>
 
 <IfModule mod_headers.c>

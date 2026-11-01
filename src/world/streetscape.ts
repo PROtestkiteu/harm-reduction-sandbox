@@ -4,7 +4,7 @@ import type { Random } from '../sim/random';
 import { advertPillar, busShelter, manhole, postBox, signPost } from './details';
 import { cableBundle, steamVent, utilityPole, type Steam } from './grit';
 import { add, bench, bin, bollard, box, tree } from './kit';
-import { AMBULANCE_BAY, HALF, LOTS, MAIN_CROSSINGS, ROAD, STREETS, type Rect } from './layout';
+import { AID_BUS, AMBULANCE_BAY, CAMPER_SPOTS, HALF, LOTS, MAIN_CROSSINGS, ROAD, SPOTS, STREETS, type Rect } from './layout';
 import { glowMat, mat } from './materials';
 import { mergeStatic } from './mergeStatic';
 import { solid } from './solids';
@@ -19,7 +19,7 @@ import { car, CAR_COLOURS } from './vehicles';
 
 /** Spans along each street that must stay clear: junctions and zebras. */
 const roads = Object.values(STREETS).map((s) => s.road);
-const doors = Object.values(LOTS).map((l) => l.door);
+const doors = [...Object.values(LOTS).map((l) => l.door), SPOTS.clubDoor, SPOTS.clubQueueHead, SPOTS.standQueueHead, SPOTS.centerDoor, SPOTS.centerQueue];
 
 function blocked(x: number, z: number, pad: number): boolean {
   // Junctions: a point inside two roads' extended corridors.
@@ -28,7 +28,10 @@ function blocked(x: number, z: number, pad: number): boolean {
   if (inX.length && inZ.length) return true;
   if (x > ROAD.x0 - 3 && x < ROAD.x1 + 3 && MAIN_CROSSINGS.some((c) => z > c.z0 - pad && z < c.z1 + pad)) return true;
   if (doors.some((d) => Math.hypot(d.x - x, d.z - z) < 4.5)) return true;
-  if (Math.hypot(AMBULANCE_BAY.x - x, AMBULANCE_BAY.z - z) < 5) return true;
+  // Every kerb spot a camper can park at, and the warming bus's.
+  if (CAMPER_SPOTS.some((c) => Math.hypot(c.x - x, c.z - z) < 6)) return true;
+  if (Math.hypot(AID_BUS.x - x, AID_BUS.z - z) < 7) return true;
+  if (AMBULANCE_BAY && Math.hypot(AMBULANCE_BAY.x - x, AMBULANCE_BAY.z - z) < 5) return true;
   // The original centre block keeps its own hand-placed street.
   return Math.abs(x) < HALF + 1 && Math.abs(z) < HALF + 1;
 }

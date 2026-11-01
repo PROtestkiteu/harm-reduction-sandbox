@@ -2,9 +2,19 @@ import { BufferGeometry, CapsuleGeometry, CylinderGeometry, Float32BufferAttribu
 import { PALETTE } from '../config/palette';
 import { glowMat, vehicleMat } from './materials';
 import { solid } from './solids';
+import { box } from './kit';
 
 const headlight = glowMat(0xfff4dc, 0xfff0d0, 1.4);
 const taillight = glowMat(0x7a2a2a, 0xff5a4a, 1.0);
+
+/**
+ * Daylight (0 to 1) dims driving lights to a faint glow: at full strength in
+ * the sun they read as bulbs and leave sparkles in the wet-street reflections.
+ */
+export function setVehicleDaylight(day: number): void {
+  headlight.emissiveIntensity = 1.4 * (1 - 0.85 * day);
+  taillight.emissiveIntensity = 1.0 * (1 - 0.7 * day);
+}
 const parkedHead = vehicleMat(0xb8b8b0, 2);
 const parkedTail = vehicleMat(0x6a2422, 2);
 const taxiLight = glowMat(0xd8c050, 0xffd860, 0.9);
@@ -312,6 +322,48 @@ export function car(color: number, lit: boolean, kind?: CarKind): Group {
   return g;
 }
 
+/** A police car or an ambulance with a light bar whose lamps flash while it is responding. */
+export interface EmergencyVehicle {
+  group: Group;
+  /** Flashing on or off; call `tick` every frame. */
+  flashing: boolean;
+  tick(dt: number): void;
+}
+
+export function emergencyVehicle(kind: 'police' | 'ambulance'): EmergencyVehicle {
+  const ambulance = kind === 'ambulance';
+  const g = car(ambulance ? 0xe8e4dc : 0x1e2a4a, true, ambulance ? 'van' : 'saloon');
+  g.rotation.z = 0;
+  const p = PROFILES[ambulance ? 'van' : 'saloon'];
+  const roof = roofAt(p, 0) + 0.02;
+  // Livery: a band along each side (yellow-green and red for the ambulance, white and blue for police).
+  const band = vehicleMat(ambulance ? 0x9ac83a : 0xe8e8e4, 1);
+  const band2 = vehicleMat(ambulance ? 0xc83a32 : 0x2a5ab8, 1);
+  for (const x of [-p.width / 2 - 0.01, p.width / 2 + 0.01]) {
+    g.add(box(0.02, 0.22, p.length * 0.8, band, x, 0.62, 0));
+    g.add(box(0.02, 0.1, p.length * 0.8, band2, x, 0.86, 0));
+  }
+  // The light bar: two lamps that alternate when flashing.
+  const left = glowMat(0x1e2a6a, 0x3a6aff, 0);
+  const right = glowMat(ambulance ? 0x6a1e1e : 0x1e2a6a, ambulance ? 0xff3a2a : 0x3a6aff, 0);
+  g.add(box(1.1, 0.12, 0.3, vehicleMat(0x2a2a2e, 1), 0, roof, -0.2));
+  g.add(box(0.5, 0.14, 0.28, left, -0.28, roof + 0.02, -0.2));
+  g.add(box(0.5, 0.14, 0.28, right, 0.28, roof + 0.02, -0.2));
+  let t = 0;
+  const v: EmergencyVehicle = {
+    group: g,
+    flashing: false,
+    tick(dt) {
+      t += dt;
+      const on = v.flashing ? 1 : 0;
+      const phase = Math.floor(t * 6) % 2;
+      left.emissiveIntensity = on * (phase ? 2.4 : 0.15);
+      right.emissiveIntensity = on * (phase ? 0.15 : 2.4);
+    },
+  };
+  return v;
+}
+
 export const CAR_COLOURS = [PALETTE.carRed, PALETTE.carBlue, PALETTE.carGrey, 0x5a6a4a, 0xc8c2b4, 0x6a5a48, 0x3a4a5a];
 
 /** A single-deck city bus: tall, long and nearly flat-fronted, on the same loft as the cars. */
@@ -323,13 +375,61 @@ const BUS: Profile = {
 
 /** Night bus facing +z, pivot at ground centre, about 9 m long, with lit windows. */
 export function bus(): Group {
-  const g = mouldedVehicle('bus', BUS, vehicleMat(0x3f6f9a), true, 0x8a8a86);
-  // Lit saloon: the side glass glows warm from inside.
-  g.traverse((o) => {
-    const m = o as Mesh;
-    if (m.isMesh && m.material === vehicleMat(PALETTE.glassDark, 2)) m.material = BUS_GLASS;
-  });
+  const paint = vehicleMat(0x3f6f9a);
+  const g = mouldedVehicle('bus', BUS, paint, true, 0x8a8a86);
+  // Dark glass split into windows by mullions; the lit saloon shows as a warm
+  // ceiling strip, so the band never washes out to white in daylight.
+  for (let z = -3.6; z <= 3.8; z += 1.25) for (const x of [-1.18, 1.18]) g.add(box(0.05, 1.5, 0.12, paint, x, 1.2, z));
+  g.add(box(2.1, 0.1, 8.0, BUS_GLASS, 0, 2.62, 0));
   g.traverse((o) => { o.castShadow = true; });
   return solid(g, BUS.width, BUS.length + 0.3);
 }
-const BUS_GLASS = glowMat(0x2f3a52, 0xffe9c0, 0.9);
+const BUS_GLASS = glowMat(0x2f3a52, 0xffe2b0, 0.35);
+
+/** Regional train cars: a cab car with a raked nose, and plain middle cars. */
+const TRAIN_CAB: Profile = {
+  length: 16, width: 2.9, axles: [-6.1, 5.6], wheel: 0.46, lean: 0.06,
+  roof: [[8, 1.0], [7.85, 1.9], [7.2, 3.35], [6.4, 3.7], [-7.9, 3.7], [-8, 3.45]],
+  belt: 1.25, glass: [-7.3, 6.9], pillars: [-4.6, -3.4, 2.4, 3.6],
+};
+const TRAIN_CAR: Profile = {
+  length: 16, width: 2.9, axles: [-6.1, 6.1], wheel: 0.46, lean: 0.06,
+  roof: [[8, 3.45], [7.9, 3.7], [-7.9, 3.7], [-8, 3.45]],
+  belt: 1.25, glass: [-7.3, 7.3], pillars: [-4.6, -3.4, 3.4, 4.6],
+};
+const TRAIN_GLASS = glowMat(0x26303c, 0xffe2b0, 0.3);
+
+/**
+ * A regional train facing +z: `cars` cars, cab cars at both ends, pivot at
+ * the ground centre of the first car's middle; cars follow towards -z.
+ */
+export function train(cars: number): Group {
+  const g = new Group();
+  const paint = vehicleMat(0xd8d4c8);
+  const stripe = vehicleMat(0x2e7d6b, 1);
+  const dark = vehicleMat(0x2a2c30, 1);
+  for (let i = 0; i < cars; i++) {
+    const cab = i === 0 || i === cars - 1;
+    const car = mouldedVehicle(cab ? 'trainCab' : 'trainCar', cab ? TRAIN_CAB : TRAIN_CAR, paint, i === 0, 0x3a3a3c);
+    car.traverse((o) => { o.castShadow = true; });
+    // Window mullions on both sides, so the glass reads as a row of windows; a lamp-lit
+    // saloon shows as a warm strip along the ceiling.
+    for (let z = -7; z <= 7; z += 1.5) for (const x of [-1.46, 1.46]) car.add(box(0.05, 1.9, 0.14, paint, x, 1.3, z));
+    car.add(box(2.6, 0.12, 14.2, TRAIN_GLASS, 0, 3.15, 0));
+    // The last cab car runs backwards, nose to the rear.
+    if (i === cars - 1 && i > 0) car.rotation.y = Math.PI;
+    car.position.z = -i * 16.4;
+    // Livery stripe under the windows, skirts over the bogies, a gangway to the next car.
+    car.add(box(2.94, 0.28, 15.2, stripe, 0, 0.92, 0));
+    car.add(box(2.7, 0.45, 15.4, dark, 0, 0.18, 0));
+    if (i < cars - 1) car.add(box(1.6, 2.6, 0.5, dark, 0, 0.7, i === cars - 1 ? 8.1 : -8.1));
+    g.add(car);
+  }
+  // A pantograph on the lead car's roof.
+  const pan = new Group();
+  pan.position.set(0, 3.7, -2);
+  pan.add(box(0.08, 0.9, 0.08, dark, -0.4, 0, 0), box(0.08, 0.9, 0.08, dark, 0.4, 0, 0));
+  pan.add(box(1.6, 0.06, 0.12, dark, 0, 0.9, 0));
+  g.add(pan);
+  return g;
+}

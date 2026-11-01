@@ -1,8 +1,9 @@
 import { GRANTS, ORG, RECRUIT, type ApplicationContext, type GrantId, type GrantReward, type RecruitId } from '../config/organisation';
 import type { Random } from './random';
 import type { ServiceId } from './types';
+import { plural, t } from '../i18n';
 
-const SERVICE_NAMES: Record<ServiceId, string> = { dropIn: 'drop-in centre', outreach: 'outreach camper', clubHr: 'club stand', pharmacy: 'pharmacy and needle exchange', drugChecking: 'drug checking service', shelter: 'shelter and day centre', clinic: 'clinic and A&E' };
+export const SERVICE_NAMES: Record<ServiceId, string> = { dropIn: t('drop-in centre'), outreach: t('outreach camper'), clubHr: t('club stand'), pharmacy: t('pharmacy and needle exchange'), drugChecking: t('drug checking service'), shelter: t('shelter and day centre'), clinic: t('clinic and A&E') };
 
 export interface Recruitment {
   id: RecruitId;
@@ -81,18 +82,18 @@ export class Organisation {
   recruit(id: RecruitId, clock: number): boolean {
     const r = RECRUIT[id];
     if (!this.spend(r.cost, false)) {
-      this.notice(clock, `Not enough money to ${r.label.toLowerCase()}.`);
+      this.notice(clock, id === 'hirePaid' ? t('Not enough money to hire a paid worker.') : t('Not enough money to look for volunteers.'));
       return false;
     }
     this.recruiting.push({ id, readyAt: this.now + r.minutes });
-    this.notice(clock, `${r.label}: started.`);
+    this.notice(clock, id === 'hirePaid' ? t('Hire a paid worker: started.') : t('Look for volunteers: started.'));
     return true;
   }
 
   letGo(clock: number): void {
     if (this.paid <= 0) return;
     this.paid--;
-    this.notice(clock, 'A paid worker was let go.');
+    this.notice(clock, t('A paid worker was let go.'));
   }
 
   /** Clock time (for display) of a deadline held in `now` minutes. */
@@ -111,11 +112,11 @@ export class Organisation {
   reopen(id: ServiceId, clock: number): boolean {
     if (!this.closedDown.has(id) || this.reopening.some((r) => r.id === id)) return false;
     if (!this.spend(ORG.reopen.cost, false)) {
-      this.notice(clock, `Not enough money to relaunch the ${SERVICE_NAMES[id]}.`);
+      this.notice(clock, t('Not enough money to relaunch the {service}.', { service: SERVICE_NAMES[id] }));
       return false;
     }
     this.reopening.push({ id, readyAt: this.now + ORG.reopen.minutes });
-    this.notice(clock, `Relaunching the ${SERVICE_NAMES[id]}: about ${Math.round(ORG.reopen.minutes / 60)} hours.`);
+    this.notice(clock, t('Relaunching the {service}: about {hours}.', { service: SERVICE_NAMES[id], hours: plural(Math.round(ORG.reopen.minutes / 60), ['{n} hour', '{n} hours'], ['{n} godzinę', '{n} godziny', '{n} godzin']) }));
     return true;
   }
 
@@ -124,11 +125,11 @@ export class Organisation {
     const state = this.applications[id];
     if (state.status === 'pending' || state.status === 'approved') return false;
     if (!this.spend(g.fee, false)) {
-      this.notice(clock, `Not enough money to apply for ${g.label.toLowerCase()}.`);
+      this.notice(clock, t('Not enough money to apply for {grant}.', { grant: g.label.toLowerCase() }));
       return false;
     }
     this.applications[id] = { status: 'pending', decidesAt: this.now + g.minutes };
-    this.notice(clock, `Applied for ${g.label.toLowerCase()}.`);
+    this.notice(clock, t('Applied for {grant}.', { grant: g.label.toLowerCase() }));
     return true;
   }
 
@@ -137,12 +138,12 @@ export class Organisation {
    * shift, volunteer churn, recruits arriving, applications decided.
    * Returns true when the staff pool changed (the simulation reallocates).
    */
-  tick(clock: number, dtMinutes: number, incomePerHour: number, paidOnShift: number, ctx: ApplicationContext): boolean {
+  tick(clock: number, dtMinutes: number, incomePerHour: number, paidOnShift: number, ctx: ApplicationContext, runningPerHour = 0): boolean {
     const hours = dtMinutes / 60;
     this.now += dtMinutes;
     const wasBroke = this.broke;
     const before = this.paid * 1000 + this.volunteers;
-    const delta = (incomePerHour + this.grantIncome) * hours - paidOnShift * ORG.wagePerHour * hours;
+    const delta = (incomePerHour + this.grantIncome) * hours - (paidOnShift * ORG.wagePerHour + runningPerHour) * hours;
     this.budget += delta;
     this.flow += delta;
     this.flowMinutes += dtMinutes;
@@ -158,7 +159,7 @@ export class Organisation {
       this.churnCarry -= 1;
       if (this.random() < 0.8) {
         this.volunteers--;
-        this.notice(clock, 'A volunteer could not stay on.');
+        this.notice(clock, t('A volunteer could not stay on.'));
       }
     }
 
@@ -168,20 +169,24 @@ export class Organisation {
       this.recruiting.splice(i, 1);
       const opt = RECRUIT[r.id];
       let found = 0;
-      for (let t = 0; t < opt.tries; t++) if (this.random() < opt.chance) found++;
+      for (let i = 0; i < opt.tries; i++) if (this.random() < opt.chance) found++;
       if (r.id === 'hirePaid') this.paid += found;
       else this.volunteers += found;
-      this.notice(clock, found ? `${found} ${r.id === 'hirePaid' ? 'new paid worker' : found > 1 ? 'new volunteers' : 'new volunteer'} joined.` : `${opt.label}: nobody suitable this time.`);
+      this.notice(clock, found
+        ? r.id === 'hirePaid'
+          ? plural(found, ['{n} new paid worker joined.', '{n} new paid worker joined.'], ['Dołącza nowa osoba na etacie.', 'Dołączają {n} nowe osoby na etacie.', 'Dołącza {n} nowych osób na etacie.'])
+          : plural(found, ['{n} new volunteer joined.', '{n} new volunteers joined.'], ['Dołącza nowa osoba do wolontariatu.', 'Do wolontariatu dołączają {n} nowe osoby.', 'Do wolontariatu dołącza {n} nowych osób.'])
+        : r.id === 'hirePaid' ? t('Hire a paid worker: nobody suitable this time.') : t('Look for volunteers: nobody suitable this time.'));
     }
 
     for (const id of Object.keys(this.applications) as GrantId[]) {
       const state = this.applications[id];
       if (state.status !== 'pending' || this.now < state.decidesAt) continue;
       const g = GRANTS[id];
-      const approved = this.random() < g.chance(ctx);
+      const approved = this.random() < g.chance(ctx) * (ctx.reputation ?? 1);
       this.applications[id] = approved ? { status: 'approved', at: clock } : { status: 'declined', at: clock };
       if (approved) this.reward(g.reward);
-      this.notice(clock, approved ? `${g.label}: approved. ${g.rewardText}.` : `${g.label}: declined. You can apply again.`, approved ? g.reward.unlock : undefined);
+      this.notice(clock, approved ? t('{grant}: approved. {reward}.', { grant: g.label, reward: g.rewardText }) : t('{grant}: declined. You can apply again.', { grant: g.label }), approved ? g.reward.unlock : undefined);
     }
 
     if (!this.broke && this.budget <= 0) this.broke = true;
@@ -194,16 +199,16 @@ export class Organisation {
       if (this.brokeMinutes < c.minutes || this.closedDown.has(c.service)) continue;
       this.closedDown.add(c.service);
       closures = true;
-      this.notice(clock, `The ${SERVICE_NAMES[c.service]} has closed down: no money for ${Math.round(c.minutes / 60)} hours. It stays closed until relaunched.`);
+      this.notice(clock, t('The {service} has closed down: no money for {hours}. It stays closed until relaunched.', { service: SERVICE_NAMES[c.service], hours: plural(Math.round(c.minutes / 60), ['{n} hour', '{n} hours'], ['{n} godzinę', '{n} godziny', '{n} godzin']) }));
     }
     for (let i = this.reopening.length - 1; i >= 0; i--) {
       if (this.now < this.reopening[i].readyAt) continue;
       const { id } = this.reopening.splice(i, 1)[0];
       this.closedDown.delete(id);
       closures = true;
-      this.notice(clock, `The ${SERVICE_NAMES[id]} has reopened.`);
+      this.notice(clock, t('The {service} has reopened.', { service: SERVICE_NAMES[id] }));
     }
-    if (this.broke !== wasBroke) this.notice(clock, this.broke ? 'Out of money: paid staff stay home, kits and checks stop until the budget recovers.' : 'Budget recovered: paid staff can work again.');
+    if (this.broke !== wasBroke) this.notice(clock, this.broke ? t('Out of money: paid staff stay home, kits and checks stop until the budget recovers.') : t('Budget recovered: paid staff can work again.'));
     return closures || this.broke !== wasBroke || before !== this.paid * 1000 + this.volunteers;
   }
 
@@ -215,7 +220,7 @@ export class Organisation {
     if (r.equipment) this.equipment = true;
   }
 
-  private notice(at: number, text: string, unlock?: GrantReward['unlock']): void {
+  notice(at: number, text: string, unlock?: GrantReward['unlock']): void {
     const n: OrgNotice = { at, text, unlock };
     this.log.unshift(n);
     this.log.length = Math.min(this.log.length, 6);

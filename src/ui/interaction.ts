@@ -1,4 +1,4 @@
-import { Vector3, type OrthographicCamera } from 'three';
+import { Vector3, type Object3D, type OrthographicCamera } from 'three';
 import type { Crowd } from '../agents/crowd';
 import type { CameraRig } from '../render/cameraRig';
 import type { Highlight } from '../render/highlight';
@@ -8,7 +8,10 @@ import type { World } from '../world/scene';
 import type { Hud } from './hud';
 import { describePerson } from './personInfo';
 import { ScenePicker, sameTarget, type Target } from './picking';
+import { cityBuilding } from '../world/cityBuildings';
+import type { BuildingCard } from './hud';
 import type { SelectionMarker } from './selection';
+import { t } from '../i18n';
 
 export interface InteractionDeps {
   canvas: HTMLCanvasElement;
@@ -22,10 +25,18 @@ export interface InteractionDeps {
   highlight: Highlight;
   marker: SelectionMarker;
   reducedMotion: MediaQueryList;
+  /** The card for an ordinary building: its figures and the neighbourhood's. */
+  buildingCard(id: number): BuildingCard;
+  /** The card for a police car or ambulance: why it is out; undefined once it has gone. */
+  vehicleCard(id: number): BuildingCard | undefined;
+  /** Right-click or long press: open the action menu for what is now selected. */
+  openMenu(x: number, y: number): void;
 }
 
 const PERSON_ZOOM = 2.6;
 const TAP_SLOP = 10;
+/** How long a still finger must rest before it counts as a long press. */
+const LONG_PRESS_MS = 520;
 const DOUBLE_MS = 380;
 const DOUBLE_SLOP = 28;
 
@@ -48,6 +59,7 @@ export class Interaction {
   /** Title of a person who has left, kept so the card can say so. */
   private leftTitle: string | null = null;
   private hover: Target | null = null;
+  private placing: { targets: () => readonly { id: number; root: Object3D }[]; onPick(id: number): void; onEnd(): void } | null = null;
   private pointer: { x: number; y: number; coarse: boolean } | null = null;
   private hoverPending = false;
   private tooltipText = '';
@@ -61,12 +73,14 @@ export class Interaction {
   private pinch = 0;
   private wheel = 0;
   private suppressTap = false;
+  private longPress = 0;
+  private rightDown: { x: number; y: number } | null = null;
   private lastTap: { time: number; x: number; y: number; target: Target | null } | null = null;
   private readonly scratch = new Vector3();
   private readonly sceneRadius: number;
 
   constructor(private readonly d: InteractionDeps) {
-    this.picker = new ScenePicker(d.world.locations, d.crowd);
+    this.picker = new ScenePicker(d.world.locations, d.crowd, () => d.world.pickables(), () => d.world.vehicles());
     const size = d.world.frame.full.getSize(new Vector3());
     this.sceneRadius = Math.hypot(size.x, size.z) / 2;
     this.tooltip = document.createElement('div');
@@ -113,6 +127,19 @@ export class Interaction {
       highlight.setSelected(null);
       hud.showLocation(null);
       if (wasFocused) rig.release();
+    } else if (target.kind === 'building') {
+      const b = cityBuilding(target.id)!;
+      marker.show({ footprint: { x: (b.x0 + b.x1) / 2, z: (b.z0 + b.z1) / 2, rx: (b.x1 - b.x0) / 2 + 0.4, rz: (b.z1 - b.z0) / 2 + 0.4 } });
+      highlight.setSelected(null);
+      hud.showBuilding(this.d.buildingCard(target.id));
+      if (wasFocused) rig.release();
+    } else if (target.kind === 'vehicle') {
+      const card = this.d.vehicleCard(target.id);
+      if (!card) { this.select(null); return; }
+      marker.show(null);
+      highlight.setSelected(this.vehicleRoot(target.id));
+      hud.showBuilding(card);
+      if (wasFocused) rig.release();
     } else if (target.kind === 'location') {
       marker.show(world.locations[target.id]);
       // A red rim around the whole building, like a selected person.
@@ -134,6 +161,7 @@ export class Interaction {
   toggleFocus(): void {
     const sel = this.selection;
     if (!sel) return;
+    if (sel.kind === 'building' || sel.kind === 'vehicle') return;
     if (sel.kind === 'location') {
       if (this.d.rig.focused) this.d.rig.release();
       else this.focusLocation(sel.id);
@@ -184,7 +212,7 @@ export class Interaction {
       const p = crowd.person(sel.id);
       if (!p) {
         // They walked off the edge: keep the card open, saying so, and drop the follow.
-        const title = this.leftTitle ?? 'Person';
+        const title = this.leftTitle ?? t('Person');
         this.selection = null;
         highlight.setSelected(null);
         if (this.following && rig.focused) rig.release();
@@ -210,9 +238,20 @@ export class Interaction {
     return r;
   }
 
+  private vehicleRoot(id: number): Object3D | null {
+    return this.d.world.vehicles().find((v) => v.id === id)?.root ?? null;
+  }
+
   /** Slower refresh alongside the HUD: card text and tooltip status. */
   refresh(): void {
     this.updatePersonCard();
+    const sel = this.selection;
+    if (sel?.kind === 'vehicle') {
+      // Gone off the map: let go of it. Otherwise keep its card current.
+      const card = this.d.vehicleCard(sel.id);
+      if (!card) this.select(null);
+      else this.d.hud.showBuilding(card);
+    }
     if (this.pointer && !this.orbit) this.hoverPending = true;
   }
 
@@ -235,27 +274,34 @@ export class Interaction {
       this.hover = target;
       let root = null;
       if (target?.kind === 'person') root = this.d.crowd.person(target.id)?.root ?? null;
+      else if (target?.kind === 'vehicle') root = this.vehicleRoot(target.id);
       else if (target?.kind === 'location') {
         const loc = this.d.world.locations[target.id].root;
         root = target.part === 'stand' ? loc.getObjectByName('clubStand') ?? loc : loc;
       }
       if (this.d.highlight.setHover(root)) this.redraw = true;
-      this.d.canvas.style.cursor = this.orbit ? 'grabbing' : target ? 'pointer' : 'default';
+      this.d.canvas.style.cursor = this.orbit ? 'grabbing' : this.placing ? 'crosshair' : target ? 'pointer' : 'default';
     }
     if (!target) this.updateTooltip();
   }
 
   private updateTooltip(): void {
-    const t = this.hover;
+    const hov = this.hover;
     const ptr = this.pointer;
     // Two lines: a name in capitals tinted by status or role, then the detail.
     let tip: { title: string; body: string; status?: string; role?: string } | null = null;
-    if (t && ptr && !ptr.coarse && !this.orbit) {
-      if (t.kind === 'location') {
-        const loc = this.d.hud.tooltipFor(t.id, t.part);
+    if (hov && ptr && !ptr.coarse && !this.orbit) {
+      if (hov.kind === 'location') {
+        const loc = this.d.hud.tooltipFor(hov.id, hov.part);
         if (loc) tip = { title: loc.title, body: loc.body, status: loc.status };
+      } else if (hov.kind === 'building') {
+        const card = this.d.buildingCard(hov.id);
+        tip = { title: card.title, body: card.said };
+      } else if (hov.kind === 'vehicle') {
+        const card = this.d.vehicleCard(hov.id);
+        if (card) tip = { title: card.title, body: card.said };
       } else {
-        const p = this.d.crowd.person(t.id);
+        const p = this.d.crowd.person(hov.id);
         if (p) {
           const card = describePerson(p);
           tip = { title: card.title, body: card.activity, role: card.role };
@@ -289,6 +335,18 @@ export class Interaction {
 
   // Input wiring
 
+  /** Selects what is under a point and opens its action menu there. */
+  private menuAt(x: number, y: number, coarse: boolean): void {
+    const target = this.picker.pick(x, y, this.d.camera, this.d.frame(), coarse);
+    this.select(target?.kind === 'location' ? { kind: 'location', id: target.id } : target);
+    this.d.openMenu(x, y);
+  }
+
+  private cancelLongPress(): void {
+    if (this.longPress) clearTimeout(this.longPress);
+    this.longPress = 0;
+  }
+
   private bindPointer(): void {
     const c = this.d.canvas;
     c.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -296,6 +354,18 @@ export class Interaction {
       if (e.pointerType === 'touch') {
         this.touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
         c.setPointerCapture(e.pointerId);
+        this.cancelLongPress();
+        if (this.touches.size === 1) {
+          // A finger held still is the touch twin of a right-click.
+          const at = { x: e.clientX, y: e.clientY };
+          this.longPress = window.setTimeout(() => {
+            this.longPress = 0;
+            this.down = null;
+            this.drag = null;
+            this.suppressTap = true;
+            this.menuAt(at.x, at.y, true);
+          }, LONG_PRESS_MS);
+        }
         if (this.touches.size === 2) {
           // Second finger: drag orbits and pinch zooms; the gesture is no longer a tap or pan.
           this.down = null;
@@ -308,6 +378,7 @@ export class Interaction {
       }
       if (e.button === 2) {
         c.setPointerCapture(e.pointerId);
+        this.rightDown = { x: e.clientX, y: e.clientY };
         this.startOrbit({ x: e.clientX, y: e.clientY }, e.pointerId);
         return;
       }
@@ -337,6 +408,7 @@ export class Interaction {
         // A press that travels becomes a pan: the ground follows the pointer.
         if (!drag.active && Math.hypot(e.clientX - this.down!.x, e.clientY - this.down!.y) > TAP_SLOP) {
           drag.active = true;
+          this.cancelLongPress();
           c.setPointerCapture(e.pointerId);
           this.d.canvas.style.cursor = 'grabbing';
           this.tooltipText = '';
@@ -356,6 +428,7 @@ export class Interaction {
       }
     });
     const lift = (e: PointerEvent, cancelled: boolean) => {
+      if (e.pointerType === 'touch') this.cancelLongPress();
       if (this.drag?.id === e.pointerId) {
         const panned = this.drag.active;
         this.drag = null;
@@ -379,6 +452,10 @@ export class Interaction {
         }
       } else if (this.orbit && this.orbit.pointer === e.pointerId) {
         this.endOrbit();
+        // A right-click that did not turn the view opens the action menu.
+        const r = this.rightDown;
+        this.rightDown = null;
+        if (!cancelled && r && Math.hypot(e.clientX - r.x, e.clientY - r.y) <= TAP_SLOP) this.menuAt(e.clientX, e.clientY, false);
         return;
       }
       const down = this.down;
@@ -446,7 +523,33 @@ export class Interaction {
   }
 
   /** A tap or click: select what is under it; a second one on the same thing zooms in. */
+  /**
+   * Placement mode: the next click on the map picks one of `targets` (by its
+   * id), or cancels when it lands anywhere else. Escape cancels too.
+   */
+  startPlacing(targets: () => readonly { id: number; root: Object3D }[], onPick: (id: number) => void, onEnd: () => void): void {
+    this.placing?.onEnd();
+    this.placing = { targets, onPick, onEnd };
+    this.d.canvas.style.cursor = 'crosshair';
+    this.redraw = true;
+  }
+
+  private endPlacing(): void {
+    const p = this.placing;
+    this.placing = null;
+    this.d.canvas.style.cursor = 'default';
+    this.redraw = true;
+    p?.onEnd();
+  }
+
   private activate(x: number, y: number, coarse: boolean): void {
+    if (this.placing) {
+      const id = this.picker.pickAmong(x, y, this.d.camera, this.d.frame(), this.placing.targets());
+      const pick = this.placing.onPick;
+      this.endPlacing();
+      if (id !== null) pick(id);
+      return;
+    }
     const target = this.picker.pick(x, y, this.d.camera, this.d.frame(), coarse);
     const now = performance.now();
     const last = this.lastTap;
@@ -489,6 +592,7 @@ export class Interaction {
       const onLabel = e.target instanceof HTMLElement && e.target.classList.contains('loc-label');
       const onOtherControl = e.target instanceof HTMLButtonElement && !onLabel;
       if (e.key === 'Escape') {
+        if (this.placing) { this.endPlacing(); return; }
         if (this.selection || this.leftTitle !== null) this.select(null);
         else if (this.d.rig.focused) {
           this.d.rig.release();

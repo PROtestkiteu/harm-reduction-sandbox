@@ -101,7 +101,7 @@ export class ScenePipeline {
         skyHorizon: { value: srgb(PALETTE.skyHorizon) },
         skyShift: { value: 0 },
         hoverColor: { value: srgb(0xfff2dc) },
-        selectColor: { value: srgb(0xf0603e) },
+        selectColor: { value: srgb(0xfff2dc) },
       },
       vertexShader: FULLSCREEN,
       fragmentShader: /* glsl */ `
@@ -287,13 +287,14 @@ export class ScenePipeline {
     this.composite.uniforms.wetness.value = wetness;
   }
 
-  /** Blends the sky from day (`day` 1) through dusk to deep night (`night` 1); exposure eases off in daylight. */
+  /** Blends the sky from day (`day` 1) through dusk to deep night (`night` 1); exposure eases off in daylight and lifts at night. */
   setNight(night: number, day = 0): void {
     const u = this.composite.uniforms;
     (u.skyTop.value as Vector3).lerpVectors(SKY.top, SKY.topDay, day).lerp(SKY.topNight, night);
     (u.skyMid.value as Vector3).lerpVectors(SKY.mid, SKY.midDay, day).lerp(SKY.midNight, night);
     (u.skyHorizon.value as Vector3).lerpVectors(SKY.horizon, SKY.horizonDay, day).lerp(SKY.horizonNight, night);
-    u.exposure.value = 1.25 - 0.1 * day;
+    // A little more exposure after dark, so night stays readable on dim screens and headsets.
+    u.exposure.value = 1.25 - 0.1 * day + 0.25 * night;
   }
 
   /** Slides the distant skyline with the camera's orbit (azimuth in degrees). */

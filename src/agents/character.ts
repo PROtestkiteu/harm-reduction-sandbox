@@ -297,7 +297,12 @@ export interface Appearance {
  * Everyday groups in a city at night. People who use drugs are among all of
  * them; none of these marks anyone as a user, and nothing here caricatures.
  */
-export type Archetype = 'everyday' | 'raver' | 'tourist' | 'worker' | 'office' | 'student' | 'older' | 'unhoused';
+export type Archetype =
+  | 'everyday' | 'raver' | 'tourist' | 'worker' | 'office' | 'student' | 'older' | 'unhoused'
+  // Alternative scenes, after Leipzig's: techno in black (Distillery, Institut fuer Zukunft),
+  // punk and hardcore (Conne Island, Connewitz), goth (Wave-Gotik-Treffen), hip-hop,
+  // queer rave nights and metal.
+  | 'technoBlack' | 'punk' | 'goth' | 'hiphop' | 'queerRave' | 'metal';
 
 export interface Kit {
   longCoat?: boolean;
@@ -323,6 +328,12 @@ const STYLE_TOPS: Record<Archetype, readonly number[]> = {
   student: [0x8a3a4a, 0x3a5a8a, 0x5a7a4a, 0xd0a040, 0x6a6a72],
   older: [0x6a5a48, 0x5a6066, 0x7a6a5a, 0x4a5240],
   unhoused: [0x5a4a3a, 0x4a4a40, 0x5a5048, 0x3a4240, 0x6a5a40],
+  technoBlack: [0x121214, 0x18181c, 0x1e1e22, 0x101012],
+  punk: [0x1a1a1a, 0x8a1a1a, 0x2a3a2a, 0x3a2a2a, 0xd8d0c0],
+  goth: [0x0e0e10, 0x1a1020, 0x2a0e18, 0x141418],
+  hiphop: [0xe8e8e0, 0x2a4a8a, 0xc8a020, 0x8a2a2a, 0x2a2a2a, 0x5a8a4a],
+  queerRave: [0x1a1a1e, 0xff4fa8, 0xb8ff4a, 0x9a6aff, 0x4ff0ff],
+  metal: [0x141416, 0x1e1e20, 0x2a2a2c],
 };
 const STYLE_BOTTOMS: Record<Archetype, readonly number[]> = {
   everyday: BOTTOM_COLOURS,
@@ -333,7 +344,15 @@ const STYLE_BOTTOMS: Record<Archetype, readonly number[]> = {
   student: [0x2f3445, 0x4a4552, 0x3d4f5f],
   older: [0x3a3a40, 0x4a4238, 0x5a5048],
   unhoused: [0x3a3632, 0x4a4238, 0x2e3030],
+  technoBlack: [0x121214, 0x18181c],
+  punk: [0x1a1a1a, 0x2a2a3a, 0x3a3020, 0x4a2a2a],
+  goth: [0x0e0e10, 0x14141a, 0x1a1018],
+  hiphop: [0x2a3a5a, 0x3a3a3a, 0x5a5a52, 0x1e1e22],
+  queerRave: [0x121214, 0x1a1a22, 0x2a1a2a],
+  metal: [0x2a3a5a, 0x1a1a1e, 0x3a4a6a],
 };
+/** Dyed colours for the scenes that wear them. */
+const DYED = [0xd84a9a, 0x4ad86a, 0x3a7ad8, 0xe8e0a8, 0xd83a2a, 0x9a4ad8];
 const NEON = [0xff4fa8, 0x4ff0ff, 0xb8ff4a, 0xf0e040];
 
 /** Everyday variety for anyone in the scene. Nothing marks a person by behaviour. */
@@ -356,18 +375,32 @@ export function randomAppearance(random: Random, staff = false, style: Archetype
       kit.bedroll = r() < 0.5;
       break;
     case 'everyday': kit.longCoat = r() < 0.15; break;
+    case 'technoBlack': kit.longCoat = r() < 0.3; kit.hood = r() < 0.2 ? 'up' : undefined; break;
+    case 'punk': kit.longCoat = false; break;
+    case 'goth': kit.longCoat = r() < 0.75; break;
+    case 'hiphop': kit.hood = r() < 0.4 ? 'up' : 'down'; kit.bucketHat = r() < 0.25; break;
+    case 'queerRave': kit.glow = pick(random, NEON); kit.bucketHat = r() < 0.2; break;
+    case 'metal': kit.longCoat = r() < 0.2; break;
   }
   const look: Appearance = {
     style: s,
     kit,
     skin: pick(random, SKIN_TONES),
-    hair: pick(random, s === 'older' ? [0x9a9a9a, 0xc8c8c0, 0x6a6a68, 0x3b2a22] : HAIR_COLOURS),
+    hair: pick(random, s === 'older' ? [0x9a9a9a, 0xc8c8c0, 0x6a6a68, 0x3b2a22]
+      : s === 'punk' || s === 'queerRave' ? (r() < 0.65 ? DYED : HAIR_COLOURS)
+      : s === 'goth' || s === 'technoBlack' ? (r() < 0.6 ? [0x0e0e10, 0x1a1414] : r() < 0.5 ? [0xe8e4d8] : HAIR_COLOURS)
+      : HAIR_COLOURS),
     top: pick(random, STYLE_TOPS[s]),
     bottom: pick(random, STYLE_BOTTOMS[s]),
     accent: pick(random, ACCENT_COLOURS),
     height: 1.55 + random() * 0.35,
     build: 0.9 + random() * 0.25,
-    hairStyle: (s === 'older' && random() < 0.35 ? 7 : Math.floor(random() * 7)) as Appearance['hairStyle'],
+    // Long hair for metal and goth, shaved sides and short cuts for punk and techno.
+    hairStyle: (s === 'older' && random() < 0.35 ? 7
+      : s === 'metal' ? (r() < 0.75 ? 1 : 6)
+      : s === 'goth' ? pick(random, [1, 6, 1, 3])
+      : s === 'punk' || s === 'technoBlack' ? pick(random, [3, 5, 3, 0])
+      : Math.floor(random() * 7)) as Appearance['hairStyle'],
     girth: Math.pow(random(), 1.6),
     skirt: !staff && s !== 'worker' && s !== 'unhoused' && random() < 0.2,
     beard: !staff && random() < (s === 'unhoused' || s === 'older' ? 0.4 : 0.2),

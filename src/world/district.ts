@@ -170,49 +170,40 @@ export function buildBlockGround(scene: Object3D, random: Random): void {
  */
 export function buildOutskirts(scene: Object3D, random: Random): WindowBank {
   const g = add(scene, new Group());
-  add(g, box(1200, 0.4, 1200, mat(PALETTE.soilDark), 0, -0.4, 0));
-  add(g, box(1200, 0.02, 1200, mat(0x2a2724), 0, -0.02, 0));
+  // Ground layers sit at least a centimetre apart, never level with each other,
+  // so the depth test cannot flicker between them as the camera moves:
+  // base -0.10; the city beyond -0.08 to -0.035 (see cityBeyond.ts); outskirts
+  // roads -0.005; the district from 0.01 up.
+  // City surface, not open ground: what shows between blocks reads as streets and yards.
+  add(g, box(1200, 0.4, 1200, mat(0x36373a), 0, -0.5, 0));
   // Streets carry on into the outskirts as dark roads.
-  add(g, box(ROAD.x1 - ROAD.x0, 0.02, 320, mat(0x2e2f31), (ROAD.x0 + ROAD.x1) / 2, -0.01, 0));
-  for (const s of [STREETS.north, STREETS.south]) add(g, box(320, 0.02, s.road.z1 - s.road.z0, mat(0x2e2f31), 0, -0.01, (s.road.z0 + s.road.z1) / 2));
-  add(g, box(STREETS.east.road.x1 - STREETS.east.road.x0, 0.02, 320, mat(0x2e2f31), (STREETS.east.road.x0 + STREETS.east.road.x1) / 2, -0.01, 0));
-
-  const lit = Array.from({ length: 6 }, () => glowMat(0x1e1c1a, PALETTE.warmWindow, 0.6));
-  const wall = [mat(0x3a3430), mat(0x433a33), mat(0x34312e)];
-  const trim = mat(0x2a2623);
-  const dark = mat(0x1c1e22);
-  const skipRoad = (x: number, z: number, w: number, d: number) =>
-    Object.values(STREETS).some((s) => {
-      const q = s.road;
-      return x + w / 2 > q.x0 - 2.5 && x - w / 2 < q.x1 + 2.5 && z + d / 2 > q.z0 - 2.5 && z - d / 2 < q.z1 + 2.5;
-    });
-  let k = 0;
-  for (let gx = -78; gx <= 78; gx += 12) {
-    for (let gz = -78; gz <= 78; gz += 12) {
-      const ring = Math.max(Math.abs(gx), Math.abs(gz));
-      if (ring <= DISTRICT + 2) continue;
-      const w = 7 + random() * 4;
-      const d = 7 + random() * 4;
-      if (skipRoad(gx, gz, w, d)) continue;
-      // In front of the district (+x/+z, towards the camera) stay low.
-      const front = gx > DISTRICT || gz > DISTRICT;
-      const h = front ? 1.5 + random() * 2 : 7 + random() * (ring > 60 ? 20 : 13);
-      add(g, box(w, h, d, wall[k++ % wall.length], gx, 0, gz));
-      add(g, box(w + 0.25, 0.3, d + 0.25, trim, gx, h, gz));
-      if (front) continue;
-      // Floors of windows on the faces the camera can see, a share of them lit.
-      for (let y = 3.2; y < h - 0.8; y += 3) add(g, box(w + 0.1, 0.1, d + 0.1, trim, gx, y - 0.5, gz));
-      for (let y = 1.4; y < h - 1.2; y += 3) {
-        for (let a = -w / 2 + 1; a < w / 2 - 0.6; a += 1.6) {
-          add(g, box(0.7, 1.0, 0.06, random() < 0.3 ? lit[k++ % lit.length] : dark, gx + a, y, gz + d / 2 + 0.03));
-        }
-        for (let a = -d / 2 + 1; a < d / 2 - 0.6; a += 1.6) {
-          add(g, box(0.06, 1.0, 0.7, random() < 0.3 ? lit[k++ % lit.length] : dark, gx + w / 2 + 0.03, y, gz + a));
-        }
-      }
-      if (random() < 0.5) add(g, box(1.6, 1.0, 1.6, trim, gx + (random() - 0.5) * (w - 2), h + 0.3, gz + (random() - 0.5) * (d - 2)));
+  add(g, box(ROAD.x1 - ROAD.x0, 0.02, 320, mat(0x2e2f31), (ROAD.x0 + ROAD.x1) / 2, -0.025, 0));
+  for (const s of [STREETS.north, STREETS.south]) add(g, box(320, 0.02, s.road.z1 - s.road.z0, mat(0x2e2f31), 0, -0.025, (s.road.z0 + s.road.z1) / 2));
+  add(g, box(STREETS.east.road.x1 - STREETS.east.road.x0, 0.02, 320, mat(0x2e2f31), (STREETS.east.road.x0 + STREETS.east.road.x1) / 2, -0.025, 0));
+  // Out of the district the roads keep their pavements (a kerb above the road)
+  // and dashed centre lines, so they read as streets, not empty bands.
+  const pave = mat(PALETTE.pavement);
+  const line = mat(0xd8d0b8);
+  const outside = (a: number, b: number) => [[-160, -DISTRICT - 2], [DISTRICT + 2, 160]].map(([lo, hi]) => [Math.max(lo, a), Math.min(hi, b)]).filter(([lo, hi]) => hi > lo);
+  for (const r of [ROAD, STREETS.east.road]) {
+    const x0 = r.x0;
+    const x1 = r.x1;
+    for (const [z0, z1] of outside(-160, 160)) {
+      add(g, box(2.5, 0.16, z1 - z0, pave, x0 - 1.25, -0.1, (z0 + z1) / 2));
+      add(g, box(2.5, 0.16, z1 - z0, pave, x1 + 1.25, -0.1, (z0 + z1) / 2));
+      for (let z = z0 + 2; z < z1 - 2; z += 6) add(g, box(0.14, 0.004, 2.6, line, (x0 + x1) / 2, -0.007, z));
     }
   }
+  for (const r of [STREETS.north.road, STREETS.south.road]) {
+    for (const [x0, x1] of outside(-160, 160)) {
+      add(g, box(x1 - x0, 0.16, 2.5, pave, (x0 + x1) / 2, -0.1, r.z0 - 1.25));
+      add(g, box(x1 - x0, 0.16, 2.5, pave, (x0 + x1) / 2, -0.1, r.z1 + 1.25));
+      for (let x = x0 + 2; x < x1 - 2; x += 6) add(g, box(2.6, 0.004, 0.14, line, x, -0.007, (r.z0 + r.z1) / 2));
+    }
+  }
+
+  // The city beyond (river, park, towers, old town) is built in cityBeyond.ts.
+  const lit = Array.from({ length: 1 }, () => glowMat(0x1e1c1a, PALETTE.warmWindow, 0.6));
   mergeStatic(g);
   return new WindowBank(lit, 0.7, 0.05, random);
 }

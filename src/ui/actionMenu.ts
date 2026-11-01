@@ -1,0 +1,85 @@
+/** One entry: its label, whether it can be used now, and what it does. */
+export interface MenuItem {
+  label: string;
+  disabled: boolean;
+  run(): void;
+}
+
+/**
+ * A small action menu at the pointer: right-click with a mouse, long press on
+ * touch. It lists the same actions as the numbered replies in the column, so
+ * the two never drift apart. Keyboard: arrows move, Enter runs, Escape closes.
+ */
+export class ActionMenu {
+  private readonly root: HTMLDivElement;
+  private readonly title: HTMLElement;
+  private readonly list: HTMLUListElement;
+  private returnFocus: HTMLElement | null = null;
+
+  constructor(parent: HTMLElement) {
+    this.root = document.createElement('div');
+    this.root.className = 'action-menu';
+    this.root.hidden = true;
+    this.title = document.createElement('p');
+    this.title.className = 'action-menu-title';
+    this.list = document.createElement('ul');
+    this.list.setAttribute('role', 'menu');
+    this.root.append(this.title, this.list);
+    parent.append(this.root);
+
+    this.root.addEventListener('keydown', (e) => {
+      const items = [...this.list.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];
+      const i = items.indexOf(document.activeElement as HTMLButtonElement);
+      if (e.key === 'Escape') { e.preventDefault(); this.close(); }
+      else if (e.key === 'ArrowDown') { e.preventDefault(); items[(i + 1) % items.length]?.focus(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); items[(i - 1 + items.length) % items.length]?.focus(); }
+      else if (e.key === 'Tab') this.close();
+    });
+    // Anything outside closes it; capture so it closes before the canvas reacts.
+    window.addEventListener('pointerdown', (e) => {
+      if (!this.root.hidden && !this.root.contains(e.target as Node)) this.close();
+    }, true);
+    window.addEventListener('resize', () => this.close());
+  }
+
+  get open(): boolean {
+    return !this.root.hidden;
+  }
+
+  show(x: number, y: number, title: string, items: readonly MenuItem[]): void {
+    if (!items.length) return this.close();
+    this.returnFocus = document.activeElement as HTMLElement | null;
+    this.title.textContent = title;
+    this.list.replaceChildren(...items.map((item) => {
+      const li = document.createElement('li');
+      li.setAttribute('role', 'none');
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.setAttribute('role', 'menuitem');
+      b.textContent = item.label;
+      b.disabled = item.disabled;
+      b.addEventListener('click', () => {
+        this.close();
+        item.run();
+      });
+      li.append(b);
+      return li;
+    }));
+    this.root.hidden = false;
+    // Keep it on screen: flip left or up when it would run off an edge.
+    const w = this.root.offsetWidth;
+    const h = this.root.offsetHeight;
+    const left = x + w + 8 > window.innerWidth ? Math.max(8, x - w) : x;
+    const top = y + h + 8 > window.innerHeight ? Math.max(8, y - h) : y;
+    this.root.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
+    this.list.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true });
+  }
+
+  close(): void {
+    if (this.root.hidden) return;
+    this.root.hidden = true;
+    const back = this.returnFocus;
+    this.returnFocus = null;
+    if (back && document.contains(back)) back.focus({ preventScroll: true });
+  }
+}

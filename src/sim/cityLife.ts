@@ -13,6 +13,7 @@
 
 import { POPULATIONS, presence, type PopulationId } from '../config/populations';
 import type { CalendarDate } from './calendar';
+import { t } from '../i18n';
 
 /** Who a passer-by is: one of the populations, drawn by time of night, weekday, season and date. */
 export type PasserbyKind = PopulationId;
@@ -20,7 +21,7 @@ export type PasserbyKind = PopulationId;
 export type CrimeType = 'bikeTheft' | 'carBreakIn' | 'pickpocket' | 'graffiti' | 'scuffle';
 
 export const CRIME_LABELS: Record<CrimeType, string> = {
-  bikeTheft: 'bike thefts', carBreakIn: 'car break-ins', pickpocket: 'pickpocketing', graffiti: 'graffiti', scuffle: 'scuffles at closing',
+  bikeTheft: t('bike thefts'), carBreakIn: t('car break-ins'), pickpocket: t('pickpocketing'), graffiti: t('graffiti'), scuffle: t('scuffles at closing'),
 };
 
 /** What the city tells the crowd and world. Sites are names the crowd maps to places. */

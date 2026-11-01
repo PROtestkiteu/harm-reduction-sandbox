@@ -10,7 +10,7 @@ import type { LocationVisual } from '../world/buildings';
  */
 export class SelectionMarker {
   readonly group = new Group();
-  private readonly material = mat(0xc84a32);
+  private readonly material = mat(0xedb300);
   private readonly corners: Group[] = [];
 
   constructor() {
@@ -24,7 +24,7 @@ export class SelectionMarker {
     this.group.visible = false;
   }
 
-  show(visual: LocationVisual | null): void {
+  show(visual: Pick<LocationVisual, 'footprint'> | null): void {
     this.group.visible = !!visual;
     if (!visual) return;
     const { x, z, rx, rz } = visual.footprint;

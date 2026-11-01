@@ -6,9 +6,10 @@ import { acUnit, antenna, drainpipe, roofVent, waterTank, windowTrim } from './d
 import { awning, balcony, graffiti, laundryLine, lightPool, poster, rubbish, shopSign, shutters } from './dressing';
 import { askew, bladeSign, boardedWindow, neonSign, roofClutter, scaffolding, wallClutter } from './grit';
 import { add, box, gableRoof, mansard, tree } from './kit';
-import { BLOCKS, HALF, LOTS, type Rect } from './layout';
+import { BLOCKS, HALF, VENUE_RECTS, type Rect } from './layout';
 import { glowMat, mat } from './materials';
 import { mergeStatic } from './mergeStatic';
+import { registerBuilding } from './cityBuildings';
 
 /**
  * Ordinary city fabric for the new blocks: rows of flats and shops on a grid
@@ -26,12 +27,13 @@ const DOORS = [0x3a2a22, 0x2f4a3a, 0x4a2a2a, 0x2a3442];
 const LOT = 9.5;
 const ALLEY = 1.6;
 
+/** The footpath from the centre square to the east street: people walk it, so nothing is built on it. */
+const PATH_EAST: Rect = { x0: HALF, x1: 22, z0: -6, z1: -2 };
 const overlaps = (a: Rect, b: Rect, pad = 0) => a.x0 < b.x1 + pad && a.x1 > b.x0 - pad && a.z0 < b.z1 + pad && a.z1 > b.z0 - pad;
 
 /** True when `q` stands between the camera and a service building or its entrance. */
 function inFrontOfService(q: Rect): boolean {
-  return Object.values(LOTS).some((l) => {
-    const r = l.rect;
+  return VENUE_RECTS.some((r) => {
     const ahead = { x0: r.x0 - 2, x1: r.x1 + 16, z0: r.z0 - 2, z1: r.z1 + 16 };
     return overlaps(q, ahead) && (q.x0 >= r.x1 - 0.5 || q.z0 >= r.z1 - 0.5);
   });
@@ -218,9 +220,13 @@ function building(g: Object3D, q: Rect, h: number, wall: number, windows: MeshLa
 function fillBlock(scene: Object3D, block: Rect, windows: MeshLambertMaterial[], random: Random): void {
   const g = add(scene, new Group());
   const centre: Rect = { x0: -HALF, x1: HALF, z0: -HALF, z1: HALF };
-  const span = (a: number, b: number) => Math.max(1, Math.floor((b - a + ALLEY) / (LOT + ALLEY)));
-  const nx = span(block.x0, block.x1);
-  const nz = span(block.z0, block.z1);
+  // Lot widths differ per block and per launch, so the same block is cut into
+  // two wide buildings one time and four narrow ones the next.
+  const lotX = LOT * (0.7 + random() * 0.65);
+  const lotZ = LOT * (0.7 + random() * 0.65);
+  const span = (a: number, b: number, lot: number) => Math.max(1, Math.floor((b - a + ALLEY) / (lot + ALLEY)));
+  const nx = span(block.x0, block.x1, lotX);
+  const nz = span(block.z0, block.z1, lotZ);
   const cw = (block.x1 - block.x0 - ALLEY * (nx + 1)) / nx;
   const cd = (block.z1 - block.z0 - ALLEY * (nz + 1)) / nz;
   for (let i = 0; i < nx; i++) {
@@ -231,9 +237,23 @@ function fillBlock(scene: Object3D, block: Rect, windows: MeshLambertMaterial[],
         z0: block.z0 + ALLEY + j * (cd + ALLEY),
         z1: block.z0 + ALLEY + j * (cd + ALLEY) + cd,
       };
-      if (overlaps(q, centre) || Object.values(LOTS).some((l) => overlaps(q, l.rect, 1.2))) continue;
-      if (random() < 0.12) {
-        // An occasional yard with trees instead of a building.
+      // A lot that touches a service's plot (or the centre square) is trimmed to
+      // its largest free part rather than dropped, so no block is left bare.
+      let r: Rect | null = q;
+      for (const taken of [centre, PATH_EAST, ...VENUE_RECTS]) {
+        if (!r || !overlaps(r, taken, 0.8)) continue;
+        const parts: Rect[] = [
+          { ...r, x1: Math.min(r.x1, taken.x0 - 0.8) },
+          { ...r, x0: Math.max(r.x0, taken.x1 + 0.8) },
+          { ...r, z1: Math.min(r.z1, taken.z0 - 0.8) },
+          { ...r, z0: Math.max(r.z0, taken.z1 + 0.8) },
+        ].filter((p) => p.x1 - p.x0 >= 4.5 && p.z1 - p.z0 >= 4.5);
+        r = parts.sort((a, b) => (b.x1 - b.x0) * (b.z1 - b.z0) - (a.x1 - a.x0) * (a.z1 - a.z0))[0] ?? null;
+      }
+      if (!r) continue;
+      q.x0 = r.x0; q.x1 = r.x1; q.z0 = r.z0; q.z1 = r.z1;
+      if (random() < 0.07) {
+        // Now and then a yard with a tree instead of a building.
         add(g, box(q.x1 - q.x0, 0.13, q.z1 - q.z0, mat(PALETTE.grassDark), (q.x0 + q.x1) / 2, 0, (q.z0 + q.z1) / 2));
         add(g, tree((Math.floor(random() * 3)) as 0 | 1 | 2, 0.9 + random() * 0.3)).position.set((q.x0 + q.x1) / 2, 0.13, (q.z0 + q.z1) / 2);
         continue;
@@ -247,9 +267,10 @@ function fillBlock(scene: Object3D, block: Rect, windows: MeshLambertMaterial[],
       const bz = (q.z0 + q.z1) / 2;
       const frame = add(g, new Group());
       frame.position.set(bx, 0, bz);
-      frame.rotation.y = (random() - 0.5) * 0.016;
+      frame.rotation.y = (random() - 0.5) * 0.03;
       const local: Rect = { x0: q.x0 - bx, x1: q.x1 - bx, z0: q.z0 - bz, z1: q.z1 - bz };
       building(frame, local, h, WALLS[Math.floor(random() * WALLS.length)], windows, random);
+      registerBuilding(q.x0, q.x1, q.z0, q.z1, h);
       // Washing strung across the alley to the next building along.
       if (!low && h > 6 && i < nx - 1 && random() < 0.35) {
         const z = q.z0 + 1 + random() * (cd - 2);
@@ -261,11 +282,56 @@ function fillBlock(scene: Object3D, block: Rect, windows: MeshLambertMaterial[],
 }
 
 /**
+ * A block of the same detailed fabric anywhere in the city beyond the
+ * district: lots, alleys and buildings between `minH` and `maxH` tall. No
+ * service lots to avoid out there. Buildings register for picking.
+ */
+export function fillCityBlock(scene: Object3D, block: Rect, windows: MeshLambertMaterial[], random: Random, minH: number, maxH: number, merge = true): void {
+  const g = add(scene, new Group());
+  // Lot widths differ per block and per launch, so the same block is cut into
+  // two wide buildings one time and four narrow ones the next.
+  const lotX = LOT * (0.7 + random() * 0.65);
+  const lotZ = LOT * (0.7 + random() * 0.65);
+  const span = (a: number, b: number, lot: number) => Math.max(1, Math.floor((b - a + ALLEY) / (lot + ALLEY)));
+  const nx = span(block.x0, block.x1, lotX);
+  const nz = span(block.z0, block.z1, lotZ);
+  const cw = (block.x1 - block.x0 - ALLEY * (nx + 1)) / nx;
+  const cd = (block.z1 - block.z0 - ALLEY * (nz + 1)) / nz;
+  for (let i = 0; i < nx; i++) {
+    for (let j = 0; j < nz; j++) {
+      const q: Rect = {
+        x0: block.x0 + ALLEY + i * (cw + ALLEY),
+        x1: block.x0 + ALLEY + i * (cw + ALLEY) + cw,
+        z0: block.z0 + ALLEY + j * (cd + ALLEY),
+        z1: block.z0 + ALLEY + j * (cd + ALLEY) + cd,
+      };
+      if (random() < 0.1) {
+        add(g, box(q.x1 - q.x0, 0.13, q.z1 - q.z0, mat(PALETTE.grassDark), (q.x0 + q.x1) / 2, 0, (q.z0 + q.z1) / 2));
+        add(g, tree((Math.floor(random() * 3)) as 0 | 1 | 2, 0.9 + random() * 0.3)).position.set((q.x0 + q.x1) / 2, 0.13, (q.z0 + q.z1) / 2);
+        continue;
+      }
+      const storeys = Math.max(1, Math.round((minH + random() * (maxH - minH)) / 3));
+      const h = 3.2 + (storeys - 1) * 3 + (random() - 0.3) * 0.6;
+      const bx = (q.x0 + q.x1) / 2;
+      const bz = (q.z0 + q.z1) / 2;
+      const frame = add(g, new Group());
+      // Out in the city buildings sit a little off the grid and a degree or two askew.
+      frame.position.set(bx + (random() - 0.5) * 0.8, 0, bz + (random() - 0.5) * 0.8);
+      frame.rotation.y = (random() - 0.5) * 0.06;
+      building(frame, { x0: q.x0 - bx, x1: q.x1 - bx, z0: q.z0 - bz, z1: q.z1 - bz }, h, WALLS[Math.floor(random() * WALLS.length)], windows, random);
+      registerBuilding(q.x0, q.x1, q.z0, q.z1, h);
+    }
+  }
+  // The caller may merge many blocks together instead.
+  if (merge) mergeStatic(g);
+}
+
+/**
  * Infill for the eight new blocks. All of them share one bank of window
  * lights, so the whole district's ordinary windows cost a dozen materials.
  */
 export function buildInfill(scene: Object3D, random: Random): WindowBank[] {
   const windows = Array.from({ length: 12 }, (_, i) => glowMat(PALETTE.glassDark, i % 5 === 4 ? PALETTE.coolWindow : PALETTE.warmWindow, 0.2));
-  for (const [name, block] of Object.entries(BLOCKS)) if (name !== 'cm') fillBlock(scene, block, windows, random);
+  for (const block of Object.values(BLOCKS)) fillBlock(scene, block, windows, random);
   return [new WindowBank(windows, 1.0, 0.05, random)];
 }

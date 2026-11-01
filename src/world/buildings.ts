@@ -1,11 +1,12 @@
-import { CylinderGeometry, ConeGeometry, Group, Mesh, PointLight, Vector3 } from 'three';
+import { CylinderGeometry, ConeGeometry, Group, Mesh, PointLight, Vector3, type Object3D } from 'three';
 import { PALETTE } from '../config/palette';
 import type { LocationId } from '../sim/types';
 import type { Random } from '../sim/random';
 import { DoorState, WindowBank, approach } from './animated';
 import { add, bench, bin, box, cylinder, planter, signBoard, stanchion } from './kit';
 import { acUnit, antenna, crateStack, drainpipe, fireEscape, flowerPot, railing, roofVent, satelliteDish, solarPanel, stringLights, windowTrim } from './details';
-import { CAMPER, CENTER, CLUB, SPOTS } from './layout';
+import { CAMPER_FRAME, HOME_CAMPER as CAMPER, HOME_CENTER as CENTER, HOME_CLUB as CLUB, HOME_SPOTS as SPOTS, VENUE_FRAME, toWorld, type Frame } from './layout';
+import { roofClutter, wallClutter } from './grit';
 import { glowMat, mat, vehicleMat } from './materials';
 import { dynamic, mergeStatic } from './mergeStatic';
 import { mouldedVehicle, type Profile } from './vehicles';
@@ -19,16 +20,45 @@ export interface LocationVisual {
   readonly labelBelow?: boolean;
   /** Ground footprint centre and radius for the selection ring. */
   readonly footprint: { x: number; z: number; rx: number; rz: number };
+  /** A sign on the roof that drops in when the service opens (vans and stands). */
+  readonly roofSign?: Object3D;
   /** 0 = service switched off and packed away, 1 = staffed and lit. */
   setServiceLevel(level: number): void;
   openDoor(): void;
   update(dt: number, time: number): void;
 }
 
+/**
+ * Puts a design built in its own coordinates (`body`) where its frame says,
+ * under a named root, and carries its label and selection ring along.
+ */
+function placed<T extends LocationVisual>(v: T, f: Frame): T {
+  const root = new Group();
+  root.name = v.root.name;
+  v.root.name = '';
+  const origin = toWorld(f, { x: 0, z: 0 });
+  v.root.position.set(origin.x, v.root.position.y, origin.z);
+  v.root.rotation.y = f.rot;
+  root.add(v.root);
+  const label = toWorld(f, { x: v.labelAnchor.x, z: v.labelAnchor.z });
+  const ring = toWorld(f, v.footprint);
+  const quarter = Math.abs(Math.sin(f.rot)) > 0.5;
+  return {
+    ...v,
+    root,
+    labelAnchor: new Vector3(label.x, v.labelAnchor.y, label.z),
+    footprint: { x: ring.x, z: ring.z, rx: quarter ? v.footprint.rz : v.footprint.rx, rz: quarter ? v.footprint.rx : v.footprint.rz },
+  };
+}
+
 // Drop-in centre: two-storey plaster building, warm storefront, green canopy,
 // covered waiting benches beside the entrance.
 
 export function buildDropIn(random: Random): LocationVisual {
+  return placed(designDropIn(random), VENUE_FRAME.dropIn);
+}
+
+function designDropIn(random: Random): LocationVisual {
   const root = new Group();
   root.name = 'dropIn';
   const { x0, x1, z0, z1 } = CENTER;
@@ -136,6 +166,9 @@ export function buildDropIn(random: Random): LocationVisual {
   light.position.set(SPOTS.centerDoor.x + 1.5, 2.4, z1 + 1.4);
   root.add(light);
 
+  // Roof and wall clutter, like the rest of the city.
+  roofClutter(root, (CENTER.x0 + CENTER.x1) / 2, (CENTER.z0 + CENTER.z1) / 2, CENTER.x1 - CENTER.x0 - 3, CENTER.z1 - CENTER.z0 - 3, 7.22, random);
+  add(root, wallClutter(CENTER.z1 - CENTER.z0, 6.8, random), Math.PI / 2).position.set(CENTER.x1, 0.12, (CENTER.z0 + CENTER.z1) / 2);
   mergeStatic(root);
   const door = new DoorState();
   let level = 0;
@@ -167,6 +200,10 @@ export function buildDropIn(random: Random): LocationVisual {
 // door, roped queue lane, and a pop-up harm reduction stand on the terrace.
 
 export function buildClub(random: Random): LocationVisual & { setVenueBeat(level: number): void } {
+  return placed(designClub(random), VENUE_FRAME.club);
+}
+
+function designClub(random: Random): LocationVisual & { setVenueBeat(level: number): void } {
   const root = new Group();
   root.name = 'club';
   const { x0, x1, z0, z1, height } = CLUB;
@@ -271,6 +308,9 @@ export function buildClub(random: Random): LocationVisual & { setVenueBeat(level
   add(root, antenna(2.2)).position.set(cx + 2.2, height + 0.36, cz - 4.2);
   for (let i = 0; i < 3; i++) add(root, box(0.5, 0.7, 0.05, mat([0xd06aa8, 0x58c2b8, 0xd2b36a][i]), -13.25 + i * 1.6, 2.25, z1 + 0.04));
 
+  // Roof and wall clutter, like the rest of the city.
+  roofClutter(root, (CLUB.x0 + CLUB.x1) / 2, (CLUB.z0 + CLUB.z1) / 2, CLUB.x1 - CLUB.x0 - 2, CLUB.z1 - CLUB.z0 - 3, CLUB.height + 0.3, random);
+  add(root, wallClutter(CLUB.x1 - CLUB.x0, CLUB.height, random)).position.set((CLUB.x0 + CLUB.x1) / 2, 0.12, CLUB.z1);
   mergeStatic(root);
   const door = new DoorState();
   // Back walls: high vents, a fire exit and rooftop access ladder.
@@ -324,7 +364,46 @@ const CAMPER_BODY: Profile = {
   opening: [2.9 - CAMPER_MID, 4.9 - CAMPER_MID],
 };
 
-export function buildCamper(): LocationVisual {
+/** The camper visual plus its parts: the van as designed (to copy for extra campers) and the group that drives it off. */
+export type CamperVisual = LocationVisual & {
+  template: Group;
+  drive: Group;
+  /** Moves the van, its label and its ring to where CAMPER_FRAME now says. */
+  relocate(): void;
+};
+
+/**
+ * The outreach camper, parked where its frame says: a pivot at the kerb spot,
+ * turned so the counter faces the pavement, holding a `drive` group (moved
+ * when it has to leave) that holds the van as designed.
+ */
+export function buildCamper(): CamperVisual {
+  const v = designCamper();
+  const template = v.root;
+  template.name = '';
+  const root = new Group();
+  root.name = 'outreach';
+  const drive = add(root, new Group());
+  drive.add(template);
+  template.position.set(template.position.x - CAMPER_FRAME.home.x, template.position.y, -CAMPER_FRAME.home.z);
+  const homeLabel = v.labelAnchor.clone();
+  const homeRing = { ...v.footprint };
+  const labelAnchor = new Vector3();
+  const footprint = { ...homeRing };
+  const relocate = () => {
+    root.position.set(CAMPER_FRAME.x, 0, CAMPER_FRAME.z);
+    root.rotation.y = CAMPER_FRAME.rot;
+    const label = toWorld(CAMPER_FRAME, { x: homeLabel.x, z: homeLabel.z });
+    labelAnchor.set(label.x, homeLabel.y, label.z);
+    const ring = toWorld(CAMPER_FRAME, homeRing);
+    const quarter = Math.abs(Math.sin(CAMPER_FRAME.rot)) > 0.5;
+    Object.assign(footprint, { x: ring.x, z: ring.z, rx: quarter ? homeRing.rz : homeRing.rx, rz: quarter ? homeRing.rx : homeRing.rz });
+  };
+  relocate();
+  return { ...v, root, template, drive, labelAnchor, footprint, relocate };
+}
+
+function designCamper(): LocationVisual {
   const root = new Group();
   root.name = 'outreach';
   root.position.set(CAMPER.x, 0.02, 0);
@@ -351,7 +430,7 @@ export function buildCamper(): LocationVisual {
 
   // Roof sign readable over the awning.
   const sign = signBoard('OUTREACH', 2.7, 0.5, '#fff6e4', '#3c7a72', 0.4);
-  add(root, sign.mesh, Math.PI / 2).position.set(0.7, 3.18, 3.9);
+  add(root, dynamic(sign.mesh), Math.PI / 2).position.set(0.7, 3.18, 3.9);
 
   // Hatch hinged at the top of the window, swings up to shade the counter.
   const hatch = add(root, dynamic(new Group()));
@@ -386,6 +465,7 @@ export function buildCamper(): LocationVisual {
   return {
     id: 'outreach',
     root,
+    roofSign: sign.mesh,
     labelAnchor: new Vector3(CAMPER.x - 0.6, 0.1, CAMPER.z1 + 2.2),
     labelBelow: true,
     footprint: { x: CAMPER.x + 1.2, z: zMid + 0.6, rx: 2.8, rz: 4.2 },

@@ -1,0 +1,3 @@
+Downtown City MegaKit [Standard] and Stylized Nature MegaKit [Standard] by Quaternius (https://quaternius.com).
+Licence: CC0 1.0 Universal, public domain dedication (https://creativecommons.org/publicdomain/zero/1.0/).
+A small selection, simplified and re-encoded by scripts/build-kits.mjs.

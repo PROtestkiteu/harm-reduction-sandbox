@@ -6,8 +6,9 @@ import type { AcuteOutcome, Intent, SimEvent, Simulation, VisitorId } from '../s
 import { WALK_IN_SERVICE_IDS, type ServiceId, type WalkInServiceId } from '../sim/types';
 import type { World } from '../world/scene';
 import {
-  CAMPER,
+  CAMPER_FRAME,
   CAMPER_QUEUE_DIR,
+  CENTER_QUEUE_DIR,
   CLUB_QUEUE_DIR,
   EDGE,
   ENTRY_NODES,
@@ -18,6 +19,10 @@ import {
   LOTS,
   SPOTS,
   STAND_QUEUE_DIR,
+  VENUE_FRAME,
+  VENUE_ROT,
+  VENUES_AT_HOME,
+  toWorld,
   groundY,
   queueSlot,
   type NodeId,
@@ -31,8 +36,11 @@ import { CharacterRig, randomAppearance, type Appearance, type Archetype, type F
 import { HumanFigure, peopleLibrary } from './humanFigure';
 import { Dog } from './dog';
 import type { PatrolStyle } from '../config/contextFactors';
-import { routeTo } from './nav';
+import { nearestNode, routeTo } from './nav';
 import { movingBox, pushFromBox } from '../world/solids';
+import { PoliceRings, deterrenceRadius } from './policeRings';
+import { cityBuilding } from '../world/cityBuildings';
+import { t } from '../i18n';
 
 /**
  * Crowd layer: turns simulation events into people walking between meaningful
@@ -42,6 +50,8 @@ import { movingBox, pushFromBox } from '../world/solids';
  */
 
 const MAX_PEOPLE = 84;
+/** Most people waiting in the crowd outside one service. */
+const MAX_CROWD = 8;
 /** Distance two people keep between their centres, metres. */
 const PERSONAL_SPACE = 0.62;
 /** A body's radius against furniture and cars. */
@@ -68,6 +78,18 @@ const SPECIAL_ROLES: ReadonlySet<PersonRole> = new Set(['police', 'resident', 's
 /** Where someone is heading or what they are there for. */
 export type PersonGoal = ServiceId | 'club' | 'party' | 'post' | 'exit';
 
+/**
+ * A second place a service works from: a rented shop (people go in) or an
+ * extra camper (people stand at its counter). Positions are on the ground.
+ */
+export interface Satellite {
+  service: ServiceId;
+  /** Where people stand to be let in or served. */
+  door: P2;
+  /** Where they go once admitted; absent for a camper counter. */
+  inside?: P2;
+}
+
 /** Read-only view of one person for the UI; carries no identifying detail. */
 export interface PersonState {
   readonly id: number;
@@ -78,6 +100,8 @@ export interface PersonState {
   readonly look: Appearance;
   /** Resting on a bench with their belongings, not part of any flow. */
   readonly resting: boolean;
+  /** No room inside: waiting in the crowd outside this service. */
+  readonly crowding?: ServiceId;
   readonly mode: Mode;
   readonly goal?: PersonGoal;
   readonly service?: ServiceId;
@@ -113,6 +137,10 @@ interface Agent {
   visible: boolean;
   /** Dancing at a party: bobs in place. */
   dancing?: boolean;
+  /** Turned away for lack of room: standing in the crowd outside this service. */
+  crowding?: ServiceId;
+  /** Served at a satellite (a rented shop or an extra camper) instead of the main site. */
+  satellite?: Satellite;
   /** Waiting for the night bus. */
   waitingForBus?: boolean;
   /** Staff away from their post helping someone who collapsed. */
@@ -134,6 +162,8 @@ interface Car {
   speed: number;
   /** Half the vehicle length, for spacing. */
   half: number;
+  /** Its own cruising speed: drivers differ. */
+  cruise: number;
   /** The night bus stops once at the shelter. */
   stopAt?: number;
   stopLeft?: number;
@@ -142,6 +172,14 @@ interface Car {
 const isWalkIn = (id: ServiceId | undefined): id is WalkInServiceId => !!id && (WALK_IN_SERVICE_IDS as readonly string[]).includes(id);
 const headingTo = (from: P2, to: P2) => Math.atan2(to.x - from.x, to.z - from.z);
 const dist = (a: P2, b: P2) => Math.hypot(a.x - b.x, a.z - b.z);
+
+/** Why the police were called, by the city's incident kind. */
+const CRIME_CALL: Record<string, string> = {
+  scuffle: t('Called to a fight outside the club.'),
+  pickpocket: t("Called because someone's phone or wallet was taken in the crowd."),
+  bikeTheft: t('Called to a bike stolen from a rack in the district.'),
+  carBreakIn: t('Called to a car broken into on the street.'),
+};
 
 export class Crowd {
   readonly group = new Group();
@@ -156,6 +194,11 @@ export class Crowd {
   private readonly scratch = new Vector3();
   /** Context people: officers and residents with placards, kept in step with the simulation's context. */
   private readonly officers: Agent[] = [];
+  /** Each officer's deterrence radius, drawn on the ground. */
+  private readonly rings: PoliceRings;
+  private readonly ringAt: P2[] = [];
+  private squatTimer = 10;
+  private squatDoorAt: P2 | null | undefined;
   private readonly residents: Agent[] = [];
   private restingPlaced = false;
   private readonly sellers: Agent[] = [];
@@ -170,6 +213,7 @@ export class Crowd {
     this.random = createRandom(seed);
     world.scene.add(this.group);
     this.icons = new MoodIcons(this.group);
+    this.rings = new PoliceRings(this.group);
     sim.on((e) => this.handle(e));
   }
 
@@ -200,6 +244,7 @@ export class Crowd {
       archetype: a.rig.look.style ?? 'everyday',
       look: a.rig.look,
       resting: !!a.resting,
+      crowding: a.crowding,
       mode: a.mode,
       goal: a.goal,
       service: a.service,
@@ -228,7 +273,81 @@ export class Crowd {
       case 'clubAdmitted': return this.onClubAdmitted(e.visitor);
       case 'clubLeaver': return this.spawnClubLeaver(e.intoxicated, e.acute);
       case 'city': return this.onCity(e.happening);
+      case 'exposure': {
+        // Found on a street bench or a park bench, where people sleep rough.
+        const spot = [...RESTING_SPOTS.map((r) => r.at), ...SLEEP_SPOTS.map((r) => r.at)][Math.floor(this.random() * (RESTING_SPOTS.length + SLEEP_SPOTS.length))];
+        const what = e.harm.kind === 'cold' ? t('Someone sleeping rough was found too cold to wake.') : t('Someone collapsed in the heat, badly dehydrated, with no shade or water.');
+        const call = e.harm.reached ? t('Outreach staff reached them and called it in.') : t('A passer-by called it in.');
+        this.world.dispatch('ambulance', spot.x, spot.z, [what, call, e.harm.died ? t('They did not survive.') : ''].filter(Boolean).join(' '));
+        return;
+      }
     }
+  }
+
+  private satellites: readonly Satellite[] = [];
+
+  /** Rented shops and extra campers now working; visitors split between them and the main site. */
+  setSatellites(list: readonly Satellite[]): void {
+    this.satellites = list;
+  }
+
+  /**
+   * Picks a satellite for someone heading to `service`, in proportion to the
+   * places the satellites add, or none (go to the main site).
+   */
+  private pickSatellite(service: ServiceId): Satellite | undefined {
+    const options = this.satellites.filter((sat) => sat.service === service);
+    if (!options.length) return undefined;
+    const s = this.sim.services[service];
+    const share = s.extraPlaces / Math.max(1, s.capacity || s.extraPlaces + 2);
+    if (this.random() >= Math.min(0.6, share)) return undefined;
+    return options[Math.floor(this.random() * options.length)];
+  }
+
+  private goToSatellite(a: Agent, sat: Satellite): void {
+    a.satellite = sat;
+    a.service = sat.service;
+    this.walk(a, [...routeTo(a.pos, nearestNode(sat.door), a.offset), sat.door], () => {
+      const result = this.sim.arrive(sat.service, a.visitor!);
+      if (result === 'admitted') this.enterSatellite(a);
+      // Waiting at a satellite: they stay by its door rather than join the main line.
+      else if (result === 'queued') { a.mode = 'waiting'; a.faceHeading = headingTo(a.pos, sat.inside ?? sat.door); }
+      else {
+        a.mode = 'pausing';
+        a.pauseLeft = 6 + this.random() * 6;
+        a.onArrive = () => this.leaveAnywhere(a);
+      }
+    });
+  }
+
+  private enterSatellite(a: Agent): void {
+    const sat = a.satellite!;
+    a.mode = 'walking';
+    a.pose = 'stand';
+    if (sat.inside) this.walk(a, [sat.door, sat.inside], () => this.hide(a));
+    else {
+      // A camper counter: served standing at it.
+      a.mode = 'served';
+      a.faceHeading = headingTo(a.pos, { x: sat.door.x - 1, z: sat.door.z });
+    }
+  }
+
+  private exitSatellite(a: Agent): void {
+    const sat = a.satellite!;
+    a.satellite = undefined;
+    if (sat.inside) {
+      const out = () => {
+        this.show(a, sat.inside!);
+        a.mode = 'walking';
+        a.goal = 'exit';
+        this.walk(a, [sat.door], () => this.leaveAnywhere(a));
+      };
+      if (a.mode === 'inside') out();
+      else a.onArrive = out;
+      return;
+    }
+    a.goal = 'exit';
+    this.leaveAnywhere(a);
   }
 
   private spawnVisitor(visitor: VisitorId, intent: Intent, wantsStand: boolean, turnsBack: boolean, kind?: PasserbyKind): void {
@@ -243,6 +362,10 @@ export class Crowd {
     if (turnsBack) {
       const service: ServiceId = intent === 'dropIn' || intent === 'outreach' ? intent : 'clubHr';
       return this.approachThenTurnBack(a, service);
+    }
+    if (intent === 'dropIn' || intent === 'outreach' || intent === 'pharmacy' || intent === 'drugChecking' || intent === 'shelter' || intent === 'clinic') {
+      const sat = this.pickSatellite(intent);
+      if (sat) return this.goToSatellite(a, sat);
     }
     switch (intent) {
       case 'dropIn':
@@ -334,7 +457,11 @@ export class Crowd {
   private approachThenTurnBack(a: Agent, service: ServiceId): void {
     const full = routeTo(a.pos, SERVICE_NODES[service], a.offset);
     const goal = full[full.length - 1] ?? a.pos;
-    this.walk(a, shortenRoute(a.pos, full, 4.5), () => {
+    // They stop where an officer's ring begins, if one stands by the service; otherwise just short of it.
+    const radius = deterrenceRadius(this.sim.context.deterrence);
+    const officer = this.officers.find((o) => o.visible && dist(o.pos, goal) < radius + 3);
+    const stopShort = officer ? radius + dist(officer.pos, goal) : 4.5;
+    this.walk(a, shortenRoute(a.pos, full, stopShort), () => {
       this.sim.turnBack(service, a.visitor!);
       a.mode = 'pausing';
       a.pauseLeft = 1.6;
@@ -369,7 +496,7 @@ export class Crowd {
     const result = this.sim.arrive('dropIn', a.visitor!);
     if (result === 'admitted') this.enterDropIn(a);
     else if (result === 'queued') { a.mode = 'waiting'; a.service = 'dropIn'; }
-    else this.pauseThenLeave(a, SPOTS.centerDoor, 2.2);
+    else this.crowdOutside(a, 'dropIn');
   }
 
   private enterDropIn(a: Agent): void {
@@ -385,7 +512,7 @@ export class Crowd {
     const result = this.sim.arrive('outreach', a.visitor!);
     if (result === 'admitted') this.goToCounter(a);
     else if (result === 'queued') { a.mode = 'waiting'; a.service = 'outreach'; }
-    else this.pauseThenLeave(a, SPOTS.camperCounters[0], 1.6);
+    else this.crowdOutside(a, 'outreach');
   }
 
   private goToCounter(a: Agent): void {
@@ -398,7 +525,7 @@ export class Crowd {
     this.walk(a, [SPOTS.camperCounters[slot]], () => {
       a.mode = 'served';
       a.pose = 'talk';
-      a.faceHeading = -Math.PI / 2;
+      a.faceHeading = -Math.PI / 2 + VENUE_ROT.outreach;
     });
   }
 
@@ -412,7 +539,7 @@ export class Crowd {
       // Stand packed away: a brief look, then on to the club.
       a.mode = 'pausing';
       a.pauseLeft = 1.0;
-      a.faceHeading = Math.PI;
+      a.faceHeading = Math.PI + VENUE_ROT.club;
       a.onArrive = () => this.goToClubQueue(a);
     }
   }
@@ -425,7 +552,7 @@ export class Crowd {
     this.walk(a, [SPOTS.standCounter[slot]], () => {
       a.mode = 'served';
       a.pose = 'talk';
-      a.faceHeading = Math.PI;
+      a.faceHeading = Math.PI + VENUE_ROT.club;
     });
   }
 
@@ -474,7 +601,7 @@ export class Crowd {
     a.intoxicated = true;
     a.speed = 0.75;
     this.setMood(a, 'intoxicated', Infinity);
-    a.onArrive = this.random() < 0.4
+    a.onArrive = VENUES_AT_HOME && this.random() < 0.4
       ? () => this.walk(a, [TERRACE_BENCH[a.id % TERRACE_BENCH.length]], () => {
         a.mode = 'pausing';
         a.pose = 'sit';
@@ -491,7 +618,7 @@ export class Crowd {
     const result = this.sim.arrive(id, a.visitor!);
     if (result === 'admitted') this.enterWalkIn(a, id);
     else if (result === 'queued') { a.mode = 'waiting'; a.service = id; }
-    else this.pauseThenLeave(a, LOTS[id].door, 1.8);
+    else this.crowdOutside(a, id);
   }
 
   private enterWalkIn(a: Agent, id: WalkInServiceId): void {
@@ -513,6 +640,7 @@ export class Crowd {
   private onAdmitted(service: ServiceId, visitor: VisitorId): void {
     const a = this.byVisitor.get(visitor);
     if (!a || a.mode !== 'waiting') return;
+    if (a.satellite) return this.enterSatellite(a);
     if (service === 'dropIn') this.enterDropIn(a);
     else if (isWalkIn(service)) this.enterWalkIn(a, service);
     else if (service === 'outreach') this.goToCounter(a);
@@ -523,6 +651,7 @@ export class Crowd {
     const a = this.byVisitor.get(visitor);
     if (!a) return;
     this.setMood(a, 'relieved', 12);
+    if (a.satellite) return this.exitSatellite(a);
     if (service === 'dropIn') {
       const exit = () => {
         this.show(a, SPOTS.centerInside);
@@ -578,24 +707,23 @@ export class Crowd {
       const lot = LOTS[service];
       this.walk(a, [...routeTo(from, SERVICE_NODES[service], a.offset), lot.door, lot.inside], () => { this.hide(a); arrive(); });
     } else if (service === 'dropIn') {
-      if (post === 0) this.walk(a, [...routeTo(from, 'centerFront', a.offset), SPOTS.centerGreeter], () => { a.faceHeading = 0.3; arrive(); });
-      else this.walk(a, [...routeTo(from, 'centerFront', a.offset), SPOTS.centerDoor, SPOTS.centerInside], () => { this.hide(a); arrive(); });
+      if (post === 0) this.walk(a, [...routeTo(from, SERVICE_NODES.dropIn, a.offset), SPOTS.centerGreeter], () => { a.faceHeading = 0.3 + VENUE_ROT.dropIn; arrive(); });
+      else this.walk(a, [...routeTo(from, SERVICE_NODES.dropIn, a.offset), SPOTS.centerDoor, SPOTS.centerInside], () => { this.hide(a); arrive(); });
     } else if (service === 'outreach') {
       if (post === 0) {
         // Steps in through the rear door and appears at the service window.
-        const rear = { x: CAMPER.x + 0.6, z: CAMPER.z0 - 0.5 };
-        this.walk(a, [...routeTo(from, 'eCross', a.offset), { x: 0.6, z: CAMPER.z0 - 0.6 }, rear], () => {
+        this.walk(a, [...routeTo(from, SERVICE_NODES.outreach, a.offset), SPOTS.camperRearApproach, SPOTS.camperRear], () => {
           a.pos = { ...SPOTS.camperStaffInside };
-          a.faceHeading = Math.PI / 2;
+          a.faceHeading = Math.PI / 2 + VENUE_ROT.outreach;
           a.mode = 'post';
           this.sim.staffArrived(service);
         });
       } else {
         const outside = SPOTS.camperStaffOutside;
-        this.walk(a, [...routeTo(from, 'eCamper', a.offset), outside[Math.min(post - 1, outside.length - 1)]], () => { a.faceHeading = 0; arrive(); });
+        this.walk(a, [...routeTo(from, SERVICE_NODES.outreach, a.offset), outside[Math.min(post - 1, outside.length - 1)]], () => { a.faceHeading = VENUE_ROT.outreach; arrive(); });
       }
     } else {
-      this.walk(a, [...routeTo(from, 'terrace', a.offset), SPOTS.standStaff[post]], () => { a.faceHeading = 0; arrive(); });
+      this.walk(a, [...routeTo(from, SERVICE_NODES.clubHr, a.offset), SPOTS.standStaff[post]], () => { a.faceHeading = VENUE_ROT.club; arrive(); });
     }
   }
 
@@ -618,7 +746,7 @@ export class Crowd {
         this.walk(a, [lot.door, NODES[SERVICE_NODES[service]]], () => this.leaveAnywhere(a));
         a.mode = 'leaving';
       } else if (service === 'outreach' && wasOnPost && a.staffPost === 0) {
-        a.pos = { x: CAMPER.x + 0.6, z: CAMPER.z0 - 0.5 };
+        a.pos = { ...SPOTS.camperRear };
         this.leave(a, pick(this.random, ['eN2', 'eS2'] as NodeId[]));
       } else {
         this.leave(a, pick(this.random, ENTRY_NODES));
@@ -744,6 +872,10 @@ export class Crowd {
    * for longer. Counted by the simulation either way.
    */
   private collapse(a: Agent, acute: AcuteOutcome, then: () => void): void {
+    // An overdose or collapse: an ambulance is called to the nearest road.
+    this.world.dispatch('ambulance', a.pos.x, a.pos.z, acute.helpedBy
+      ? t('Someone collapsed in the street, an overdose or a bad reaction. Staff from a service reached them and called it in.')
+      : t('Someone collapsed in the street, an overdose or a bad reaction. Nobody from the services was near; a passer-by called it in.'));
     a.route = [];
     a.mode = 'pausing';
     a.ground = 'lying';
@@ -795,13 +927,50 @@ export class Crowd {
     a.moodLeft = seconds;
   }
 
-  private pauseThenLeave(a: Agent, lookAt: P2, seconds: number): void {
-    this.walk(a, [{ x: lookAt.x + (a.pos.x - lookAt.x) * 0.15, z: lookAt.z + 1.0 }], () => {
+  /**
+   * No room (queue full) or not open yet: rather than vanish, people gather
+   * in a loose crowd past the end of the line, wait a while hoping for a
+   * place, then give up. Unmet demand is something you can see on the street.
+   */
+  private crowdOutside(a: Agent, service: ServiceId): void {
+    const { at, along, door } = this.overflowArea(service);
+    // A crowd of a handful reads as "full"; past that, newcomers glance over and move on.
+    let waiting = 0;
+    for (const o of this.agents.values()) if (o.crowding === service) waiting++;
+    if (waiting >= MAX_CROWD) {
       a.mode = 'pausing';
-      a.pauseLeft = seconds;
-      a.faceHeading = headingTo(a.pos, lookAt);
+      a.pauseLeft = 1.5;
+      a.faceHeading = headingTo(a.pos, door);
       a.onArrive = () => this.leaveAnywhere(a);
+      return;
+    }
+    // Scatter over a patch that starts past the line and widens away from it.
+    const back = 0.8 + this.random() * 3.2;
+    const side = (this.random() - 0.5) * (2.4 + back * 1.1);
+    const spot = { x: at.x + along.x * back - along.z * side, z: at.z + along.z * back + along.x * side };
+    a.crowding = service;
+    // A closed door gets a shorter wait than a full one.
+    const closed = this.sim.services[service].status !== 'open';
+    this.walk(a, [spot], () => {
+      a.mode = 'pausing';
+      // Sim seconds: up to most of a clock hour at 1x before they give up.
+      a.pauseLeft = closed ? 8 + this.random() * 10 : 20 + this.random() * 25;
+      a.faceHeading = headingTo(a.pos, door);
+      a.onArrive = () => {
+        a.crowding = undefined;
+        this.leaveAnywhere(a);
+      };
     });
+  }
+
+  /** Where the crowd for a service gathers: the end of its line, which way it grows, and the door it watches. */
+  private overflowArea(service: ServiceId): { at: P2; along: P2; door: P2 } {
+    const slots = this.sim.services[service].params.waitingSlots;
+    if (service === 'outreach') return { at: queueSlot(SPOTS.camperQueueHead, CAMPER_QUEUE_DIR, 0.8, slots), along: CAMPER_QUEUE_DIR, door: SPOTS.camperCounters[0] };
+    if (service === 'clubHr') return { at: queueSlot(SPOTS.standQueueHead, STAND_QUEUE_DIR, 0.75, slots), along: STAND_QUEUE_DIR, door: SPOTS.standQueueHead };
+    if (service === 'dropIn') return { at: SPOTS.centerQueue, along: CENTER_QUEUE_DIR, door: SPOTS.centerDoor };
+    const lot = LOTS[service];
+    return { at: queueSlot(lot.queueHead, lot.queueDir, 0.8, slots), along: lot.queueDir, door: lot.door };
   }
 
   private hide(a: Agent): void {
@@ -870,7 +1039,8 @@ export class Crowd {
       this.sellerSpots = spots;
       for (const s of this.sellers.splice(0)) this.leave(s, pick(this.random, ENTRY_NODES));
     }
-    const sellers = n.streetMarket > 0.55 ? 2 : n.streetMarket > 0.3 ? 1 : 0;
+    // There is always a corner where drugs change hands, however quiet; a busy market adds a second seller.
+    const sellers = n.streetMarket > 0.55 ? 2 : 1;
     while (this.sellers.length > sellers) this.leave(this.sellers.pop()!, pick(this.random, ENTRY_NODES));
     while (this.sellers.length < sellers) this.sellers.push(this.spawnStreetFigure('seller', MARKET_SPOTS[spots][this.sellers.length]));
     while (this.sleepers.length > n.roughSleepers) {
@@ -880,6 +1050,31 @@ export class Crowd {
       this.leave(s, pick(this.random, ENTRY_NODES));
     }
     while (this.sleepers.length < n.roughSleepers) this.sleepers.push(this.spawnStreetFigure('sleeper', SLEEP_SPOTS[this.sleepers.length]));
+  }
+
+  /** Winter: now and then someone with their belongings walks to the squat and goes in. */
+  private moveIntoSquat(dt: number): void {
+    if (this.sim.season !== 'winter' || this.sim.camp.squat >= 1) return;
+    this.squatTimer -= dt;
+    if (this.squatTimer > 0 || this.agents.size >= MAX_PEOPLE) return;
+    this.squatTimer = 25 + this.random() * 25;
+    const door = this.squatDoor();
+    if (!door) return;
+    const a = this.createAgent(NODES[pick(this.random, ENTRY_NODES)], 'passerby', { style: 'unhoused', extra: 'backpack' });
+    this.walk(a, [...routeTo(a.pos, nearestNode(door), a.offset), door], () => this.remove(a));
+  }
+
+  /** The squat's door: on the wall nearest the pavement it faces. */
+  private squatDoor(): P2 | null {
+    if (this.squatDoorAt !== undefined) return this.squatDoorAt;
+    const b = this.world.squat === null ? undefined : cityBuilding(this.world.squat);
+    if (!b) return (this.squatDoorAt = null);
+    const cx = (b.x0 + b.x1) / 2;
+    const cz = (b.z0 + b.z1) / 2;
+    const node = NODES[nearestNode({ x: cx, z: cz })];
+    const wall = { x: Math.min(b.x1, Math.max(b.x0, node.x)), z: Math.min(b.z1, Math.max(b.z0, node.z)) };
+    const away = Math.hypot(node.x - wall.x, node.z - wall.z) || 1;
+    return (this.squatDoorAt = { x: wall.x + ((node.x - wall.x) / away) * 0.6, z: wall.z + ((node.z - wall.z) / away) * 0.6 });
   }
 
   private spawnStreetFigure(role: 'seller' | 'sleeper', spot: { node: NodeId; at: P2; face: number }): Agent {
@@ -914,7 +1109,8 @@ export class Crowd {
     a.speed = 1.1;
     if (style === 'posted') {
       // Posted at the drop-in path and by the outreach camper, watching who comes.
-      const post = POLICE_POSTS[i % POLICE_POSTS.length];
+      const posts = policePosts();
+      const post = posts[i % posts.length];
       this.walk(a, [...routeTo(a.pos, post.node, a.offset), post.at], () => { a.mode = 'standing'; a.faceHeading = post.face; });
     } else {
       this.patrol(a, style === 'beat' ? BEAT : CLEAR_BEAT, i % 2);
@@ -934,7 +1130,7 @@ export class Crowd {
   private spawnResident(i: number): Agent {
     const spot = PLACARD_SPOTS[i % PLACARD_SPOTS.length];
     const a = this.createAgent(NODES[i % 2 ? 'xN2' : 'eN2'], 'resident', { placard: true, extra: 'none' });
-    this.walk(a, [...routeTo(a.pos, 'pathCenter', a.offset), spot], () => { a.mode = 'standing'; a.faceHeading = Math.PI; });
+    this.walk(a, [...routeTo(a.pos, SERVICE_NODES.dropIn, a.offset), spot], () => { a.mode = 'standing'; a.faceHeading = Math.PI + VENUE_ROT.dropIn; });
     return a;
   }
 
@@ -996,7 +1192,7 @@ export class Crowd {
     const group = car(pick(this.random, CAR_COLOURS), true);
     group.position.set(ROAD.laneX, 0.02, -EDGE - 2.5);
     this.world.scene.add(group);
-    this.cars.push({ group, z: -EDGE - 2.5, speed: 5.5, half: 2 });
+    this.cars.push({ group, z: -EDGE - 2.5, speed: 5.5, half: 2, cruise: 4.5 + this.random() * 2.8 });
   }
 
   // City life: night bus, cleaners, street incidents
@@ -1014,7 +1210,7 @@ export class Crowd {
     const z = -EDGE - 5;
     group.position.set(ROAD.laneX, 0.02, z);
     this.world.scene.add(group);
-    this.cars.push({ group, z, speed: 5, half: 4.5, stopAt: BUS_STOP_Z, stopLeft: 7 });
+    this.cars.push({ group, z, speed: 5, half: 4.5, cruise: 5, stopAt: BUS_STOP_Z, stopLeft: 7 });
   }
 
   /** The bus is at the stop: people waiting board, and a few people get off. */
@@ -1049,6 +1245,7 @@ export class Crowd {
   /** Street incidents: a scuffle at the club exit, a pickpocketing victim, and officers walking over. Theft, alarms and graffiti are world props. */
   private onCrime(crime: string, responded: boolean): void {
     let site: P2 = SPOTS.clubExit;
+    if (responded) this.world.dispatch('police', site.x, site.z, CRIME_CALL[crime] ?? t('Called to an incident in the district.'));
     if (crime === 'scuffle') {
       const near = [...this.agents.values()].filter((a) => !SPECIAL_ROLES.has(a.role) && !a.rig.look.staff && a.visible && (a.mode === 'walking' || a.mode === 'leaving') && dist(a.pos, SPOTS.clubExit) < 7).slice(0, 2);
       if (near.length === 2) {
@@ -1101,7 +1298,7 @@ export class Crowd {
     for (let i = 0; i < this.cars.length; i++) {
       const c = this.cars[i];
       const front = c.z + c.half;
-      let target = 5.5;
+      let target = c.cruise;
       // Give way at the first busy zebra ahead.
       MAIN_CROSSINGS.forEach((x, k) => {
         const stopLine = x.z0 - 1.2;
@@ -1115,6 +1312,12 @@ export class Crowd {
           if (c.speed < 0.2) c.stopLeft -= dt;
           target = 0;
         } else target = Math.min(target, toStop * 1.2);
+      }
+      // Anyone on the road just ahead (at a zebra or not): stop short of them.
+      for (const a of this.agents.values()) {
+        if (!a.visible || a.pos.x < ROAD.x0 - 0.2 || a.pos.x > ROAD.x1 + 0.2) continue;
+        const gap = a.pos.z - front;
+        if (gap > -0.5 && gap < 7) target = Math.min(target, Math.max(0, (gap - 1.5) * 1.2));
       }
       const ahead = this.cars[i - 1];
       if (ahead) target = Math.min(target, Math.max(0, (ahead.z - c.z - ahead.half - c.half - 2) * 1.5));
@@ -1132,6 +1335,10 @@ export class Crowd {
   update(dt: number): void {
     this.clock += dt;
     this.syncContextPeople();
+    this.moveIntoSquat(dt);
+    this.ringAt.length = 0;
+    for (const o of this.officers) if (o.visible && o.mode !== 'leaving') this.ringAt.push(o.pos);
+    this.rings.update(this.ringAt, deterrenceRadius(this.sim.context.deterrence));
     this.streetEncounters(dt);
     for (const s of this.staffQueue) s.delay -= dt;
     for (let i = this.staffQueue.length - 1; i >= 0; i--) {
@@ -1164,7 +1371,8 @@ export class Crowd {
     const standOrder = this.sim.services.clubHr.queueOrder();
     const clubOrder = this.sim.club.queue;
     for (const a of this.agents.values()) {
-      if (a.visitor === undefined) continue;
+      // Satellite visitors wait at their own door, not in the main line.
+      if (a.visitor === undefined || a.satellite) continue;
       let spot: P2 | undefined;
       let face = 0;
       let pose: Pose = 'stand';
@@ -1174,17 +1382,17 @@ export class Crowd {
         const seats = SPOTS.centerSeats;
         spot = i < seats.length ? seats[i] : SPOTS.centerStanding[(i - seats.length) % SPOTS.centerStanding.length];
         pose = i < seats.length ? 'sit' : 'stand';
-        face = i < seats.length ? 0 : Math.PI * 0.9;
+        face = (i < seats.length ? 0 : Math.PI * 0.9) + VENUE_ROT.dropIn;
       } else if (a.mode === 'waiting' && a.service === 'outreach') {
         const i = outOrder.indexOf(a.visitor);
         if (i < 0) continue;
         spot = queueSlot(SPOTS.camperQueueHead, CAMPER_QUEUE_DIR, 0.8, i);
-        face = Math.PI;
+        face = Math.PI + VENUE_ROT.outreach;
       } else if (a.mode === 'waiting' && a.service === 'clubHr') {
         const i = standOrder.indexOf(a.visitor);
         if (i < 0) continue;
         spot = queueSlot(SPOTS.standQueueHead, STAND_QUEUE_DIR, 0.75, i);
-        face = -Math.PI / 2;
+        face = -Math.PI / 2 + VENUE_ROT.club;
       } else if (a.mode === 'waiting' && isWalkIn(a.service)) {
         const lot = LOTS[a.service];
         const i = this.sim.services[a.service].queueOrder().indexOf(a.visitor);
@@ -1195,7 +1403,7 @@ export class Crowd {
         const i = clubOrder.indexOf(a.visitor);
         if (i < 0) continue;
         spot = queueSlot(SPOTS.clubQueueHead, CLUB_QUEUE_DIR, 0.72, i);
-        face = Math.PI;
+        face = Math.PI + VENUE_ROT.club;
       } else {
         continue;
       }
@@ -1341,9 +1549,10 @@ export class Crowd {
 }
 
 /** Officer posts near service entrances (visible-deterrence policing). */
-const POLICE_POSTS = [
-  { node: 'pathCenter' as NodeId, at: { x: 3.9, z: -3.3 }, face: Math.PI / 2 },
-  { node: 'eCamper' as NodeId, at: { x: 2.1, z: 6.4 }, face: -Math.PI / 2 },
+const policePosts = () => [
+  { node: SERVICE_NODES.dropIn, at: toWorld(VENUE_FRAME.dropIn, { x: 3.9, z: -3.3 }), face: Math.PI / 2 + VENUE_ROT.dropIn },
+  // The camper can move: its post is worked out where it stands now.
+  { node: SERVICE_NODES.outreach, at: toWorld(CAMPER_FRAME, { x: 2.1, z: 6.4 }), face: -Math.PI / 2 + VENUE_ROT.outreach },
 ];
 /** A beat past every service, and one that keeps clear of their entrances. */
 const BEAT: readonly NodeId[] = ['wTerrace', 'wCross', 'pathCenter', 'eCamper', 'eJunction', 'eCross', 'wClub'];
@@ -1358,7 +1567,7 @@ const DEEP_SPOTS: readonly { node: NodeId; at: P2; face: number }[] = [
   { node: 'parkEast', at: { x: 14.4, z: 14.2 }, face: Math.PI },
 ];
 /** Where club leavers collapse on the terrace, in view of the stand. */
-const TERRACE_COLLAPSE: readonly P2[] = [{ x: -9.4, z: 8.6 }, { x: -10.6, z: 9.8 }, { x: -8.7, z: 10.4 }];
+const TERRACE_COLLAPSE: readonly P2[] = [{ x: -9.4, z: 8.6 }, { x: -10.6, z: 9.8 }, { x: -8.7, z: 10.4 }].map((q) => toWorld(VENUE_FRAME.club, q));
 /** Where sellers stand: by the park corner, or displaced to the far corner when police are posted. */
 const MARKET_SPOTS: Record<'near' | 'displaced', readonly { node: NodeId; at: P2; face: number }[]> = {
   near: [{ node: 'eJunction', at: { x: 2.3, z: 8.6 }, face: -Math.PI / 2 }, { node: 'eJunction', at: { x: 2.4, z: 9.5 }, face: -Math.PI / 2 }],
@@ -1408,17 +1617,20 @@ const RESTING_SPOTS: readonly { at: P2; face: number }[] = [
 ];
 
 type Mix = readonly (readonly [Archetype, number])[];
-const NIGHT_OUT: Mix = [['raver', 5], ['student', 3], ['everyday', 3], ['tourist', 1.5], ['worker', 0.6], ['office', 0.6]];
+const NIGHT_OUT: Mix = [
+  ['raver', 3], ['technoBlack', 3], ['queerRave', 1.6], ['punk', 1.2], ['goth', 0.8], ['hiphop', 1.4], ['metal', 0.6],
+  ['student', 2.5], ['everyday', 2.5], ['tourist', 1.2], ['worker', 0.6], ['office', 0.6],
+];
 const MIXED: Mix = [['everyday', 4], ['student', 1.5], ['worker', 1.5], ['older', 1.5], ['unhoused', 2], ['office', 1], ['raver', 1], ['tourist', 0.6]];
 const STYLE_MIX: Partial<Record<Intent, Mix>> = {
   club: NIGHT_OUT,
-  drugChecking: [['raver', 4], ['student', 3], ['everyday', 3], ['worker', 1], ['office', 1], ['unhoused', 1], ['tourist', 0.6]],
+  drugChecking: [['raver', 3], ['technoBlack', 2], ['queerRave', 1], ['punk', 0.8], ['student', 3], ['everyday', 3], ['worker', 1], ['office', 1], ['unhoused', 1], ['tourist', 0.6]],
   shelter: [['unhoused', 8], ['everyday', 1.5], ['older', 1], ['worker', 0.5]],
-  dropIn: [['unhoused', 3], ['everyday', 3], ['older', 1], ['worker', 1], ['student', 1], ['raver', 0.6]],
-  outreach: [['unhoused', 4], ['everyday', 2], ['raver', 1], ['worker', 1], ['older', 0.6]],
+  dropIn: [['unhoused', 3], ['everyday', 3], ['older', 1], ['worker', 1], ['student', 1], ['raver', 0.6], ['punk', 0.8]],
+  outreach: [['unhoused', 4], ['everyday', 2], ['raver', 1], ['punk', 1], ['worker', 1], ['older', 0.6]],
   pharmacy: MIXED,
   clinic: MIXED,
-  passerby: [['tourist', 2], ['office', 2], ['worker', 2], ['student', 2], ['older', 1.5], ['everyday', 3], ['raver', 1], ['unhoused', 0.8]],
+  passerby: [['tourist', 2], ['office', 2], ['worker', 2], ['student', 2], ['older', 1.5], ['everyday', 3], ['raver', 0.8], ['unhoused', 0.8], ['punk', 0.6], ['goth', 0.4], ['hiphop', 0.8], ['metal', 0.4], ['technoBlack', 0.5]],
 };
 
 function weighted<T>(random: () => number, mix: readonly (readonly [T, number])[]): T {
@@ -1430,7 +1642,7 @@ function weighted<T>(random: () => number, mix: readonly (readonly [T, number])[
 }
 
 /** Where residents with placards stand, beside the drop-in path. */
-const PLACARD_SPOTS: readonly P2[] = [{ x: 4.4, z: -2.9 }, { x: 5.3, z: -2.7 }, { x: 7.1, z: -2.9 }, { x: 8.0, z: -2.75 }];
+const PLACARD_SPOTS: readonly P2[] = [{ x: 4.4, z: -2.9 }, { x: 5.3, z: -2.7 }, { x: 7.1, z: -2.9 }, { x: 8.0, z: -2.75 }].map((q) => toWorld(VENUE_FRAME.dropIn, q));
 
 /** Cuts `metres` off the end of a route, so a walker stops short of the destination. */
 function shortenRoute(start: P2, route: P2[], metres: number): P2[] {

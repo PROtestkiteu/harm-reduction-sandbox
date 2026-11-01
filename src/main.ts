@@ -1,14 +1,20 @@
+import { QUALITY } from './render/quality';
 import { Vector3, WebGLRenderer } from 'three';
 import './style.css';
+import { LANG, t } from './i18n';
 import { ILLUSTRATIVE } from './config/illustrative';
 import { combineEffects, decodeContext, defaultContext, encodeContext, type ContextSelection } from './config/contextFactors';
 import { NATIONAL_MODELS, selectionFor } from './config/nationalModels';
+import { CAMPER_SPOTS, camperSpot } from './world/layout';
+import { exposureNow } from './sim/exposure';
 import { PARAM_BY_ID, decodeSettings, defaultSettings, encodeSettings, type ParamId, type SandboxSettings } from './config/sandboxParams';
 import { Crowd } from './agents/crowd';
 import { createIsoCamera, frameCamera, worldToClient } from './render/camera';
 import { CameraRig } from './render/cameraRig';
 import { Highlight, OVERLAY_LAYER } from './render/highlight';
 import { ScenePipeline } from './render/scenePipeline';
+import { DynamicResolution } from './render/dynamicResolution';
+import { CoinPops } from './render/coinPops';
 import { dayFactor, nightFactor } from './sim/clock';
 import { createRandom } from './sim/random';
 import { Simulation } from './sim/simulation';
@@ -17,9 +23,25 @@ import { SEASON_PROFILES } from './config/seasons';
 import { LOCATION_IDS, SERVICE_IDS, serviceAt, type LocationId, type ServiceId, type ServiceStatus } from './sim/types';
 import { ContextSection } from './ui/contextSection';
 import { Hud, type PlaceAction } from './ui/hud';
-import { PORTRAIT_H, PORTRAIT_W, paintPerson, paintPlace } from './ui/portraitArt';
+import { PORTRAIT_H, PORTRAIT_W, PortraitStudio } from './render/portraitStudio';
 import { describePerson } from './ui/personInfo';
+import { ActionMenu } from './ui/actionMenu';
+import { HumanFigure, peopleLibrary } from './agents/humanFigure';
+import { randomAppearance, type Archetype } from './agents/character';
+import { displayName, rename } from './ui/names';
+import { Welcome } from './ui/welcome';
+import { SavePanel } from './ui/savePanel';
+import { GameOver } from './ui/gameOver';
+import { EventPopup } from './ui/eventPopup';
+import { budgetEvent, concessionEvent, pickEvent, type EventWorld } from './game/majorEvents';
+import { SERVICE_NAMES } from './sim/organisation';
+import { loadKits } from './world/kits';
+import { QueueBox } from './ui/queueBox';
+import { startPresence } from './game/presence';
+import { applySave, captureSave, packSave, parseSave, unpackSave, type SaveData } from './game/saveGame';
+import { currentRun, ensureRun, setRun, submitScore, topRuns } from './game/leaderboard';
 import { LOCATION_NAMES } from './config/places';
+import type { SatelliteService } from './sim/property';
 import { Interaction } from './ui/interaction';
 import { EventFeed, HINT_ROW, hintInputId, markHintedRows } from './ui/eventFeed';
 import { OrgPanel } from './ui/orgPanel';
@@ -28,6 +50,8 @@ import type { PolicyInfo } from './sim/simulation';
 import type { EventId } from './config/randomEvents';
 import { SandboxPanel } from './ui/sandboxPanel';
 import { buildSnapshot } from './ui/snapshot';
+import { aboutSection, applyShuffle, randomSection } from './ui/sandboxTopics';
+import { CityCards, PropertyView, SHOPS_FOR } from './game/cityState';
 import { SelectionMarker } from './ui/selection';
 import { ContextProps } from './world/contextProps';
 import { DISTRICT } from './world/layout';
@@ -37,7 +61,9 @@ import { CityProps } from './world/cityProps';
 import { SeasonProps, snowyNight } from './world/seasonProps';
 import { POPULATIONS, presence } from './config/populations';
 
+document.documentElement.lang = LANG;
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
+canvas.setAttribute('aria-label', t('Isometric neighbourhood with a drop-in centre, an outreach camper and a music club. Select a location for details.'));
 const hudRoot = document.getElementById('hud') as HTMLElement;
 // Portrait of the selection, bottom left: a framed live close-up with a caption.
 const portraitBox = document.createElement('figure');
@@ -74,9 +100,11 @@ crowd.setCamera(camera);
 const marker = new SelectionMarker();
 world.scene.add(marker.group);
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+const hazeDir = new Vector3();
+const hazePoint = new Vector3();
 const rig = new CameraRig(world.frame.full.getCenter(new Vector3()), DISTRICT - 4);
 const highlight = new Highlight();
-const props = new ContextProps(world.scene, world.locations.outreach.root, () => reducedMotion.matches);
+const props = new ContextProps(world.scene, world.camper, () => reducedMotion.matches);
 const street = new NeighbourhoodProps(world.scene);
 const cityProps = new CityProps(world.scene, () => reducedMotion.matches);
 const seasonProps = new SeasonProps(world.scene, () => reducedMotion.matches);
@@ -85,7 +113,11 @@ function syncStreet(): void {
   cityProps.set({ party: sim.party, bikes: sim.city.bikes, graffiti: sim.city.graffiti });
   seasonProps.set(sim.calendar.date);
 }
+// Coins over each place where money moves: gold where it comes in, red where visits cost it.
+const coins = new CoinPops(world.scene);
 sim.on((e) => {
+  if (e.type === 'money' && !reducedMotion.matches) coins.pop(world.locations[e.service === 'clubHr' ? 'club' : e.service].labelAnchor, e.amount > 0);
+
   if (e.type === 'alert') props.flashAlert(e.word);
   if (e.type === 'city' && e.happening.kind === 'crime' && e.happening.crime === 'carBreakIn') cityProps.carAlarm(sim.city.incidents.carBreakIn);
   // A grant that unlocks a context option (a licence, stable funding) changes the selection like a slider would.
@@ -105,6 +137,7 @@ let eventsDirty = true;
 
 /** World props follow the simulation's combined context. */
 function syncContextProps(): void {
+  syncShops();
   const c = sim.context;
   props.set({
     checkingSites: c.checkingAllowed ? c.checkingSites : [],
@@ -135,6 +168,48 @@ const hud = new Hud(hudRoot, {
   onResetView: () => interaction.resetView(),
   onToggleFocus: () => interaction.toggleFocus(),
   onAction: (service, action) => queuePlaceAction(service, action),
+  onBuildingAction: (action) => queueBuildingAction(action),
+  onMix: (service, activity, weight) => queueOrg(() => { sim.setMix(service, activity, weight); refreshHud(); }),
+  onMixSetUp: (service, activity) => queueOrg(() => { sim.setUpMix(service, activity); refreshHud(); }),
+  onDrive: () => queueOrg(() => { sim.startDonationDrive(); refreshHud(); }),
+  onFavour: (id) => queueOrg(() => { sim.askFavour(id); syncContextProps(); refreshHud(); }),
+  onAid: (kind) => queueOrg(() => {
+    if (kind === 'cold') sim.warmingBus = !sim.warmingBus;
+    else sim.coolingPoint = !sim.coolingPoint;
+    sim.org.notice(sim.clockMinutes, kind === 'cold'
+      ? (sim.warmingBus ? t('The warming bus is out on cold nights: a warm seat, hot drinks and a check on people sleeping rough.') : t('The warming bus is off the road.'))
+      : (sim.coolingPoint ? t('A water and shade point is up for hot days: water, shade and a check on people outdoors.') : t('The water and shade point is packed away.')));
+    refreshHud();
+  }),
+  onHelp: () => welcome.show(),
+  onRename: (name) => {
+    const sel = interaction.selected;
+    if (sel?.kind === 'location') rename('location', sel.id, name);
+    else if (sel?.kind === 'building') rename('building', sel.id, name);
+    else if (sel?.kind === 'person') rename('person', sel.id, name);
+    else return;
+    refreshHud();
+    interaction.refresh();
+  },
+});
+// People out in the city beyond the district get sculpted figures when the camera is close.
+{
+  const lib = peopleLibrary();
+  const r = createRandom(97);
+  const styles: Archetype[] = ['everyday', 'everyday', 'student', 'office', 'worker', 'older', 'tourist', 'raver', 'punk', 'hiphop'];
+  if (lib) world.setFigureFactory((kind) => {
+    const look = randomAppearance(r, false, kind === 'seller' ? 'technoBlack' : kind === 'police' ? 'everyday' : styles[Math.floor(r() * styles.length)], sim.season);
+    if (kind === 'police') return new HumanFigure(lib, { ...look, police: true, kit: {} });
+    if (kind === 'seller') return new HumanFigure(lib, { ...look, kit: { ...look.kit, hood: 'up' } });
+    return new HumanFigure(lib, look);
+  });
+}
+const actionMenu = new ActionMenu(hudRoot);
+// The welcome box pauses the city while it is open, and leaves a pause the player chose alone.
+let pausedBeforeWelcome = false;
+const welcome = new Welcome(document.body, (open) => {
+  if (open) { pausedBeforeWelcome = paused; setPaused(true); }
+  else if (!pausedBeforeWelcome) setPaused(false);
 });
 const interaction = new Interaction({
   canvas,
@@ -148,7 +223,54 @@ const interaction = new Interaction({
   highlight,
   marker,
   reducedMotion,
+  buildingCard: (id) => cards.describeBuilding(id),
+  vehicleCard: (id) => cards.describeVehicle(id),
+  openMenu: (x, y) => {
+    // Let the column catch up with the new selection first, so the menu lists its actions.
+    refreshHud();
+    const { title, items } = hud.menuEntries();
+    actionMenu.show(x, y, title, items);
+  },
 });
+
+// Ordinary buildings' and emergency vehicles' cards, and what the city shows of the property.
+const cards = new CityCards(sim, world);
+const property = new PropertyView(sim, world, crowd);
+function syncProperty(): void {
+  property.sync();
+}
+
+function syncShops(): void {
+  const f = FACTOR_BY_ID.cannabisMarket;
+  world.setShops(SHOPS_FOR[f.options[contextSelection.cannabisMarket]?.id ?? 'medical'] ?? []);
+}
+
+/** The first camper drives to another free kerb spot; outreach closes while it moves. */
+function moveCamperTo(spot: number): void {
+  if (spot === camperSpot() || sim.property.campers.includes(spot) || sim.outreachMoving) return;
+  sim.moveOutreach();
+  world.moveCamper(spot);
+  sim.org.notice(sim.clockMinutes, t('The outreach camper is on its way to a new spot: {spot}.', { spot: CAMPER_SPOTS[spot].name.toLowerCase() }));
+  property.sync();
+  refreshHud();
+}
+
+function queueBuildingAction(action: string): void {
+  const sel = interaction.selected;
+  if (sel?.kind !== 'building') return;
+  const building = sel.id;
+  queueOrg(() => {
+    const unit = cards.unitOf(building);
+    if (action.startsWith('point:')) sim.openPoint(building, action.slice(6) as SatelliteService);
+    else if (action === 'pointUp') sim.upgradePoint(building);
+    else if (action === 'pointClose') sim.closePoint(building);
+    else if (action === 'partner') sim.partnerVenue(world.nightlife.indexOf(building));
+    else if (unit >= 0 && action === 'release') sim.releaseUnit(unit);
+    else if (unit >= 0 && action.startsWith('rent:')) sim.rentUnit(unit, action.slice(5) as SatelliteService);
+    property.sync();
+    refreshHud();
+  });
+}
 
 function setPaused(p: boolean): void {
   paused = p;
@@ -158,11 +280,32 @@ function setPaused(p: boolean): void {
 // Service state drives each location's visuals: staffed = lit and unfolded.
 const LEVEL: Record<ServiceStatus, number> = { open: 1, closing: 0.45, opening: 0.12, closed: 0 };
 function syncServiceVisuals(): void {
-  for (const id of LOCATION_IDS) world.locations[id].setServiceLevel(LEVEL[sim.services[serviceAt(id)].status]);
+  for (const id of LOCATION_IDS) {
+    const s = sim.services[serviceAt(id)];
+    world.locations[id].setServiceLevel(LEVEL[s.status]);
+    // Grow with staff above the usual number, shrink below it (closed counts as short).
+    const usual = ILLUSTRATIVE.services[s.id].staff;
+    const onSite = s.status === 'closed' ? 0 : s.staffOnSite;
+    // Upgrades build on too: each level above 1 adds to what the crane puts up.
+    const level = sim.upgrades[s.id].level - 1;
+    world.setStaffing(id, onSite - usual + level, usual - onSite, s.status === 'open');
+  }
 }
 
 function refreshHud(): void {
+  checkGameOver();
+  checkBigEvent();
+  world.setParkLife(sim.neighbourhood.state.streetMarket, sim.context.patrol);
+  // The warming bus and the water point are out only in the hours they work.
+  const exposure = exposureNow(sim.season, sim.clockMinutes, sim.events.isActive('coldNight'));
+  world.setAid(sim.warmingBus && exposure === 'cold', sim.coolingPoint && exposure === 'heat');
+  world.setCamp(sim.camp.size);
+  world.setNightlife(sim.vitality.venues, sim.vitality.partners);
+  syncProperty();
   hud.update(buildSnapshot(sim, crowd.population));
+  hud.setWorks(world.works().map((w) => ({ name: displayName('location', w.id, LOCATION_NAMES[w.id]), progress: w.progress, building: w.building })));
+  const sel = interaction.selected;
+  if (sel?.kind === 'building') hud.showBuilding(cards.describeBuilding(sel.id));
   interaction.refresh();
   sandbox.syncLive('clock', sim.clockMinutes);
   feed.refresh(sim.clockMinutes);
@@ -284,6 +427,7 @@ const org = new OrgPanel({
   onLetGo: () => queueOrg(() => sim.letGo()),
   onApply: (id) => queueOrg(() => sim.applyFor(id)),
   onReopen: (id) => queueOrg(() => { sim.reopen(id); syncContextProps(); }),
+  onAssign: (member, to) => queueOrg(() => sim.assignMember(member, to)),
   onOpen: () => {
     sandbox.setOpen(true);
     sandbox.reveal(org.section);
@@ -291,10 +435,146 @@ const org = new OrgPanel({
   },
 });
 sandbox.mount(org.section);
+
+// Saves, shared links and the leaderboard.
+const SAVE_KEY = 'hrp-save';
+const orgName = () => displayName('org', 'name', t('Your organisation'));
+const savePanel = new SavePanel({
+  shareLink: async () => {
+    const code = await packSave(captureSave(sim, orgName()));
+    return `${location.origin}${location.pathname}${location.search}#g=${code}`;
+  },
+  saveHere: () => {
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify(captureSave(sim, orgName(), currentRun()))); } catch { /* storage blocked */ }
+  },
+  hasSaved: () => {
+    try { return !!localStorage.getItem(SAVE_KEY); } catch { return false; }
+  },
+  loadHere: () => {
+    let save: SaveData | null = null;
+    try { save = parseSave(JSON.parse(localStorage.getItem(SAVE_KEY) ?? 'null')); } catch { /* unreadable: nothing to load */ }
+    if (!save) return;
+    const s = save;
+    // Your own save carries your run on.
+    queueOrg(() => { applySave(sim, s); setRun(s.run); afterLoad(); });
+  },
+  submit: async () => {
+    const run = await ensureRun();
+    const rank = await submitScore(run, orgName(), sim.totals.helped, sim.totals.nights);
+    return t('Sent. {name} is number {rank}.', { name: orgName(), rank });
+  },
+  score: () => ({ name: orgName(), helped: sim.totals.helped, nights: sim.totals.nights }),
+  top: (signal) => topRuns(signal),
+});
+sandbox.mount(savePanel.section);
+// Randomize (a new season, or a new city) and About, in the sandbox menu.
+const setDateClock = (v: { date: number; clock: number }) => {
+  settings.date = v.date;
+  settings.clock = v.clock;
+  queueSetting('date', v.date);
+  queueSetting('clock', v.clock);
+  sandbox.setAll(settings);
+};
+sandbox.mount(randomSection(setDateClock));
+sandbox.mount(aboutSection(__APP_VERSION__));
+
+/** The run ends when the money is gone: the city pauses and the run's numbers are shown. */
+const gameOver = new GameOver(document.body, {
+  submit: async () => {
+    const run = await ensureRun();
+    const rank = await submitScore(run, orgName(), sim.totals.helped, sim.totals.nights);
+    return t('Sent. {name} is number {rank}.', { name: orgName(), rank });
+  },
+  // A new page is a new game; settings in the address stay, a shared save does not.
+  restart: () => { location.href = `${location.pathname}${location.search}`; },
+});
+// Big events: every 10 to 25 game hours one may stop the clock and ask for a decision.
+const eventRandom = createRandom((Math.random() * 0x7fffffff) | 0);
+// The first decision comes early (2 to 4 hours in); after that every 10 to 25 hours.
+let nextBigEvent = 2 * 60 + eventRandom() * 2 * 60;
+let nextBudgetWarning = 0;
+let pausedBeforeEvent = false;
+const eventPopup = new EventPopup(document.body, (open) => {
+  if (open) { pausedBeforeEvent = paused; setPaused(true); }
+  else { if (!pausedBeforeEvent) setPaused(false); refreshOrg(); refreshHud(); }
+});
+const eventWorld: EventWorld = {
+  sim,
+  random: eventRandom,
+  dispatchTo: (kind, service, reason) => {
+    const at = world.locations[service === 'clubHr' ? 'club' : service].labelAnchor;
+    world.dispatch(kind, at.x + (eventRandom() - 0.5) * 8, at.z + (eventRandom() - 0.5) * 8, reason);
+  },
+  factor: (id) => FACTOR_BY_ID[id as keyof typeof FACTOR_BY_ID]?.options[contextSelection[id as keyof ContextSelection]]?.id ?? '',
+  setFactor: (id, option) => {
+    const f = FACTOR_BY_ID[id as keyof typeof FACTOR_BY_ID];
+    const index = f?.options.findIndex((o) => o.id === option) ?? -1;
+    if (index >= 0) setContext({ ...contextSelection, [id]: index }, null);
+  },
+};
+function checkBigEvent(): void {
+  if (eventPopup.open || gameOver.open) return;
+  // City hall's concession comes as soon as it is due.
+  if (sim.concessionDue) {
+    const ids = ['postedOfficer', 'cleanUp', 'camperOff'] as const;
+    const event = concessionEvent(ids[Math.floor(eventRandom() * ids.length)]);
+    eventPopup.show(event, sim.org.budget, (choice) => choice.apply(eventWorld));
+    return;
+  }
+  // Money running out: a pause with suggestions, at most every 8 clock hours.
+  if (sim.org.budget < 150 && sim.org.netPerHour < 0 && !sim.org.broke && sim.org.now >= nextBudgetWarning) {
+    nextBudgetWarning = sim.org.now + 8 * 60;
+    eventPopup.show(budgetEvent(eventWorld, (id) => SERVICE_NAMES[id]), sim.org.budget, (choice) => choice.apply(eventWorld));
+    return;
+  }
+  if (sim.org.now < nextBigEvent) return;
+  nextBigEvent = sim.org.now + 10 * 60 + eventRandom() * 15 * 60;
+  const event = pickEvent(eventWorld);
+  if (event) eventPopup.show(event, sim.org.budget, (choice) => choice.apply(eventWorld));
+}
+
+function checkGameOver(): void {
+  if (gameOver.open || !sim.org.broke) return;
+  setPaused(true);
+  gameOver.show(orgName(), sim.totals.nights, sim.totals.helped);
+}
+
+/** After any load: the world, the panels and the crowd's destinations follow the new state. */
+function afterLoad(): void {
+  syncProperty();
+  syncServiceVisuals();
+  refreshOrg();
+  refreshHud();
+}
+
+/**
+ * A new page is a new game and a new leaderboard run (its clock starts now).
+ * A link with '#g=' opens someone's city: their state, your fresh run.
+ */
+async function startGame(): Promise<void> {
+  setRun(undefined);
+  const code = location.hash.startsWith('#g=') ? location.hash.slice(3) : '';
+  if (code) {
+    const save = await unpackSave(code);
+    // Drop the save from the address bar, so a refresh starts clean and the link is not re-applied.
+    history.replaceState(history.state, '', `${location.pathname}${location.search}`);
+    if (save) {
+      queueOrg(() => {
+        applySave(sim, save);
+        sim.totals.helped = 0;
+        sim.totals.nights = 0;
+        sim.org.notice(sim.clockMinutes, (save.name ? t('Opened a shared city from {name}. Your own leaderboard run starts now.', { name: save.name }) : t('Opened a shared city. Your own leaderboard run starts now.')));
+        afterLoad();
+      });
+    }
+  }
+  try { await ensureRun(); } catch { /* leaderboard offline: the game plays the same */ }
+}
 feed.prependBar(org.bar);
 
 function refreshOrg(): void {
-  org.update({ org: sim.org, services: sim.services, clock: sim.clockMinutes, incomePerHour: sim.fundingIncome, applicationContext: sim.applicationContext() });
+  savePanel.sync();
+  org.update({ org: sim.org, services: sim.services, clock: sim.clockMinutes, incomePerHour: sim.fundingIncome, applicationContext: sim.applicationContext(), team: sim.team });
 }
 
 function syncEvents(): void {
@@ -376,18 +656,17 @@ let urlTimer = 0;
 /** Painted portraits, generated once per person or place and kept. */
 const portraits = new Map<string, ImageData>();
 let portraitKey = '';
-/** Painted portraits are off until they are redrawn to a good enough standard. */
-const PORTRAITS_ON = false;
+/** Painted from each person's own model in a separate studio; made on first selection. */
+let studio: PortraitStudio | null = null;
 
-/** Keeps the portrait on the current selection; true when it changed. */
+/** Keeps the portrait on the selected person; true when it changed. */
 function syncPortrait(): boolean {
-  if (!PORTRAITS_ON) return false;
   const sel = interaction.selected;
   const person = sel?.kind === 'person' ? crowd.person(sel.id) : undefined;
-  // A person who has left clears the portrait.
-  const key = sel && (sel.kind === 'location' || person) ? `${sel.kind}:${sel.id}` : '';
+  // Only people have portraits; one who has left clears it.
+  const key = person ? `person:${sel!.id}` : '';
   const card = person ? describePerson(person) : null;
-  const caption = card ? card.title : sel?.kind === 'location' ? LOCATION_NAMES[sel.id] : '';
+  const caption = card ? card.profile?.name ?? card.title : '';
   const sub = card ? card.subtitle : '';
   if (portraitCaption.dataset.text !== caption + sub) {
     portraitCaption.dataset.text = caption + sub;
@@ -401,8 +680,8 @@ function syncPortrait(): boolean {
   if (!image) {
     const ctx = portraitView.getContext('2d')!;
     const seed = [...key].reduce((h, ch) => Math.imul(h ^ ch.charCodeAt(0), 16777619), 2166136261) >>> 0;
-    if (person) paintPerson(ctx, person.look, seed);
-    else if (sel?.kind === 'location') paintPlace(ctx, sel.id, seed);
+    studio ??= new PortraitStudio(renderer);
+    studio.portrait(person!.root, person!.look.height, seed, ctx);
     image = ctx.getImageData(0, 0, PORTRAIT_W, PORTRAIT_H);
     portraits.set(key, image);
     if (portraits.size > 60) portraits.delete(portraits.keys().next().value!);
@@ -436,6 +715,22 @@ function queuePlaceAction(service: ServiceId, action: PlaceAction): void {
     else if (action === 'hire') { sim.recruit('hirePaid'); bump(`${service}.staff`, 1, 6); }
     else if (action === 'volunteer') { sim.recruit('volunteerDrive'); bump(`${service}.staff`, 1, 6); }
     else if (action === 'relaunch') { sim.reopen(service); syncContextProps(); }
+    else if (action.startsWith('camper:')) {
+      const spot = Number(action.slice(7));
+      if (spot !== camperSpot()) sim.sendCamper(spot);
+      syncProperty();
+    } else if (action === 'move') {
+      // Picked on the map: free kerb spots light up; the next click chooses one or cancels.
+      const free = CAMPER_SPOTS.map((_, i) => i !== camperSpot() && !sim.property.campers.includes(i));
+      world.showCamperSpots(free);
+      interaction.startPlacing(() => world.camperSpotMarkers(), (spot) => queueOrg(() => moveCamperTo(spot)), () => { world.showCamperSpots(null); dirty = true; });
+    }
+    else if (action === 'invest') sim.invest(service);
+    else if (action === 'donations') sim.setDonations(service, !sim.donations.has(service));
+    else if (action === 'hustle') {
+      if (service === 'clubHr') { if (sim.clubContract) sim.endClubContract(); else sim.proposeClubContract(); }
+      else if (service === 'drugChecking') sim.setCommercialChecking(!sim.commercialChecking);
+    }
     refreshHud();
   });
 }
@@ -454,9 +749,12 @@ function scheduleUrlUpdate(): void {
 }
 
 function layout(): void {
-  pipeline.resize(window.innerWidth, window.innerHeight, window.devicePixelRatio || 1);
+  pipeline.resize(window.innerWidth, window.innerHeight, (window.devicePixelRatio || 1) * resolution.scale);
   rig.invalidate();
 }
+
+// Render scale drops on slow frames and recovers when there is room (render/dynamicResolution.ts).
+const resolution = new DynamicResolution(QUALITY.minScale, layout);
 
 /** Re-aims the camera for the current orbit angles; cheap, no render-target changes. */
 function applyView(): void {
@@ -465,7 +763,13 @@ function applyView(): void {
   const zoom = frame.cssW / frame.cssH < 0.8 ? 1.3 : 1;
   const framing = frameCamera(camera, world.frame.full, frame, hud.insets(), zoom * rig.zoom, rig.view, rig.focus, world.frame.bounds);
   // Shadows only need to cover what is on screen.
+  world.setDetail(framing.worldPerPixel);
+  coins.setPixelSize(framing.worldPerPixel);
   world.setViewFocus(rig.focus.x, rig.focus.z, ((camera.right - camera.left) / 2) * 1.4);
+  // Haze starts well past the view's focus, so only the far city fades.
+  camera.getWorldDirection(hazeDir);
+  const focusDepth = hazePoint.set(rig.focus.x, 0, rig.focus.z).sub(camera.position).dot(hazeDir);
+  world.setHaze(focusDepth + 150, focusDepth + 330);
   pipeline.setCameraDepth(framing.near, framing.far, framing.worldPerPixel, rig.view.elevationDeg);
   pipeline.setSkyShift(rig.view.azimuthDeg);
   const points = {} as Record<LocationId, { x: number; y: number; below?: boolean }>;
@@ -500,6 +804,8 @@ let sceneTime = 0;
 let hudTimer = 0;
 
 function frame(now: number): void {
+  // Only steady frames count: a hidden tab or a stall says nothing about render cost.
+  if (now - last < 100) resolution.sample(now - last, (now - last) / 1000);
   const realDt = Math.min(0.1, (now - last) / 1000);
   last = now;
   applyPending();
@@ -529,6 +835,7 @@ function frame(now: number): void {
   if (interaction.frame()) dirty = true;
   if (rig.step(realDt, reducedMotion.matches)) applyView();
   if (marker.update(realDt, reducedMotion.matches)) dirty = true;
+  if (coins.update(realDt)) dirty = true;
   syncPortrait();
   if (dirty) {
     pipeline.render(world.scene, camera, interaction.highlightFlags);
@@ -551,6 +858,8 @@ const fromUrl = decodeSettings(params.get('set'));
 Object.assign(settings, fromUrl);
 sandbox.setAll(settings);
 sim.configure(fromUrl);
+// After the address's settings: a "New city" click picked this page's season and time.
+applyShuffle(setDateClock);
 syncSeason();
 world.setStill(reducedMotion.matches);
 reducedMotion.addEventListener('change', () => world.setStill(reducedMotion.matches));
@@ -577,13 +886,32 @@ for (let i = 0; i < 90 * 30; i++) {
   world.update(STEP, sceneTime);
   sceneTime += STEP;
 }
+// Every game starts with something mild going on, so the first night is never empty.
+const STARTING_TROUBLE = ['staffIllness', 'kitShortage', 'busyNight', 'withdrawalWave', 'streetMarketForms', 'equipmentComplaints'] as const;
+sim.triggerEvent(sim.season === 'winter' && eventRandom() < 0.5 ? 'coldNight' : STARTING_TROUBLE[Math.floor(eventRandom() * STARTING_TROUBLE.length)]);
 syncNight();
 refreshHud();
 pipeline.render(world.scene, camera);
 loading?.remove();
+welcome.showIfNew();
+void startGame();
+// The Quaternius kits load after the first frame, so a phone is never kept waiting for them.
+// The scenery kits are 2 MB: skipped on weak phones and slow or data-saving connections.
+if (QUALITY.kits) void loadKits().then((kits) => { if (kits) world.applyKits(kits); });
+
+// The player gate: queue when the server is short of memory, a time limit while busy.
+let pausedBeforeQueue = false;
+const queueBox = new QueueBox(document.body, (blocked) => {
+  if (blocked) { pausedBeforeQueue = paused; setPaused(true); }
+  else if (!pausedBeforeQueue) setPaused(false);
+}, () => { /* time up: the box explains; the score can still be sent */ });
+startPresence((gate) => {
+  if (gate.state === 'queue') queueBox.queued(gate.position);
+  else queueBox.playing(gate.until);
+});
 requestAnimationFrame(frame);
 
 if (import.meta.env.DEV) {
   // Diagnostics for local profiling only; stripped from production builds.
-  Object.assign(window, { __sandbox: { renderer, pipeline, world, camera, sim, crowd, rig, interaction, props, street, cityProps, syncEvents: () => { eventsDirty = true; syncEvents(); refreshOrg(); syncStreet(); } } });
+  Object.assign(window, { __sandbox: { renderer, pipeline, world, camera, sim, crowd, rig, interaction, actionMenu, props, street, cityProps, syncEvents: () => { eventsDirty = true; syncEvents(); refreshOrg(); syncStreet(); } } });
 }

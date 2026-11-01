@@ -1,8 +1,12 @@
 import {
   AnimationMixer,
   BufferAttribute,
+  BoxGeometry,
   BufferGeometry,
   Color,
+  Group as ThreeGroup,
+  Mesh,
+  MeshLambertMaterial,
   DataTexture,
   LinearFilter,
   Matrix4,
@@ -17,6 +21,7 @@ import {
   type SkinnedMesh,
   type Texture,
 } from 'three';
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
@@ -73,7 +78,8 @@ export function peopleLibrary(): PeopleLibrary | null {
 export async function loadPeople(base = `${import.meta.env.BASE_URL}people/`): Promise<PeopleLibrary | null> {
   if (library) return library;
   try {
-    const loader = new GLTFLoader();
+    // The files are meshopt-compressed (scripts/compress-people.mjs): half the download.
+    const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
     const [male, female, hair, anims] = await Promise.all(['male', 'female', 'hair', 'anims'].map((n) => loader.loadAsync(`${base}${n}.glb`)));
     const body = (g: Group): BodySource => {
       let mesh: SkinnedMesh | undefined, eyes: SkinnedMesh | undefined, brows: SkinnedMesh | undefined;
@@ -512,6 +518,44 @@ const HAIR_FOR: Record<number, HairStyle[]> = {
   7: ['Hair_Buzzed'],
 };
 
+const TROLLEY = {
+  wire: new MeshLambertMaterial({ color: 0x8a8a86 }),
+  dark: new MeshLambertMaterial({ color: 0x1e1e1e }),
+  bags: [new MeshLambertMaterial({ color: 0x4a5a6a }), new MeshLambertMaterial({ color: 0xd8d4c8 }), new MeshLambertMaterial({ color: 0x5a4a3a })],
+  basket: new BoxGeometry(0.5, 0.42, 0.7),
+  base: new BoxGeometry(0.46, 0.04, 0.66),
+  bar: new BoxGeometry(0.5, 0.035, 0.035),
+  post: new BoxGeometry(0.03, 0.62, 0.03),
+  castor: new BoxGeometry(0.05, 0.1, 0.08),
+  bag: new BoxGeometry(1, 1, 1),
+};
+
+/**
+ * A shopping trolley out in front, at the hands of the push walk. Shared
+ * geometry and materials; `scale` undoes the figure's height scaling so every
+ * trolley is the same size.
+ */
+function trolley(scale: number): ThreeGroup {
+  const g = new ThreeGroup();
+  g.scale.setScalar(1 / scale);
+  const part = (geo: BoxGeometry, m: MeshLambertMaterial, x: number, y: number, z: number, sx = 1, sy = 1, sz = 1) => {
+    const mesh = new Mesh(geo, m);
+    mesh.position.set(x, y, z);
+    mesh.scale.set(sx, sy, sz);
+    mesh.castShadow = true;
+    g.add(mesh);
+  };
+  part(TROLLEY.basket, TROLLEY.wire, 0, 0.72, 0.95);
+  part(TROLLEY.base, TROLLEY.wire, 0, 0.14, 0.95);
+  part(TROLLEY.bar, TROLLEY.wire, 0, 0.98, 0.55);
+  for (const x of [-0.22, 0.22]) part(TROLLEY.post, TROLLEY.wire, x, 0.5, 0.6);
+  for (const x of [-0.2, 0.2]) for (const z of [0.7, 1.2]) part(TROLLEY.castor, TROLLEY.dark, x, 0.05, z);
+  part(TROLLEY.bag, TROLLEY.bags[0], -0.08, 1.0, 0.9, 0.24, 0.2, 0.28);
+  part(TROLLEY.bag, TROLLEY.bags[1], 0.12, 0.98, 1.05, 0.16, 0.14, 0.18);
+  part(TROLLEY.bag, TROLLEY.bags[2], 0.02, 1.02, 1.15, 0.3, 0.12, 0.2);
+  return g;
+}
+
 /** Muted, worn version of a colour: cloth is never showroom-clean. */
 function worn(hex: number, amount = 0.35): Color {
   const c = new Color(hex);
@@ -576,6 +620,8 @@ export class HumanFigure {
     }
     this.mixer.setTime(Math.random() * 5);
     this.play('stand', 1.1);
+    // The push walk needs something to push: a shopping trolley of belongings.
+    if (k.trolley) this.root.add(trolley(look.height / lib.bodies[sex].height));
   }
 
   private walkClip(): string {

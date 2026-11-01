@@ -1,10 +1,18 @@
+import { QUALITY } from '../render/quality';
 import {
+  PCFShadowMap,
   PCFSoftShadowMap,
   Box3,
   Color,
   DirectionalLight,
+  Fog,
   Group,
   HemisphereLight,
+  Matrix4,
+  Raycaster,
+  ConeGeometry,
+  Mesh,
+  type Object3D,
   Scene,
   Vector3,
   type WebGLRenderer,
@@ -20,25 +28,35 @@ import {
   manhole, pedestrianSignal, picnicTable, postBox, roofVent, satelliteDish, scooter, signPost, stringLights,
   advertPillar, waterTank, windowTrim,
 } from './details';
-import { add, bench, bin, bollard, box, planter, setFoliageSeason, setLampNight, streetLight, tree } from './kit';
-import { CAMPER, CENTER, CLUB, CROSSING, DISTRICT, HALF, NODES, PAVE_E, PAVE_W, ROAD, type P2 } from './layout';
+import { add, bench, bin, bollard, box, cylinder, planter, signBoard, setFoliageSeason, setLampNight, streetLight, tree } from './kit';
+import { AID_BUS, CAMPER_SPOTS, SQUAT_SPOT, moveCamper as moveCamperFrame, CROSSING, HALF, HOME_CAMPER, HOME_CLUB, LOTS, NODES, PAVE_E, PAVE_W, ROAD, VENUE_FACE, VENUES_AT_HOME, type P2 } from './layout';
 import { buildBlockGround, buildOutskirts, buildStreets } from './district';
 import { lightPool, setPoolDaylight } from './dressing';
 import { buildInfill } from './infill';
-import { roofClutter, updateNeon, wallClutter } from './grit';
+import { updateNeon, wallClutter } from './grit';
 import { buildStreetscape } from './streetscape';
 import { buildClinic, buildDrugChecking, buildPharmacy, buildShelter } from './places';
 import { glowMat, mat, SNOW } from './materials';
 import { Weather } from './weather';
+import { buildCityBeyond } from './cityBeyond';
+import { setKitSeason, type Kits } from './kits';
+import { buildAmbient, type AmbientKind, type VehicleInfo } from './ambient';
+import type { Figure } from '../agents/character';
+import { Letting, type UnitLook } from './letting';
+import { allBuildings, cityBuilding, type CityBuilding } from './cityBuildings';
+import { PROPERTY } from '../sim/property';
+import { Expansion, type ExpansionKind, type Facing } from './expansion';
 import { collectSolids, type Solids } from './solids';
 import type { SeasonProfile, Season } from '../config/seasons';
 import { dynamic, mergeStatic } from './mergeStatic';
-import { car, CAR_COLOURS } from './vehicles';
+import { bus, car, CAR_COLOURS, setVehicleDaylight } from './vehicles';
 
 export interface World {
   scene: Scene;
   locations: Record<LocationId, LocationVisual>;
   club: ReturnType<typeof buildClub>;
+  /** The outreach camper's van as designed and the group that drives it off. */
+  camper: ReturnType<typeof buildCamper>;
   frame: {
     /** The original street: its fit sets the camera's base scale (zoom 1). */
     full: Box3;
@@ -54,20 +72,170 @@ export interface World {
   setSeason(season: Season, profile: SeasonProfile): void;
   /** Drifting snow and leaves hold still when reduced motion is preferred. */
   setStill(still: boolean): void;
+  /** Staff above (`extra`) or below (`short`) a service's usual number: its building grows or shrinks. */
+  setStaffing(id: LocationId, extra: number, short: number, open: boolean): void;
+  /** Building ids of the shop units the property model tracks, nearest the services first. */
+  readonly shopUnits: readonly number[];
+  /** What shop unit `i` shows: trading, TO LET, or a rented service's sign. */
+  setUnit(i: number, look: UnitLook): void;
+  /** The shops the cannabis and new-substances law allows, on fixed shopfronts. */
+  setShops(kinds: readonly ShopKind[]): void;
+  /** Sends an ambulance or a police car to a spot: it drives in, stops with lights flashing, then leaves. */
+  dispatch(kind: 'ambulance' | 'police', x: number, z: number, reason: string): boolean;
+  /** Police cars and ambulances on screen, for picking, and what each is doing. */
+  vehicles(): readonly { id: number; root: Object3D }[];
+  vehicle(id: number): VehicleInfo | undefined;
+  /** Which of those shops a building is, if any. */
+  shopAt(buildingId: number): ShopKind | null;
+  /** Extra outreach campers, by spot index in CAMPER_SPOTS. */
+  setExtraCampers(spots: readonly number[]): void;
+  /** Shows a harm reduction point's sign on a building, or takes it down (null). */
+  setPoint(building: number, look: UnitLook | null): void;
+  /** The park camp at `size` (0 to 1): up to 14 tents, the first ones nearest the district. */
+  setCamp(size: number): void;
+  /** Shows the warming bus (parked, lit) and the water and shade point while they run. */
+  setAid(bus: boolean, water: boolean): void;
+  /** Lights up the kerb spots marked free (by index), for picking a new spot on the map; null hides them. */
+  showCamperSpots(free: readonly boolean[] | null): void;
+  /** The lit kerb-spot markers, for picking. */
+  camperSpotMarkers(): readonly { id: number; root: Object3D }[];
+  /** Parks the first camper at kerb spot `spot` (an index in CAMPER_SPOTS). */
+  moveCamper(spot: number): void;
+  /** Buildings where new venues open as the district thrives, in opening order. */
+  nightlife: readonly number[];
+  /** Shows the first `open` new venues' signs (partnered ones with a star). */
+  setNightlife(open: number, partnered: ReadonlySet<number>): void;
+  /** Building ids of the public hospital and the sobering-up centre. */
+  landmarks: { hospital: number; sobering: number };
+  /** The city building that is a squat this launch, by id. */
+  squat: number | null;
+  /** Where people stand at the counter of the camper on `spot`. */
+  camperCounter(spot: number): P2 | undefined;
+  /** Extra campers, for picking: clicking one selects the outreach service. */
+  pickables(): readonly Object3D[];
+  /** Swaps in the Quaternius kits once loaded in the background. */
+  applyKits(kits: Kits): void;
+  /** Metres per screen pixel now: decides how the people out in the city are drawn. */
+  setDetail(metresPerPixel: number): void;
+  /** Sculpted figures for the people out in the city, once their assets are loaded. */
+  setFigureFactory(make: (kind: AmbientKind) => Figure): void;
+  /** The big park's sellers and patrols follow the street market (0..1) and policing (0 none). */
+  setParkLife(market: number, patrol: number): void;
+  /** Where the distance haze starts and is complete, in view depth. */
+  setHaze(near: number, far: number): void;
+  /** Crane work under way at each place, for the progress bar. */
+  works(): { id: LocationId; progress: number; building: boolean }[];
   /** Ground footprints of benches, bins, posts, trees, parked cars and shelters. */
   solids: Solids;
 }
 
+const HAZE_DAY = new Color(0xa9b5c0);
+const HAZE_DUSK = new Color(0x6e6a72);
+const HAZE_NIGHT = new Color(0x1c2230);
+
+/** Where the sun sits relative to the point it lights. */
+const SUN_OFFSET = new Vector3(-12, 16, 20);
+
+/** Shops a cannabis and new-substances law can bring onto the street. */
+export type ShopKind = 'medical' | 'smart' | 'coffeeshop' | 'cannabis' | 'liquor' | 'betting' | 'casino';
+/** Always on the street, whatever the law: their own shopfronts come first. */
+const FIXED_SHOPS: readonly ShopKind[] = ['liquor', 'betting', 'casino'];
+const SHOP_KINDS: readonly ShopKind[] = [...FIXED_SHOPS, 'medical', 'smart', 'coffeeshop', 'cannabis'];
+const SHOP_SIGN: Record<ShopKind, { sign: string; fg: string; bg: string }> = {
+  medical: { sign: 'MEDICAL CANNABIS', fg: '#ffffff', bg: '#2f7a48' },
+  smart: { sign: 'SMART SHOP', fg: '#101010', bg: '#e0d040' },
+  coffeeshop: { sign: 'COFFEESHOP', fg: '#f4f0d8', bg: '#3a5a2a' },
+  cannabis: { sign: 'CANNABIS STORE', fg: '#f4f0d8', bg: '#2a4a3a' },
+  liquor: { sign: 'LIQUOR 24/7', fg: '#ffe8a0', bg: '#6a1e1e' },
+  betting: { sign: 'BETS', fg: '#ffffff', bg: '#1e4aa8' },
+  casino: { sign: 'CASINO', fg: '#ffd84a', bg: '#4a1060' },
+};
+
+/** Tents for the park camp, west of the park's cross path, sorted nearest the district first. */
+function campTents(random: () => number): Group[] {
+  const tarps = [0x3a5a7a, 0x6a7a3a, 0x8a4a3a, 0x5a5a5a, 0x7a6a4a, 0x2f5a5a];
+  const out: { g: Group; z: number }[] = [];
+  for (let i = 0; i < 14; i++) {
+    const g = dynamic(new Group());
+    const x = -30 + (i % 5) * 4.2 + (random() - 0.5) * 1.6;
+    const z = 55 + Math.floor(i / 5) * 4 + (random() - 0.5) * 1.4;
+    const tent = add(g, new Mesh(new ConeGeometry(1.3, 1.4, 4), mat(tarps[i % tarps.length])), Math.PI / 4 + (random() - 0.5) * 0.5);
+    tent.position.y = 0.7;
+    tent.scale.set(1, 1, 1.4);
+    if (i % 3 === 0) add(g, box(0.9, 0.5, 0.6, mat(0x4a4038), 1.4, 0, 0.6));
+    g.position.set(x, -0.04, z);
+    g.visible = false;
+    out.push({ g, z });
+  }
+  return out.sort((a, b) => a.z - b.z).map((t) => t.g);
+}
+
+/** A shade canopy over a table of water bottles, with a sign. */
+function waterPoint(): Group {
+  const g = new Group();
+  const canvas = mat(0x3f8a9a);
+  for (const [x, z] of [[-1.3, -1], [1.3, -1], [-1.3, 1], [1.3, 1]]) add(g, cylinder(0.05, 2.3, mat(PALETTE.metal), 5, x, 0, z));
+  add(g, box(2.9, 0.08, 2.3, canvas, 0, 2.3, 0));
+  add(g, box(1.6, 0.75, 0.7, mat(PALETTE.canvasCream), 0, 0, 0));
+  for (let i = 0; i < 6; i++) add(g, cylinder(0.05, 0.25, glowMat(0x9fd0f0, 0xc8ecff, 0.3), 6, -0.6 + i * 0.24, 0.76, (i % 2) * 0.2 - 0.1));
+  const sign = signBoard('WATER + SHADE', 2.0, 0.4, '#ffffff', '#2f6a7a', 0.4);
+  add(g, sign.mesh).position.set(0, 2.55, 1.16);
+  return g;
+}
+
+/** Signs of the venues that open as the district thrives, in the order they open. */
+const NIGHTLIFE_SIGNS = [
+  { sign: 'BAR', fg: '#ffe8c0', bg: '#7a2a20' },
+  { sign: 'CAFÉ', fg: '#fff4e0', bg: '#5a3a24' },
+  { sign: 'CLUB', fg: '#f4d8ff', bg: '#3a1a5a' },
+  { sign: 'LIVE', fg: '#e0f0ff', bg: '#1a3a6a' },
+] as const;
+
+/** Where people stand at the counter of a camper on kerb spot `spot`: 2 m to the pavement side, 1 m back from its middle. */
+function counterAtSpot(spot: number): P2 {
+  const s = CAMPER_SPOTS[spot];
+  const c = Math.cos(s.rot);
+  const n = Math.sin(s.rot);
+  return { x: s.x + 2 * c - 1 * n, z: s.z - 2 * n - 1 * c };
+}
+
+/** Every kerb spot a camper can stand at this launch, by index. */
+export { CAMPER_SPOTS };
+
+/** How each place shows growth, and which way its front faces. */
+const EXPANSION: Record<LocationId, { kind: ExpansionKind; front: Facing; roof?: number }> = {
+  dropIn: { kind: 'building', front: VENUE_FACE.dropIn },
+  outreach: { kind: 'sign', front: '+x' },
+  club: { kind: 'sign', front: VENUE_FACE.club, roof: HOME_CLUB.height + 0.12 },
+  pharmacy: { kind: 'building', front: LOTS.pharmacy.face },
+  drugChecking: { kind: 'building', front: LOTS.drugChecking.face },
+  shelter: { kind: 'building', front: LOTS.shelter.face },
+  clinic: { kind: 'building', front: LOTS.clinic.face },
+};
+
+/** Sign colour per place. */
+const EXPANSION_ACCENT: Record<LocationId, number> = {
+  dropIn: 0x2e7d6b, outreach: 0x2e7d6b, club: 0xb04a8a, pharmacy: 0x3aa860, drugChecking: 0x3a6ea8, shelter: 0xc8823a, clinic: 0xc83a3a,
+};
+
 /** Renderer state the world relies on: soft shadows. */
 export function configureRenderer(renderer: WebGLRenderer): void {
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = PCFSoftShadowMap;
+  // Soft shadows cost several samples per pixel: weak phones take the plain filter.
+  renderer.shadowMap.type = QUALITY.low ? PCFShadowMap : PCFSoftShadowMap;
 }
 
 export function buildWorld(random: Random): World {
   const scene = new Scene();
   scene.background = new Color(PALETTE.skyTop);
+  // Distance haze: the far city fades into the sky's colour (kept in step in setNight).
+  scene.fog = new Fog(PALETTE.skyTop, 520, 760);
   const outskirts = buildOutskirts(scene, mulberry(23));
+  // A fresh seed each launch: the city round the district is never quite the same twice.
+  const launch = (Math.random() * 0x7fffffff) | 0;
+  const beyond = buildCityBeyond(scene, mulberry(29 ^ launch));
+  const ambient = buildAmbient(scene, mulberry(31));
+  let detail = 0.2;
   buildStreets(scene, mulberry(29));
   buildBlockGround(scene, mulberry(31));
   const ground = add(scene, new Group());
@@ -84,15 +252,11 @@ export function buildWorld(random: Random): World {
   const clinic = buildClinic(mulberry(53));
   const places = [pharmacy, drugChecking, shelter, clinic];
   for (const p of places) scene.add(p.root);
-  const infill = buildInfill(scene, mulberry(59));
+  const infill = buildInfill(scene, mulberry(59 ^ launch));
   const steam = buildStreetscape(scene, mulberry(61));
   // The original centre-block buildings get the same roof and wall clutter as the rest.
   const clutter = add(scene, new Group());
   const cr = mulberry(67);
-  roofClutter(clutter, (CENTER.x0 + CENTER.x1) / 2, (CENTER.z0 + CENTER.z1) / 2, CENTER.x1 - CENTER.x0 - 3, CENTER.z1 - CENTER.z0 - 3, 7.22, cr);
-  add(clutter, wallClutter(CENTER.z1 - CENTER.z0, 6.8, cr), Math.PI / 2).position.set(CENTER.x1, 0.12, (CENTER.z0 + CENTER.z1) / 2);
-  roofClutter(clutter, (CLUB.x0 + CLUB.x1) / 2, (CLUB.z0 + CLUB.z1) / 2, CLUB.x1 - CLUB.x0 - 2, CLUB.z1 - CLUB.z0 - 3, CLUB.height + 0.3, cr);
-  add(clutter, wallClutter(CLUB.x1 - CLUB.x0, CLUB.height, cr)).position.set((CLUB.x0 + CLUB.x1) / 2, 0.12, CLUB.z1);
   add(clutter, wallClutter(5.8, 9.2, cr)).position.set(-11.85, 0.12, -9.0);
   let neonLevel = 0.8;
 
@@ -103,6 +267,10 @@ export function buildWorld(random: Random): World {
   buildParkedCars(scene);
   const lighting = buildLighting(scene);
   const weather = new Weather(scene);
+  // The sun's orientation never changes: its frame, for snapping shadows to texels.
+  const fromSun = new Matrix4().lookAt(SUN_OFFSET, new Vector3(), new Vector3(0, 1, 0));
+  const toSun = fromSun.clone().transpose();
+  const snap = new Vector3();
   let still = false;
   const sun = lighting.sun;
 
@@ -112,6 +280,84 @@ export function buildWorld(random: Random): World {
   // stay separate so they can be picked and highlighted.
   for (const loc of Object.values(locations)) dynamic(loc.root);
   mergeStatic(scene);
+  // Each service's building shows its staffing: a crane and cabins, boards, or a new sign.
+  const expansions = Object.fromEntries(
+    (Object.keys(locations) as LocationId[]).map((id) => [id, new Expansion(locations[id].root, EXPANSION_ACCENT[id], EXPANSION[id].kind, EXPANSION[id].front, locations[id].roofSign, EXPANSION[id].roof)]),
+  ) as Record<LocationId, Expansion>;
+  // Ground-floor shop units nearest the services: closed ones show TO LET, rented ones a service sign.
+  const lettingRoot = new Group();
+  scene.add(lettingRoot);
+  // Each unit's real roof, from a ray straight down through its middle: some
+  // low shops tuck under a taller neighbour's roof (skipped), and roof
+  // dressing can stand above the registered height (boards sit on it).
+  const meshes: Object3D[] = [];
+  scene.traverse((o) => { if ((o as Mesh).isMesh) meshes.push(o); });
+  const down = new Raycaster();
+  const roofOf = (b: CityBuilding) => {
+    down.set(new Vector3((b.x0 + b.x1) / 2, 80, (b.z0 + b.z1) / 2), new Vector3(0, -1, 0));
+    return down.intersectObjects(meshes, false)[0]?.point.y ?? b.height;
+  };
+  const shopUnits = allBuildings()
+    .map((b) => ({ b, roof: roofOf(b), d: Math.hypot((b.x0 + b.x1) / 2, (b.z0 + b.z1) / 2) }))
+    .filter(({ b, roof }) => roof < b.height + 4)
+    .sort((a, c) => a.d - c.d)
+    .slice(0, PROPERTY.units + SHOP_KINDS.length);
+  // The next few shopfronts after the rentable units are the law's shops.
+  const specials = shopUnits.splice(PROPERTY.units);
+  const lettings = shopUnits.map(({ b, roof }) => new Letting(lettingRoot, b, roof));
+  const shopSigns = specials.map(({ b, roof }) => new Letting(lettingRoot, b, roof));
+  const shopKinds: (ShopKind | null)[] = specials.map(() => null);
+  // The fixed shops go up straight away; drinkers hang about the liquor store and the casino.
+  FIXED_SHOPS.forEach((kind, i) => { if (shopSigns[i]) { shopKinds[i] = kind; shopSigns[i].set(SHOP_SIGN[kind]); } });
+  ambient.setHangouts(specials.filter((_, i) => FIXED_SHOPS[i] === 'liquor' || FIXED_SHOPS[i] === 'casino').map(({ b }) => ({ x: (b.x0 + b.x1) / 2, z: b.z1 + 2.5 })));
+  // A squat: the ordinary building nearest the squat's kerb spot, not one of the shops, with a banner on its roof.
+  const squatAt = counterAtSpot(SQUAT_SPOT);
+  const taken = new Set([...shopUnits, ...specials].map(({ b }) => b.id));
+  const squatBuilding = allBuildings()
+    .filter((b) => !taken.has(b.id) && b.storeys >= 2)
+    .map((b) => ({ b, d: Math.hypot((b.x0 + b.x1) / 2 - squatAt.x, (b.z0 + b.z1) / 2 - squatAt.z) }))
+    .sort((a, c) => a.d - c.d)[0]?.b;
+  const squat = squatBuilding ? squatBuilding.id : null;
+  if (squatBuilding) new Letting(lettingRoot, squatBuilding, roofOf(squatBuilding)).set({ sign: 'SQUAT', fg: '#f4e8d0', bg: '#2a2a2a' });
+  // Buildings kept for the venues that open as the district thrives: the next nearest ordinary ones.
+  const nightlife = allBuildings()
+    .filter((b) => !taken.has(b.id) && b.id !== squat && b.storeys >= 2 && Math.abs((b.x0 + b.x1) / 2) < 40 && Math.abs((b.z0 + b.z1) / 2) < 40)
+    .map((b) => ({ b, d: Math.hypot((b.x0 + b.x1) / 2, (b.z0 + b.z1) / 2) }))
+    .sort((a, c) => a.d - c.d)
+    .filter((_, i) => i % 3 === 1)
+    .slice(0, NIGHTLIFE_SIGNS.length)
+    .map(({ b }) => ({ b, sign: new Letting(lettingRoot, b, roofOf(b)), shown: '' }));
+  // Harm reduction points the player opens in ordinary buildings: a sign each, made when first needed.
+  const pointSigns = new Map<number, Letting>();
+  // The park camp: tents of tarps and old canvas, nearest the district first.
+  const tents = campTents(mulberry(71));
+  for (const t of tents) scene.add(t);
+  // The warming bus parks on the east street; the water and shade point stands in the pocket park.
+  const aid = { bus: dynamic(bus()), water: dynamic(waterPoint()) };
+  aid.bus.position.set(AID_BUS.x, 0.02, AID_BUS.z);
+  aid.water.position.set(6.2, 0.1, 9.0);
+  aid.bus.visible = aid.water.visible = false;
+  scene.add(aid.bus, aid.water);
+  // Kerb-spot markers for moving the camper: a lit outline of the van's footprint and a pin above it.
+  const spotMarkers = CAMPER_SPOTS.map((s) => {
+    const m = dynamic(new Group());
+    m.position.set(s.x, 0.05, s.z);
+    m.rotation.y = s.rot;
+    const glow = glowMat(0x2f7a5a, 0x7fffc0, 1.2);
+    add(m, box(2.6, 0.04, 6.8, glowMat(0x1f4a3a, 0x3fd890, 0.5)));
+    for (const x of [-1.3, 1.3]) add(m, box(0.12, 0.08, 6.8, glow, x, 0.01, 0));
+    for (const z of [-3.4, 3.4]) add(m, box(2.6, 0.08, 0.12, glow, 0, 0.01, z));
+    const pin = add(m, new Mesh(new ConeGeometry(0.6, 1.2, 12), glow));
+    pin.position.y = 4.2;
+    pin.rotation.x = Math.PI;
+    m.visible = false;
+    scene.add(m);
+    return m;
+  });
+  // Extra campers stand at spots the player picks; each is a copy of the first,
+  // turned and placed by a pivot at the van's middle.
+  const campers = new Map<number, { pivot: Group; arrive: number }>();
+  const counterAt = counterAtSpot;
   // Footprints tagged by the builders survive the merge on their (now empty) groups.
   const solids = collectSolids(scene);
   return {
@@ -119,9 +365,12 @@ export function buildWorld(random: Random): World {
     scene,
     locations,
     club,
+    camper: outreach,
     frame: {
       full: new Box3(new Vector3(-HALF, -1.6, -HALF), new Vector3(HALF, 7.5, HALF)),
-      bounds: new Box3(new Vector3(-DISTRICT - 36, -0.5, -DISTRICT - 36), new Vector3(DISTRICT + 36, 32, DISTRICT + 36)),
+      // Room to look round the city beyond: the river, the park, the old town and the towers.
+      // Depth volume for the camera: reaches out to the far skyline so nothing near it is clipped.
+      bounds: new Box3(new Vector3(-300, -0.5, -300), new Vector3(300, 60, 300)),
     },
     setViewFocus(x, z, radius) {
       // Shadow texels stay roughly square to world pixels: the frustum only grows when zoomed out.
@@ -131,18 +380,154 @@ export function buildWorld(random: Random): World {
         cam.left = -half; cam.right = half; cam.top = half; cam.bottom = -half;
         cam.updateProjectionMatrix();
       }
-      sun.target.position.set(x, 0, z);
+      // Snap the shadow box to whole shadow texels in the sun's own frame, so
+      // shadow edges hold still instead of crawling while the view pans.
+      const texel = (2 * half) / sun.shadow.mapSize.x;
+      snap.set(x, 0, z).applyMatrix4(toSun);
+      snap.x = Math.round(snap.x / texel) * texel;
+      snap.y = Math.round(snap.y / texel) * texel;
+      snap.applyMatrix4(fromSun);
+      sun.target.position.copy(snap);
       weather.follow(x, z);
-      sun.position.set(x - 12, 16, z + 20);
+      ambient.setView(x, z, radius, detail);
+      sun.position.copy(snap).add(SUN_OFFSET);
       sun.target.updateMatrixWorld();
     },
+    setStaffing(id, extra, short, open) {
+      expansions[id].set(extra, short, open);
+    },
+    shopUnits: shopUnits.map(({ b }) => b.id),
+    setShops(kinds) {
+      shopSigns.forEach((sign, i) => {
+        if (i < FIXED_SHOPS.length) return;
+        const kind = kinds[i - FIXED_SHOPS.length] ?? null;
+        if (shopKinds[i] === kind) return;
+        shopKinds[i] = kind;
+        sign.set(kind ? SHOP_SIGN[kind] : 'trading');
+      });
+    },
+    vehicles: () => ambient.vehicles(),
+    vehicle: (id) => ambient.vehicle(id),
+    dispatch(kind, x, z, reason) {
+      return ambient.dispatch(kind, x, z, reason);
+    },
+    shopAt(buildingId) {
+      const i = specials.findIndex(({ b }) => b.id === buildingId);
+      return i >= 0 ? shopKinds[i] : null;
+    },
+    setUnit(i, look) {
+      lettings[i]?.set(look);
+    },
+    camperCounter(spot) {
+      return CAMPER_SPOTS[spot] ? counterAt(spot) : undefined;
+    },
+    pickables() {
+      return [...campers.values()].map((c) => c.pivot);
+    },
+    showCamperSpots(free) {
+      spotMarkers.forEach((m, i) => { m.visible = !!free?.[i]; });
+    },
+    camperSpotMarkers() {
+      return spotMarkers.flatMap((root, id) => (root.visible ? [{ id, root }] : []));
+    },
+    moveCamper(spot) {
+      moveCamperFrame(spot);
+      outreach.relocate();
+    },
+    squat,
+    landmarks: beyond.landmarks,
+    nightlife: nightlife.map((n) => n.b.id),
+    setNightlife(open, partnered) {
+      nightlife.forEach((n, i) => {
+        const key = i < open ? (partnered.has(i) ? 'p' : 'o') : '';
+        if (n.shown === key) return;
+        n.shown = key;
+        const look = NIGHTLIFE_SIGNS[i];
+        n.sign.set(key ? { ...look, sign: key === 'p' ? `${look.sign} ★` : look.sign } : 'trading');
+      });
+    },
+    setExtraCampers(spots) {
+      for (const spot of spots) {
+        if (campers.has(spot) || !CAMPER_SPOTS[spot]) continue;
+        const s = CAMPER_SPOTS[spot];
+        const pivot = new Group();
+        pivot.name = 'outreach';
+        pivot.position.set(s.x, 0, s.z);
+        pivot.rotation.y = s.rot;
+        // A copy of the van as designed, offset like the first camper's.
+        add(pivot, outreach.template.clone(true)).position.copy(outreach.template.position);
+        scene.add(pivot);
+        campers.set(spot, { pivot, arrive: 0 });
+      }
+      for (const [spot, c] of campers) if (!spots.includes(spot)) { scene.remove(c.pivot); campers.delete(spot); }
+    },
+    setPoint(id, look) {
+      let sign = pointSigns.get(id);
+      if (!look) { sign?.set('trading'); return; }
+      if (!sign) {
+        const b = cityBuilding(id);
+        if (!b) return;
+        sign = new Letting(lettingRoot, b, roofOf(b));
+        pointSigns.set(id, sign);
+      }
+      sign.set(look);
+    },
+    setCamp(size) {
+      const n = Math.round(size * tents.length);
+      tents.forEach((t, i) => { if (t.visible !== i < n) t.visible = i < n; });
+    },
+    setAid(busOn, waterOn) {
+      aid.bus.visible = busOn;
+      aid.water.visible = waterOn;
+    },
+    setParkLife(market, patrol) {
+      ambient.setParkLife(market, patrol);
+    },
+    applyKits(kits) {
+      beyond.applyKits(kits);
+    },
+    setDetail(mpp) {
+      detail = mpp;
+    },
+    setFigureFactory(make) {
+      ambient.setFigureFactory(make);
+    },
+    setHaze(near, far) {
+      const fog = scene.fog as Fog;
+      fog.near = near;
+      fog.far = far;
+    },
+    works() {
+      const out: { id: LocationId; progress: number; building: boolean }[] = [];
+      for (const id in expansions) {
+        const w = expansions[id as LocationId].works();
+        if (w) out.push({ id: id as LocationId, ...w });
+      }
+      return out;
+    },
     update(dt, time) {
+      for (const id in expansions) expansions[id as LocationId].update(dt);
+      for (const l of lettings) l.update(dt, still);
+      for (const l of shopSigns) l.update(dt, still);
+      // New campers drive in from up the street and pull up at their spot.
+      for (const [spot, c] of campers) {
+        if (c.arrive >= 1) continue;
+        c.arrive = still ? 1 : Math.min(1, c.arrive + dt / 2.5);
+        const k = 1 - (1 - c.arrive) ** 3;
+        // Drives in along its own length and pulls up.
+        const s = CAMPER_SPOTS[spot];
+        const back = (1 - k) * 30;
+        c.pivot.position.set(s.x - Math.sin(s.rot) * back, 0, s.z - Math.cos(s.rot) * back);
+      }
       dropIn.update(dt, time);
       club.update(dt, time);
       outreach.update(dt, time);
       for (const p of places) p.update(dt, time);
       residentialWindows.update(dt, 0.55);
       outskirts.update(dt, 0.35);
+      beyond.update(dt);
+      ambient.update(dt);
+      for (const w of beyond.windows) w.update(dt, 0.4);
       for (const w of infill) w.update(dt, 0.45);
       updateNeon(time, neonLevel);
       for (const s of steam) s.update(dt);
@@ -151,16 +536,21 @@ export function buildWorld(random: Random): World {
     },
     setSeason(season, profile) {
       setFoliageSeason(season);
+      setKitSeason(season);
       SNOW.value = profile.look.snow;
       weather.set(profile.look.drift);
       lighting.setSeason(profile.look.light, profile.look.lightStrength);
     },
     setStill(value) {
       still = value;
+      for (const id in expansions) expansions[id as LocationId].setStill(value);
     },
     setNight(night, day = 0) {
       lighting.setNight(night, day);
+      // Haze in the colour of the horizon the player sees: grey-blue by day, dusky, dark blue at night.
+      (scene.fog as Fog).color.copy(HAZE_DUSK).lerp(HAZE_NIGHT, night).lerp(HAZE_DAY, day);
       setLampNight(night, day);
+      setVehicleDaylight(day);
       setWindowDaylight(day);
       setPoolDaylight(day);
       // Neon reads brighter as the night deepens and fades out in daylight.
@@ -364,7 +754,8 @@ function buildProps(scene: Scene): void {
   add(g, picnicTable()).position.set(5.8, 0.1, 13.5);
 
   // Utility cables strung across the street between rooftops.
-  add(g, stringLights([
+  // Cables strung between the club's and the drop-in's roofs, when both stand where they were designed.
+  if (VENUES_AT_HOME) add(g, stringLights([
     [-8.5, 5.2, -6.8, 2.8, 6.1, -9.4],
     [-8.5, 5.0, -6.4, 2.8, 5.8, -8.6],
     [-8.9, 7.8, -9.3, 2.8, 6.5, -13.8],
@@ -374,13 +765,14 @@ function buildProps(scene: Scene): void {
 
 function buildParkedCars(scene: Scene): void {
   const g = add(scene, new Group());
-  const parked: [number, number][] = [[-14.4, 3], [-10.4, 0], [CAMPER.z1 + 2.5, 1], [CAMPER.z1 + 6.9, 2]];
+  const parked: [number, number][] = [[-14.4, 3], [-10.4, 0], [HOME_CAMPER.z1 + 2.5, 1], [HOME_CAMPER.z1 + 6.9, 2]];
   for (const [z, c] of parked) add(g, car(CAR_COLOURS[c], false)).position.set(ROAD.parkX, 0.02, z);
   mergeStatic(g);
 }
 
 const DUSK = { sky: new Color(0x8fa4b4), ground: new Color(0x5a4a3c), hemi: 1.8, sun: new Color(0xffb07a), sunIntensity: 2.4 };
-const NIGHT = { sky: new Color(0x50607a), ground: new Color(0x2a2420), hemi: 0.9, sun: new Color(0xa0b4d8), sunIntensity: 0.6 };
+/** Night: moonlit, blue and readable; lamps and windows still carry the warm light. */
+const NIGHT = { sky: new Color(0x6a7ca0), ground: new Color(0x3a3430), hemi: 1.55, sun: new Color(0xa8bce0), sunIntensity: 1.15 };
 /** Overcast city daylight: bright, a little grey, the sun high and white. */
 const DAY = { sky: new Color(0xc4d0dc), ground: new Color(0x7a6c5c), hemi: 3.1, sun: new Color(0xfff4e6), sunIntensity: 3.8 };
 
@@ -391,7 +783,7 @@ function buildLighting(scene: Scene): { sun: DirectionalLight; setNight(night: n
   sun.position.set(-12, 16, 20);
   sun.target.position.set(0, 0, 0);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(QUALITY.shadowMap, QUALITY.shadowMap);
   const cam = sun.shadow.camera;
   cam.left = -26; cam.right = 26; cam.top = 26; cam.bottom = -26; cam.near = 1; cam.far = 80;
   sun.shadow.bias = -0.0008;

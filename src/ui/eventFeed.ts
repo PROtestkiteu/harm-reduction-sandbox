@@ -1,6 +1,7 @@
 import { EVENT_IDS, EVENTS, KIND_LABELS, type EventId, type EventKind, type Hint } from '../config/randomEvents';
 import type { ActiveEvent } from '../sim/eventEngine';
 import { formatClock } from '../sim/clock';
+import { plural, t } from '../i18n';
 
 export interface EventFeedCallbacks {
   onTrigger(id: EventId): void;
@@ -49,9 +50,9 @@ export class EventFeed {
 
   constructor(parent: HTMLElement, private readonly cb: EventFeedCallbacks) {
     this.root = el('section', 'events');
-    this.root.setAttribute('aria-label', 'Events tonight');
+    this.root.setAttribute('aria-label', t('Events tonight'));
     // The heading folds the feed away; folded by default so the scene stays clear.
-    this.heading = el('button', 'events-heading', 'Tonight: no events');
+    this.heading = el('button', 'events-heading', t('Tonight: no events'));
     this.heading.type = 'button';
     this.heading.setAttribute('aria-expanded', 'false');
     this.heading.addEventListener('click', () => {
@@ -65,7 +66,7 @@ export class EventFeed {
     this.recent = el('p', 'events-recent');
     this.recent.hidden = true;
     const trigger = el('details', 'events-trigger');
-    trigger.append(el('summary', undefined, 'Trigger an event'));
+    trigger.append(el('summary', undefined, t('Trigger an event')));
     const byKind = new Map<EventKind, EventId[]>();
     for (const id of EVENT_IDS) byKind.set(EVENTS[id].kind, [...(byKind.get(EVENTS[id].kind) ?? []), id]);
     for (const [kind, ids] of byKind) {
@@ -97,8 +98,13 @@ export class EventFeed {
       }
     }
     for (const e of active) if (!this.cards.has(e)) this.list.prepend(this.buildCard(e));
-    this.heading.textContent = active.length ? `Tonight: ${active.length} active event${active.length > 1 ? 's' : ''}` : 'Tonight: no events';
-    const text = recent.length ? `Ended: ${recent.slice(0, 2).map((e) => `${EVENTS[e.id].label}${e.acuteHarms ? ` (${e.acuteHarms} collapsed, ${e.helped} reached by staff)` : ''}`).join('; ')}` : '';
+    this.heading.textContent = active.length
+      ? t('Tonight: {events}', { events: plural(active.length, ['{n} active event', '{n} active events'], ['{n} aktywne zdarzenie', '{n} aktywne zdarzenia', '{n} aktywnych zdarzeń']) })
+      : t('Tonight: no events');
+    const ended = recent.slice(0, 2).map((e) => e.acuteHarms
+      ? t('{event} ({collapsed} collapsed, {helped} reached by staff)', { event: EVENTS[e.id].label, collapsed: e.acuteHarms, helped: e.helped })
+      : EVENTS[e.id].label);
+    const text = recent.length ? t('Ended: {events}', { events: ended.join('; ') }) : '';
     if (text !== this.recentText) {
       this.recentText = text;
       this.recent.textContent = text;
@@ -112,15 +118,19 @@ export class EventFeed {
     for (const [e, card] of this.cards) {
       const def = EVENTS[e.id];
       const left = Math.max(0, Math.round(e.endsAt - clock));
-      let status = `Since ${formatClock(e.startedAt)}, about ${left} min left`;
+      let status = t('Since {time}, about {left} min left', { time: formatClock(e.startedAt), left });
       if (def.affects.length) {
-        status = e.alerted ? `Public alert out. ${status}` : e.detectedAt !== null ? `Detected by checking at ${formatClock(e.detectedAt)}, no public alert. ${status}` : `Not detected yet. ${status}`;
+        status = e.alerted
+          ? t('Public alert out. {status}', { status })
+          : e.detectedAt !== null
+            ? t('Detected by checking at {time}, no public alert. {status}', { time: formatClock(e.detectedAt), status })
+            : t('Not detected yet. {status}', { status });
       }
       if (status !== card.statusText) {
         card.statusText = status;
         card.status.textContent = status;
       }
-      const counts = def.affects.length ? `${e.acuteHarms} collapsed: ${e.helped} reached by staff, ${e.alone} alone` : '';
+      const counts = def.affects.length ? t('{collapsed} collapsed: {helped} reached by staff, {alone} alone', { collapsed: e.acuteHarms, helped: e.helped, alone: e.alone }) : '';
       if (counts !== card.countsText) {
         card.countsText = counts;
         card.counts.textContent = counts;
@@ -142,17 +152,17 @@ export class EventFeed {
     const body = el('div', 'event-body');
     body.append(el('p', undefined, def.happens), el('p', 'event-mitigation', def.mitigation));
     const hints = el('div', 'event-hints');
-    hints.append(el('span', 'hints-label', 'Helps:'));
+    hints.append(el('span', 'hints-label', t('Helps:')));
     for (const h of def.hints) {
       const b = el('button', 'btn hint', `${h.label}${'param' in h ? (h.direction === 'up' ? ' ↑' : ' ↓') : ''}`);
       if ('org' in h) b.dataset.org = 'true';
       b.type = 'button';
-      b.title = 'Open this setting in the Sandbox panel';
+      b.title = t('Open this setting in the Sandbox panel');
       b.addEventListener('click', () => this.cb.onHint(h));
       hints.append(b);
     }
     const sources = el('details', 'sources');
-    sources.append(el('summary', undefined, `Sources (${def.evidence.filter((c) => c.type !== 'none').length})`));
+    sources.append(el('summary', undefined, t('Sources ({n})', { n: def.evidence.filter((c) => c.type !== 'none').length })));
     const list = el('ul', 'cites');
     for (const c of def.evidence) {
       const li = el('li');
@@ -186,6 +196,6 @@ export function markHintedRows(active: readonly ActiveEvent[]): void {
   for (const row of document.querySelectorAll('[data-hinted]')) delete (row as HTMLElement).dataset.hinted;
   for (const [row, names] of rows) {
     row.dataset.hinted = 'true';
-    row.append(el('span', 'hint-chip', `Helps with: ${[...names].join(', ')}`));
+    row.append(el('span', 'hint-chip', t('Helps with: {events}', { events: [...names].join(', ') })));
   }
 }

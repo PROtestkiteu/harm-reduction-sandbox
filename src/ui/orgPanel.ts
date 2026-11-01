@@ -1,8 +1,12 @@
 import { GRANT_IDS, GRANTS, ORG, RECRUIT, type ApplicationContext, type GrantId, type RecruitId } from '../config/organisation';
+import { price } from './money';
+import { LOCALE, plural, t } from '../i18n';
 import type { Organisation } from '../sim/organisation';
 import type { ServiceModel } from '../sim/simulation';
-import type { ServiceId } from '../sim/types';
+import { SERVICE_IDS, type ServiceId } from '../sim/types';
+import { TRAITS, TIRED, type Assignment, type Team } from '../sim/team';
 import { formatClock } from '../sim/clock';
+import { displayName, NAME_MAX, rename } from './names';
 
 export interface OrgPanelCallbacks {
   /** Queued by the app and applied between simulation steps. */
@@ -10,6 +14,8 @@ export interface OrgPanelCallbacks {
   onLetGo(): void;
   onApply(id: GrantId): void;
   onReopen(id: ServiceId): void;
+  /** Send a named worker somewhere, to rest, or back to automatic placement. */
+  onAssign(member: number, to: Assignment): void;
   /** Open the Sandbox panel at this section. */
   onOpen(): void;
 }
@@ -20,6 +26,14 @@ export interface OrgView {
   clock: number;
   incomePerHour: number;
   applicationContext: ApplicationContext;
+  team: Team;
+}
+
+interface MemberRow {
+  row: HTMLElement;
+  status: HTMLElement;
+  energy: HTMLElement;
+  select: HTMLSelectElement;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -29,21 +43,37 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
   return e;
 }
 
-const SERVICE_NAMES: Record<ServiceId, string> = { dropIn: 'drop-in centre', outreach: 'outreach camper', clubHr: 'club stand', pharmacy: 'pharmacy and needle exchange', drugChecking: 'drug checking service', shelter: 'shelter and day centre', clinic: 'clinic and A&E' };
-const SHORT_NAMES: Record<ServiceId, string> = { dropIn: 'drop-in', outreach: 'camper', clubHr: 'stand', pharmacy: 'pharmacy', drugChecking: 'checking', shelter: 'shelter', clinic: 'clinic' };
+/** Services that can close down for lack of money, and how their relaunch reads. */
+type Relaunchable = 'clubHr' | 'outreach' | 'dropIn';
+const RELAUNCH: Record<Relaunchable, { offer: string; pending: string }> = {
+  dropIn: { offer: t('Relaunch the drop-in centre ({price}, about {hours} h)'), pending: t('Relaunching the drop-in centre: ready {time}') },
+  outreach: { offer: t('Relaunch the outreach camper ({price}, about {hours} h)'), pending: t('Relaunching the outreach camper: ready {time}') },
+  clubHr: { offer: t('Relaunch the club stand ({price}, about {hours} h)'), pending: t('Relaunching the club stand: ready {time}') },
+};
+const SHORT_NAMES: Record<ServiceId, string> = { dropIn: t('drop-in'), outreach: t('camper'), clubHr: t('stand'), pharmacy: t('pharmacy'), drugChecking: t('checking'), shelter: t('shelter'), clinic: t('clinic') };
+/** Where a worker is, as in "At the stand · energy 80%". */
+const AT_NAMES: Record<ServiceId, string> = { dropIn: t('at the drop-in'), outreach: t('at the camper'), clubHr: t('at the stand'), pharmacy: t('at the pharmacy'), drugChecking: t('at the checking'), shelter: t('at the shelter'), clinic: t('at the clinic') };
+/** Options in a worker's "where they work" picker. */
+const PICK_NAMES: Record<ServiceId, string> = { dropIn: t('Drop-in'), outreach: t('Camper'), clubHr: t('Stand'), pharmacy: t('Pharmacy'), drugChecking: t('Checking'), shelter: t('Shelter'), clinic: t('Clinic') };
 
-const money = (v: number) => Math.round(v).toLocaleString('en-GB');
-const signed = (v: number) => `${v >= 0 ? '+' : '-'}${money(Math.abs(v))}`;
+const money = (v: number) => price(v);
+const signed = (v: number) => `${v >= 0 ? '+' : '−'}${Math.round(Math.abs(v)).toLocaleString(LOCALE)}`;
 
 /** Writes text only when it changed, so per-refresh updates cause no layout work. */
 function setText(e: HTMLElement, text: string): void {
   if (e.textContent !== text) e.textContent = text;
 }
 
+function setAttr(e: Element, name: string, value: string): void {
+  if (e.getAttribute(name) !== value) e.setAttribute(name, value);
+}
+
 interface GrantRow {
   status: HTMLElement;
   button: HTMLButtonElement;
 }
+
+const WORKS_AT: [Assignment, string][] = [['auto', t('Automatic')], ...SERVICE_IDS.map((id) => [id, PICK_NAMES[id]] as [Assignment, string]), ['rest', t('Rest')]];
 
 /**
  * The organisation: an always-visible status bar (budget and staff) and a
@@ -57,34 +87,72 @@ export class OrgPanel {
   private readonly recruiting: HTMLElement;
   private readonly log: HTMLElement;
   private readonly grants = {} as Record<GrantId, GrantRow>;
+  private readonly recruitBtns = {} as Record<RecruitId, HTMLButtonElement>;
   private readonly closed: HTMLElement;
-  private readonly reopen = {} as Record<ServiceId, HTMLButtonElement>;
+  private readonly reopen = {} as Record<Relaunchable, HTMLButtonElement>;
+  private readonly teamList: HTMLElement;
+  private readonly nameInput: HTMLInputElement;
+  private readonly moneyStat: HTMLElement;
+  private readonly staffStat: HTMLElement;
+  private readonly shiftStat: HTMLElement;
+  private readonly teamSummary: HTMLElement;
+  private teamKey = '';
+  private readonly memberRows = new Map<number, MemberRow>();
+  private readonly cb: OrgPanelCallbacks;
 
   constructor(cb: OrgPanelCallbacks) {
+    this.cb = cb;
     this.bar = el('button', 'org-bar');
     this.bar.type = 'button';
-    this.bar.title = 'Organisation: money and staff. Opens the Sandbox panel.';
+    this.bar.title = t('Organisation: money and staff. Opens the Sandbox panel.');
     this.bar.addEventListener('click', () => cb.onOpen());
 
     this.section = el('fieldset', 'sandbox-group org');
     this.section.id = 'org-section';
-    this.section.append(el('legend', undefined, 'Your organisation'));
+    this.section.append(el('legend', undefined, t('Organisation')));
+    // The organisation's name is the heading, and it can be edited in place.
+    this.nameInput = el('input', 'org-name');
+    this.nameInput.type = 'text';
+    this.nameInput.maxLength = NAME_MAX;
+    this.nameInput.value = displayName('org', 'name', t('Your organisation'));
+    this.nameInput.setAttribute('aria-label', t('Organisation name'));
+    this.nameInput.title = t('Click to rename your organisation');
+    const saveName = () => {
+      rename('org', 'name', this.nameInput.value);
+      this.nameInput.value = displayName('org', 'name', t('Your organisation'));
+    };
+    this.nameInput.addEventListener('change', saveName);
+    this.nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') this.nameInput.blur(); });
+    // Three figures at a glance, then one small line on where money goes.
+    const stats = el('div', 'org-stats');
+    const stat = (label: string) => {
+      const tile = el('div', 'org-stat');
+      const value = el('strong');
+      tile.append(value, el('span', undefined, label));
+      stats.append(tile);
+      return value;
+    };
+    this.moneyStat = stat(t('money'));
+    this.staffStat = stat(t('paid + volunteers'));
+    this.shiftStat = stat(t('on shift / wanted'));
     this.summary = el('p', 'org-summary');
     this.staff = el('p', 'org-staff');
+    this.staff.hidden = true;
     this.recruiting = el('p', 'org-recruiting');
     const actions = el('div', 'org-actions');
     for (const id of Object.keys(RECRUIT) as RecruitId[]) {
       const r = RECRUIT[id];
-      const b = el('button', 'btn org-action', `${r.label} (${r.cost}, about ${Math.round(r.minutes / 60 * 10) / 10} h)`);
+      const b = el('button', 'btn org-action', id === 'hirePaid' ? t('Hire paid ({price})', { price: price(r.cost) }) : t('Find volunteers ({price})', { price: price(r.cost) }));
       b.type = 'button';
       b.id = `org-${id}`;
-      b.title = r.summary;
+      b.title = t('{label}: about {hours} h. {summary}', { label: r.label, hours: (Math.round(r.minutes / 60 * 10) / 10).toLocaleString(LOCALE), summary: r.summary });
       b.addEventListener('click', () => cb.onRecruit(id));
+      this.recruitBtns[id] = b;
       actions.append(b);
     }
-    const letGo = el('button', 'btn org-action', 'Let a paid worker go');
+    const letGo = el('button', 'btn org-action', t('Let one go'));
     letGo.type = 'button';
-    letGo.title = `Saves ${ORG.wagePerHour} per hour while they would be on shift.`;
+    letGo.title = t('Saves {wage} per hour while they would be on shift.', { wage: price(ORG.wagePerHour) });
     letGo.id = 'org-letGo';
     letGo.addEventListener('click', () => cb.onLetGo());
     actions.append(letGo);
@@ -92,9 +160,9 @@ export class OrgPanel {
     // Services closed down when the money ran out: relaunch for a cost.
     this.closed = el('div', 'org-closed');
     this.closed.hidden = true;
-    this.closed.append(el('h3', 'level', 'Closed down'));
-    for (const id of ['clubHr', 'outreach', 'dropIn'] as ServiceId[]) {
-      const b = el('button', 'btn org-action', `Relaunch the ${SERVICE_NAMES[id]} (${ORG.reopen.cost}, about ${Math.round(ORG.reopen.minutes / 60)} h)`);
+    this.closed.append(el('h3', 'level', t('Closed down')));
+    for (const id of Object.keys(RELAUNCH) as Relaunchable[]) {
+      const b = el('button', 'btn org-action', t(RELAUNCH[id].offer, { price: price(ORG.reopen.cost), hours: Math.round(ORG.reopen.minutes / 60) }));
       b.type = 'button';
       b.id = `org-reopen-${id}`;
       b.hidden = true;
@@ -104,21 +172,21 @@ export class OrgPanel {
     }
 
     const grants = el('div', 'org-grants');
-    grants.append(el('h3', 'level', 'Funding applications (long term)'));
+    grants.append(el('h3', 'level', t('Funding applications (long term)')));
     for (const id of GRANT_IDS) {
       const g = GRANTS[id];
       const row = el('div', 'org-grant');
       const head = el('div', 'org-grant-head');
       head.append(el('strong', undefined, g.label));
-      const button = el('button', 'btn org-apply', `Apply (${g.fee})`);
+      const button = el('button', 'btn org-apply', t('Apply ({price})', { price: price(g.fee) }));
       button.type = 'button';
       button.id = `org-${id}`;
       button.addEventListener('click', () => cb.onApply(id));
       head.append(button);
-      const detail = el('p', 'factor-summary', `Decision after about ${Math.round(g.minutes / 60)} h. ${g.odds} If approved: ${g.rewardText}.`);
+      const detail = el('p', 'factor-summary', t('Decision after about {hours} h. {odds} If approved: {reward}.', { hours: Math.round(g.minutes / 60), odds: g.odds, reward: g.rewardText }));
       const status = el('p', 'org-grant-status');
       const sources = el('details', 'sources');
-      sources.append(el('summary', undefined, `Sources (${g.evidence.length})`));
+      sources.append(el('summary', undefined, t('Sources ({n})', { n: g.evidence.length })));
       const list = el('ul', 'cites');
       for (const c of g.evidence) {
         const li = el('li');
@@ -132,8 +200,15 @@ export class OrgPanel {
     }
     this.log = el('ul', 'org-log');
     this.log.setAttribute('aria-live', 'polite');
-    const note = el('p', 'note', 'Money is in illustrative units. Funding levels follow the library only as a ratio (project about a third of stable public funding).');
-    this.section.append(this.summary, this.staff, this.recruiting, actions, this.closed, grants, this.log, note);
+    const note = el('p', 'note', t('Money is in illustrative units. Funding levels follow the library only as a ratio (project about a third of stable public funding).'));
+    // The team by name: qualities, energy, and where each person works.
+    const team = el('details', 'org-team');
+    this.teamSummary = el('summary', undefined, t('Your team'));
+    team.classList.add('sandbox-sub');
+    team.append(this.teamSummary, el('p', 'factor-summary', t('Pin someone to a service or send them to rest. Automatic places people where they fit best, paid staff first; tired people go home until rested.')));
+    this.teamList = el('ul', 'team-list');
+    team.append(this.teamList);
+    this.section.append(this.nameInput, stats, this.summary, this.recruiting, actions, team, this.closed, grants, this.log, note);
   }
 
   /** Per-refresh update; text-only writes. */
@@ -145,38 +220,100 @@ export class OrgPanel {
     const short = Math.max(0, wanted - assigned);
     const budget = `${money(o.budget)} (${signed(o.netPerHour)}/h)`;
     const next = o.nextClosure(v.clock);
-    const closedText = o.closedDown.size ? ` · ${o.closedDown.size} closed down` : '';
-    setText(this.bar, `Budget ${budget} · Staff ${o.paid} paid + ${o.volunteers} volunteers${short ? ` · ${short} short` : ''}${o.broke ? ` · out of money${next ? `, ${SHORT_NAMES[next.service]} closes ${formatClock(next.at)}` : ''}` : ''}${closedText}`);
+    const closedText = o.closedDown.size ? ` · ${t('{n} closed down', { n: o.closedDown.size })}` : '';
+    const shortText = short ? ` · ${plural(short, ['{n} short', '{n} short'], ['brakuje {n} osoby', 'brakuje {n} osób', 'brakuje {n} osób'])}` : '';
+    const brokeText = o.broke ? ` · ${next ? t('out of money, {name} closes {time}', { name: SHORT_NAMES[next.service], time: formatClock(next.at) }) : t('out of money')}` : '';
+    setText(this.bar, `${t('Budget {budget} · Staff {paid} paid + {volunteers} volunteers', { budget, paid: o.paid, volunteers: o.volunteers })}${shortText}${brokeText}${closedText}`);
     this.bar.dataset.state = o.broke || o.closedDown.size ? 'broke' : short ? 'short' : 'ok';
     const anyClosed = o.closedDown.size > 0;
     if (this.closed.hidden === anyClosed) this.closed.hidden = !anyClosed;
-    for (const id of Object.keys(this.reopen) as ServiceId[]) {
+    for (const id of Object.keys(this.reopen) as Relaunchable[]) {
       const pending = o.reopening.find((r) => r.id === id);
       const show = o.closedDown.has(id);
       if (this.reopen[id].hidden === show) this.reopen[id].hidden = !show;
-      const label = pending ? `Relaunching the ${SERVICE_NAMES[id]}: ready ${formatClock(o.clockAt(pending.readyAt, v.clock))}` : `Relaunch the ${SERVICE_NAMES[id]} (${ORG.reopen.cost}, about ${Math.round(ORG.reopen.minutes / 60)} h)`;
+      const label = pending ? t(RELAUNCH[id].pending, { time: formatClock(o.clockAt(pending.readyAt, v.clock)) }) : t(RELAUNCH[id].offer, { price: price(ORG.reopen.cost), hours: Math.round(ORG.reopen.minutes / 60) });
       setText(this.reopen[id], label);
-      this.reopen[id].disabled = !!pending;
+      this.reopen[id].disabled = !!pending || o.budget < ORG.reopen.cost;
     }
-    setText(this.summary, `Budget ${budget}. Income ${money(v.incomePerHour + o.grantIncome)}/h (national funding ${money(v.incomePerHour)}, grants ${money(o.grantIncome)}); wages ${money(paidOn * ORG.wagePerHour)}/h for ${paidOn} paid staff on shift.`);
-    setText(this.staff, `Staff: ${o.paid} paid, ${o.volunteers} volunteers. On shift ${assigned} of ${wanted} wanted${short ? `, ${short} short` : ''}.`);
-    setText(this.recruiting, o.recruiting.length ? `Recruiting: ${o.recruiting.map((r) => `${RECRUIT[r.id].label.toLowerCase()} until ${formatClock(o.clockAt(r.readyAt, v.clock))}`).join('; ')}.` : 'Recruiting: nothing under way.');
+    setText(this.moneyStat, `${money(o.budget)} ${signed(o.netPerHour)}/h`);
+    this.moneyStat.dataset.state = o.broke ? 'broke' : o.netPerHour < 0 ? 'falling' : 'ok';
+    setText(this.staffStat, `${o.paid} + ${o.volunteers}`);
+    setText(this.shiftStat, `${assigned} / ${wanted}`);
+    this.shiftStat.dataset.state = short ? 'short' : 'ok';
+    setText(this.summary, t('In {total}/h (funding {funding}, grants {grants}) · wages {wages}/h · running costs {running}/h', { total: money(v.incomePerHour + o.grantIncome), funding: money(v.incomePerHour), grants: money(o.grantIncome), wages: money(paidOn * ORG.wagePerHour), running: money((SERVICE_IDS.length - o.closedDown.size) * ORG.runningPerPlace) }));
+    const recruiting = o.recruiting.length ? t('Recruiting: {list}.', { list: o.recruiting.map((r) => t('{what} until {time}', { what: RECRUIT[r.id].label.toLowerCase(), time: formatClock(o.clockAt(r.readyAt, v.clock)) })).join('; ') }) : '';
+    setText(this.recruiting, recruiting);
+    if (this.recruiting.hidden !== !recruiting) this.recruiting.hidden = !recruiting;
     for (const id of GRANT_IDS) {
       const state = o.applications[id];
       const chance = Math.round(GRANTS[id].chance(v.applicationContext) * 100);
       const text =
-        state.status === 'pending' ? `Pending: decision at ${formatClock(o.clockAt(state.decidesAt, v.clock))}. Chance now about ${chance}%.`
-        : state.status === 'approved' ? `Approved at ${formatClock(state.at)}.`
-        : state.status === 'declined' ? `Declined at ${formatClock(state.at)}. Chance now about ${chance}%.`
-        : `Chance now about ${chance}%.`;
+        state.status === 'pending' ? t('Pending: decision at {time}. Chance now about {chance}%.', { time: formatClock(o.clockAt(state.decidesAt, v.clock)), chance })
+        : state.status === 'approved' ? t('Approved at {time}.', { time: formatClock(state.at) })
+        : state.status === 'declined' ? t('Declined at {time}. Chance now about {chance}%.', { time: formatClock(state.at), chance })
+        : t('Chance now about {chance}%.', { chance });
       setText(this.grants[id].status, text);
       const blocked = state.status === 'pending' || state.status === 'approved';
+      // Greyed out while the fee is more than the money on hand.
+      const tooDear = o.budget < GRANTS[id].fee;
+      if (this.grants[id].button.disabled !== tooDear) this.grants[id].button.disabled = tooDear;
       if (this.grants[id].button.hidden !== blocked) this.grants[id].button.hidden = blocked;
     }
+    for (const id of Object.keys(this.recruitBtns) as RecruitId[]) {
+      const dear = o.budget < RECRUIT[id].cost;
+      if (this.recruitBtns[id].disabled !== dear) this.recruitBtns[id].disabled = dear;
+    }
+    this.updateTeam(v.team);
     const logText = o.log.map((n) => `${formatClock(n.at)} ${n.text}`).join('\n');
     if (this.log.dataset.text !== logText) {
       this.log.dataset.text = logText;
       this.log.replaceChildren(...o.log.map((n) => el('li', undefined, `${formatClock(n.at)} ${n.text}`)));
+    }
+  }
+
+  /** Rows are rebuilt only when people join or leave; otherwise only their text changes. */
+  private updateTeam(team: Team): void {
+    const key = team.members.map((m) => m.id).join(',');
+    if (key !== this.teamKey) {
+      this.teamKey = key;
+      this.memberRows.clear();
+      this.teamList.replaceChildren(...team.members.map((m) => {
+        const row = el('li', 'team-member');
+        const who = el('div', 'team-who');
+        const name = el('p', 'team-name');
+        name.append(el('strong', undefined, m.name), el('span', 'team-kind', ` ${m.paid ? t('paid') : t('volunteer')}`));
+        const traits = el('p', 'team-traits', m.traits.map((x) => TRAITS[x].label).join(', '));
+        traits.title = m.traits.map((x) => `${TRAITS[x].label}: ${TRAITS[x].detail}`).join('\n');
+        const status = el('p', 'team-status');
+        who.append(name, traits, status);
+        const energy = el('span', 'team-energy');
+        energy.setAttribute('role', 'img');
+        const select = el('select', 'team-assign');
+        select.setAttribute('aria-label', t('Where {name} works', { name: m.name }));
+        for (const [value, text] of WORKS_AT) {
+          const o = el('option', undefined, text);
+          o.value = value;
+          select.append(o);
+        }
+        select.addEventListener('change', () => this.cb.onAssign(m.id, select.value as Assignment));
+        row.append(who, select, energy);
+        this.memberRows.set(m.id, { row, status, energy, select });
+        return row;
+      }));
+    }
+    const working = team.members.filter((m) => m.workingAt).length;
+    setText(this.teamSummary, t('Your team ({working} of {total} on shift)', { working, total: team.members.length }));
+    for (const m of team.members) {
+      const r = this.memberRows.get(m.id);
+      if (!r) continue;
+      const where = m.workingAt ? AT_NAMES[m.workingAt] : m.assignment === 'rest' ? t('resting') : m.worn ? t('gone home tired') : t('off shift');
+      const pct = Math.round(m.energy * 100);
+      setText(r.status, t('{where} · energy {pct}%', { where: `${where[0].toUpperCase()}${where.slice(1)}`, pct }));
+      setAttr(r.energy, 'aria-label', t('Energy {pct}%', { pct }));
+      r.energy.style.setProperty('--energy', String(m.energy));
+      r.energy.dataset.low = String(m.energy < TIRED + 0.1);
+      // Never fight a picker the user is using.
+      if (document.activeElement !== r.select && r.select.value !== m.assignment) r.select.value = m.assignment;
     }
   }
 }

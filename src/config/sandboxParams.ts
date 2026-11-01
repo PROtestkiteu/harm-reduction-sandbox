@@ -11,16 +11,17 @@ import { formatClock } from '../sim/clock';
 import { Calendar, dayOf, formatDate } from '../sim/calendar';
 import { ILLUSTRATIVE } from './illustrative';
 import { ORG } from './organisation';
+import { LOCALE, plural, t } from '../i18n';
 
 export type ParamGroup = 'org' | 'night' | 'demand' | ServiceId;
 
 export const PARAM_GROUPS: readonly { id: ParamGroup; label: string }[] = [
-  { id: 'org', label: 'Organisation' },
-  { id: 'night', label: 'Night and season' },
-  { id: 'demand', label: 'Street and venue' },
-  { id: 'dropIn', label: 'Drop-in centre' },
-  { id: 'outreach', label: 'Mobile outreach' },
-  { id: 'clubHr', label: 'Club harm reduction stand' },
+  { id: 'org', label: t('Organisation') },
+  { id: 'night', label: t('Night and season') },
+  { id: 'demand', label: t('Street and venue') },
+  { id: 'dropIn', label: t('Drop-in centre') },
+  { id: 'outreach', label: t('Mobile outreach') },
+  { id: 'clubHr', label: t('Club harm reduction stand') },
 ];
 
 export interface ParamDef {
@@ -37,91 +38,92 @@ export interface ParamDef {
 }
 
 const S = ILLUSTRATIVE.services;
-const perMin = (v: number) => `${v.toFixed(1)} / min`;
+const fixed = (v: number, digits: number) => v.toLocaleString(LOCALE, { minimumFractionDigits: digits, maximumFractionDigits: digits });
+const perMin = (v: number) => t('{v} / min', { v: fixed(v, 1) });
 const count = (v: number) => String(Math.round(v));
 const seconds = (v: number) => `${Math.round(v)} s`;
 
 const serviceParams = (id: ServiceId, staffMax: number, waitingMax: number, patience: [number, number]) =>
   [
     {
-      id: `${id}.staff`, group: id, label: 'Staff wanted', min: 1, max: staffMax, step: 1, default: S[id].staff, format: count,
-      hint: 'How many people this service asks for. The organisation fills it from paid staff, then volunteers; if the pool is short, fewer turn up.',
+      id: `${id}.staff`, group: id, label: t('Staff wanted'), min: 1, max: staffMax, step: 1, default: S[id].staff, format: count,
+      hint: t('How many people this service asks for. The organisation fills it from paid staff, then volunteers; if the pool is short, fewer turn up.'),
     },
     {
-      id: `${id}.waiting`, group: id, label: 'Waiting places', min: 0, max: waitingMax, step: 1, default: S[id].waitingSlots, format: count,
-      hint: 'Seats or queue spots. When they are full, new arrivals cannot wait and their need goes unmet.',
+      id: `${id}.waiting`, group: id, label: t('Waiting places'), min: 0, max: waitingMax, step: 1, default: S[id].waitingSlots, format: count,
+      hint: t('Seats or queue spots. When they are full, new arrivals cannot wait and their need goes unmet.'),
     },
     {
-      id: `${id}.patience`, group: id, label: 'Visitor patience', min: patience[0], max: patience[1], step: 5, default: S[id].patienceSeconds, format: seconds,
-      hint: 'How long a person waits before leaving unserved.',
+      id: `${id}.patience`, group: id, label: t('Visitor patience'), min: patience[0], max: patience[1], step: 5, default: S[id].patienceSeconds, format: seconds,
+      hint: t('How long a person waits before leaving unserved.'),
     },
   ] as const;
 
 export const PARAMS = [
   {
-    id: 'orgBudget', group: 'org', label: 'Budget now', min: 0, max: 10000, step: 50, default: ORG.startBudget,
-    format: (v: number) => `${Math.round(v).toLocaleString('en-GB')} units`,
-    hint: 'Money in sandbox units. Follows the night live; dragging sets it. Wages, kits, analyses and naloxone draw it down; funding refills it.',
+    id: 'orgBudget', group: 'org', label: t('Budget now'), min: 0, max: 10000, step: 50, default: ORG.startBudget,
+    format: (v: number) => `● ${Math.round(v).toLocaleString(LOCALE)}`,
+    hint: t('Money in sandbox units. Follows the night live; dragging sets it. Wages, kits, analyses and naloxone draw it down; funding refills it.'),
   },
   {
-    id: 'clock', group: 'night', label: 'Time of day', min: 18 * 60, max: 42 * 60 - 5, step: 5, default: ILLUSTRATIVE.clockStartMinutes, format: formatClock,
-    hint: 'Jumps the scene clock, from the evening round the night and through the next day. Light, people and services follow the hour.',
+    id: 'clock', group: 'night', label: t('Time of day'), min: 18 * 60, max: 42 * 60 - 5, step: 5, default: ILLUSTRATIVE.clockStartMinutes, format: formatClock,
+    hint: t('Jumps the scene clock, from the evening round the night and through the next day. Light, people and services follow the hour.'),
   },
   {
-    id: 'date', group: 'night', label: 'Date', min: 1, max: 365, step: 1, default: dayOf(9, 15) + 1,
+    id: 'date', group: 'night', label: t('Date'), min: 1, max: 365, step: 1, default: dayOf(9, 15) + 1,
     format: (v: number) => formatDate(new Calendar(v - 1).date),
-    hint: 'Tonight\'s date: weekday, season and special nights (match nights, Freshers, Pride, Christmas, New Year\'s Eve). Moves on each time the night loops.',
+    hint: t('Tonight\'s date: weekday, season and special nights (match nights, Freshers, Pride, Christmas, New Year\'s Eve). Moves on each time the night loops.'),
   },
   {
-    id: 'calendarPace', group: 'night', label: 'Calendar pace', min: 1, max: 30, step: 1, default: 1,
-    format: (v: number) => (v === 1 ? '1 day per night' : `${v} days per night`),
-    hint: 'How far the calendar moves each time the night loops, so seasons can pass in a sitting.',
+    id: 'calendarPace', group: 'night', label: t('Calendar pace'), min: 1, max: 30, step: 1, default: 1,
+    format: (v: number) => plural(v, ['{n} day per night', '{n} days per night'], ['{n} dzień na noc', '{n} dni na noc', '{n} dni na noc']),
+    hint: t('How far the calendar moves each time the night loops, so seasons can pass in a sitting.'),
   },
   {
-    id: 'dayCycle', group: 'night', label: 'Day and night', min: 0, max: 1, step: 1, default: 1,
-    format: (v: number) => (v ? 'Running' : 'Held'),
-    hint: 'Let the hours run, or hold the time of day where it is. People keep moving either way.',
+    id: 'dayCycle', group: 'night', label: t('Day and night'), min: 0, max: 1, step: 1, default: 1,
+    format: (v: number) => (v ? t('Running') : t('Held')),
+    hint: t('Let the hours run, or hold the time of day where it is. People keep moving either way.'),
   },
   {
-    id: 'clockSpeed', group: 'night', label: 'Clock speed', min: 0.25, max: 6, step: 0.25, default: ILLUSTRATIVE.clockMinutesPerSecond,
-    format: (v: number) => `${v.toFixed(2)} clock min / s`,
-    hint: 'Clock minutes per real second at 1x. Walking stays real time.',
+    id: 'clockSpeed', group: 'night', label: t('Clock speed'), min: 0.25, max: 6, step: 0.25, default: ILLUSTRATIVE.clockMinutesPerSecond,
+    format: (v: number) => t('{v} clock min / s', { v: fixed(v, 2) }),
+    hint: t('Clock minutes per real second at 1x. Walking stays real time.'),
   },
   {
-    id: 'passersby', group: 'demand', label: 'Passers-by', min: 0, max: 10, step: 0.2, default: ILLUSTRATIVE.passersbyPerMinute, format: perMin,
-    hint: 'People walking through to somewhere else.',
+    id: 'passersby', group: 'demand', label: t('Passers-by'), min: 0, max: 10, step: 0.2, default: ILLUSTRATIVE.passersbyPerMinute, format: perMin,
+    hint: t('People walking through to somewhere else.'),
   },
   {
-    id: 'cars', group: 'demand', label: 'Traffic', min: 0, max: 20, step: 0.2, default: ILLUSTRATIVE.carsPerMinute, format: perMin,
-    hint: 'Cars along the one-way street. Cars stop for people on the crossing.',
+    id: 'cars', group: 'demand', label: t('Traffic'), min: 0, max: 20, step: 0.2, default: ILLUSTRATIVE.carsPerMinute, format: perMin,
+    hint: t('Cars along the one-way street. Cars stop for people on the crossing.'),
   },
   {
-    id: 'clubArrivals', group: 'demand', label: 'Club arrivals', min: 0, max: 12, step: 0.2, default: ILLUSTRATIVE.club.arrivalsPerMinute, format: perMin,
-    hint: 'People heading to the music club.',
+    id: 'clubArrivals', group: 'demand', label: t('Club arrivals'), min: 0, max: 12, step: 0.2, default: ILLUSTRATIVE.club.arrivalsPerMinute, format: perMin,
+    hint: t('People heading to the music club.'),
   },
   {
-    id: 'venueCapacity', group: 'demand', label: 'Venue capacity', min: 20, max: 300, step: 5, default: ILLUSTRATIVE.club.capacity, format: count,
-    hint: 'When the club is full the door stops letting people in and the door queue grows.',
+    id: 'venueCapacity', group: 'demand', label: t('Venue capacity'), min: 20, max: 300, step: 5, default: ILLUSTRATIVE.club.capacity, format: count,
+    hint: t('When the club is full the door stops letting people in and the door queue grows.'),
   },
   {
-    id: 'eventFrequency', group: 'demand', label: 'Random events', min: 0, max: 3, step: 0.25, default: 1,
-    format: (v: number) => (v === 0 ? 'Off' : `${v.toFixed(2)}x`),
-    hint: 'How often random events start: supply shocks, health events, challenges people face, and services falling short. Off still allows manual triggers.',
+    id: 'eventFrequency', group: 'demand', label: t('Random events'), min: 0, max: 3, step: 0.25, default: 1,
+    format: (v: number) => (v === 0 ? t('Off') : `${fixed(v, 2)}x`),
+    hint: t('How often random events start: supply shocks, health events, challenges people face, and services falling short. Off still allows manual triggers.'),
   },
   {
-    id: 'dropIn.demand', group: 'dropIn', label: 'People seeking it', min: 0, max: 10, step: 0.2, default: S.dropIn.demandPerMinute, format: perMin,
-    hint: 'Demand: people per minute who set out for the drop-in centre.',
+    id: 'dropIn.demand', group: 'dropIn', label: t('People seeking it'), min: 0, max: 10, step: 0.2, default: S.dropIn.demandPerMinute, format: perMin,
+    hint: t('Demand: people per minute who set out for the drop-in centre.'),
   },
   ...serviceParams('dropIn', 5, 8, [10, 240]),
   {
-    id: 'outreach.demand', group: 'outreach', label: 'People seeking it', min: 0, max: 8, step: 0.2, default: S.outreach.demandPerMinute, format: perMin,
-    hint: 'Demand: people per minute who set out for the outreach camper.',
+    id: 'outreach.demand', group: 'outreach', label: t('People seeking it'), min: 0, max: 8, step: 0.2, default: S.outreach.demandPerMinute, format: perMin,
+    hint: t('Demand: people per minute who set out for the outreach camper.'),
   },
   ...serviceParams('outreach', 4, 8, [10, 180]),
   {
-    id: 'clubHr.interest', group: 'clubHr', label: 'Club-goers stopping by', min: 0, max: 1, step: 0.05, default: ILLUSTRATIVE.club.standInterest,
+    id: 'clubHr.interest', group: 'clubHr', label: t('Club-goers stopping by'), min: 0, max: 1, step: 0.05, default: ILLUSTRATIVE.club.standInterest,
     format: (v: number) => `${Math.round(v * 100)} %`,
-    hint: 'Demand: share of club arrivals who look for the stand on the way in.',
+    hint: t('Demand: share of club arrivals who look for the stand on the way in.'),
   },
   ...serviceParams('clubHr', 3, 4, [5, 90]),
 ] as const satisfies readonly ParamDef[];

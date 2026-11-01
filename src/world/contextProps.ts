@@ -2,7 +2,7 @@ import { Group, type CanvasTexture, type MeshLambertMaterial, type Object3D, typ
 import { PALETTE } from '../config/palette';
 import type { ServiceId } from '../sim/types';
 import { add, box, cylinder, pixelTextTexture, signBoard } from './kit';
-import { CAMPER, EDGE, ROAD } from './layout';
+import { EDGE, HOME_CAMPER, ROAD, VENUE_FRAME, toWorld, type Frame } from './layout';
 import { glowMat, mat } from './materials';
 import { car } from './vehicles';
 
@@ -52,19 +52,19 @@ export class ContextProps {
   private camperTarget = 0;
   private time = 0;
 
-  constructor(scene: Scene, private readonly camper: Object3D, private readonly reducedMotion: () => boolean) {
+  constructor(scene: Scene, private readonly camper: { template: Object3D; drive: Object3D }, private readonly reducedMotion: () => boolean) {
     const root = add(scene, new Group());
 
     // Checking signs where the camera sees them: on the drop-in's front parapet,
     // along the camper roof (it drives off with the camper), beside the club stand.
     const dropIn = checkSign(4.4, 1.0, 0.35);
-    dropIn.position.set(8.0, 7.2, -7.75);
+    placeAt(dropIn, VENUE_FRAME.dropIn, 8.0, 7.2, -7.75);
     const outreach = checkSign(3.8, 0.7, 0.25);
     outreach.position.set(0, 3.15, 3.65);
     outreach.rotation.y = Math.PI / 2;
-    camper.add(outreach);
+    camper.template.add(outreach);
     const stand = checkSign(2.8, 0.62, 1.75);
-    stand.position.set(-13.2, 0.12, 6.9);
+    placeAt(stand, VENUE_FRAME.club, -13.2, 0.12, 6.9);
     root.add(dropIn, stand);
     this.signs = { dropIn, outreach, clubHr: stand };
 
@@ -75,7 +75,7 @@ export class ContextProps {
     const label = signBoard('LAB', 0.5, 0.2, SIGN_FG, SIGN_BG, 0.7).mesh;
     label.position.set(0, 1.02, 0.05);
     this.dropBox.add(label);
-    this.dropBox.position.set(3.25, 0.12, -6.75);
+    placeAt(this.dropBox, VENUE_FRAME.dropIn, 3.25, 0.12, -6.75);
 
     // Public early-warning board at the east kerb, facing the street.
     this.board = add(root, new Group());
@@ -154,10 +154,18 @@ export class ContextProps {
       const step = dt / 12;
       this.camperAway = this.camperTarget > this.camperAway ? Math.min(this.camperTarget, this.camperAway + step) : Math.max(this.camperTarget, this.camperAway - step);
       const p = this.camperAway;
-      this.camper.position.x = CAMPER.x + (ROAD.laneX - CAMPER.x) * Math.min(1, p * 3);
-      this.camper.position.z = Math.max(0, (p - 0.33) / 0.67) * (EDGE + 6);
+      // In the van's own frame: out into the lane beside it, then on ahead.
+      this.camper.drive.position.x = (ROAD.laneX - HOME_CAMPER.x) * Math.min(1, p * 3);
+      this.camper.drive.position.z = Math.max(0, (p - 0.33) / 0.67) * (EDGE + 6);
       changed = true;
     }
     return changed;
   }
+}
+
+/** Puts a prop designed at (x, y, z) beside a venue where that venue stands this launch. */
+function placeAt(o: Object3D, f: Frame, x: number, y: number, z: number): void {
+  const w = toWorld(f, { x, z });
+  o.position.set(w.x, y, w.z);
+  o.rotation.y += f.rot;
 }

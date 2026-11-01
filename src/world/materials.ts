@@ -1,4 +1,4 @@
-import { Color, MeshLambertMaterial, MeshPhongMaterial, type WebGLProgramParametersWithUniforms } from 'three';
+import { Color, MeshLambertMaterial, MeshPhongMaterial, type Material, type WebGLProgramParametersWithUniforms } from 'three';
 
 /**
  * Weathered surfaces without textures or UVs. Every scene material gets the
@@ -219,6 +219,7 @@ function painted<T extends MeshLambertMaterial>(m: T): T {
 }
 
 const shared = new Map<number, MeshLambertMaterial>();
+const plain = new WeakSet<Material>();
 
 /** Shared material for a palette colour, with painted surface variation. Never mutate the result. */
 export function mat(color: number): MeshLambertMaterial {
@@ -226,8 +227,23 @@ export function mat(color: number): MeshLambertMaterial {
   if (!m) {
     m = painted(new MeshLambertMaterial({ color, flatShading: true }));
     shared.set(color, m);
+    plain.add(m);
   }
   return m;
+}
+
+/** True for the plain palette materials from `mat`: same shader, only the colour differs. */
+export function isPlain(m: Material): m is MeshLambertMaterial {
+  return plain.has(m);
+}
+
+let vertexPainted: MeshLambertMaterial | null = null;
+/**
+ * One material for every plain colour at once: the colour rides on the
+ * vertices, so static meshes of many colours merge into a single draw call.
+ */
+export function vertexColourMat(): MeshLambertMaterial {
+  return (vertexPainted ??= painted(new MeshLambertMaterial({ vertexColors: true, flatShading: true })));
 }
 
 /**

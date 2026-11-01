@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { PARAM_GROUPS, PARAMS, PARAM_BY_ID, normalize, type ParamId, type SandboxSettings } from '../config/sandboxParams';
 
 export interface SandboxPanelCallbacks {
@@ -29,7 +30,7 @@ interface Page {
 }
 
 /** Topics in menu order; anything mounted that is not listed goes at the end. */
-const ORDER = ['org-section', 'group-night', 'group-demand', 'services', 'context-section'];
+const ORDER = ['org-section', 'group-night', 'group-demand', 'services', 'context-section', 'random-section', 'save-section', 'about-section'];
 
 /**
  * Sandbox controls laid out like the conversation column: a short numbered
@@ -53,43 +54,43 @@ export class SandboxPanel {
 
   constructor(parent: HTMLElement, initial: SandboxSettings, cb: SandboxPanelCallbacks) {
     this.root = el('section', 'sandbox');
-    this.root.setAttribute('aria-label', 'Sandbox settings');
+    this.root.setAttribute('aria-label', t('Sandbox settings'));
     this.toggle = el('button', 'btn sandbox-toggle');
     // A small gear before the word, drawn inline so it follows the text colour.
-    this.toggle.innerHTML = '<svg class="gear" viewBox="-1.5 -1.5 27 27" aria-hidden="true" focusable="false"><path fill="currentColor" d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.6 7.6 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.6 7.6 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1c.5.4 1.1.7 1.7 1l.4 2.6h4l.4-2.6c.6-.3 1.2-.6 1.7-1l2.5 1 2-3.5zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg><span>Sandbox</span>';
+    this.toggle.innerHTML = '<svg class="gear" viewBox="-1.5 -1.5 27 27" aria-hidden="true" focusable="false"><path fill="currentColor" d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.6 7.6 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.6 7.6 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1c.5.4 1.1.7 1.7 1l.4 2.6h4l.4-2.6c.6-.3 1.2-.6 1.7-1l2.5 1 2-3.5zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg><span>' + t('Sandbox') + '</span>';
     this.toggle.type = 'button';
     this.toggle.setAttribute('aria-expanded', 'false');
     this.toggle.setAttribute('aria-controls', 'sandbox-body');
-    this.toggle.title = 'Change the night, the street and the services';
+    this.toggle.title = t('Change the night, the street and the services');
     this.toggle.addEventListener('click', () => this.setOpen(this.toggle.getAttribute('aria-expanded') !== 'true'));
 
     this.body = el('div', 'sandbox-body');
     this.body.id = 'sandbox-body';
     this.body.hidden = true;
     const head = el('div', 'sandbox-head');
-    const title = el('h2', undefined, 'Sandbox settings');
-    const reset = el('button', 'btn sandbox-reset', 'Reset');
+    const title = el('h2', undefined, t('Sandbox settings'));
+    const reset = el('button', 'btn sandbox-reset', t('Reset'));
     reset.type = 'button';
-    reset.title = 'Return every setting to its default';
+    reset.title = t('Return every setting to its default');
     reset.addEventListener('click', () => cb.onReset());
     const close = el('button', 'btn close', '×');
     close.type = 'button';
-    close.setAttribute('aria-label', 'Close sandbox settings');
+    close.setAttribute('aria-label', t('Close sandbox settings'));
     close.addEventListener('click', () => this.setOpen(false, true));
     head.append(title, reset, close);
-    this.note = el('p', 'note sandbox-note', 'Illustrative values, not evidence. Changes apply live.');
+    this.note = el('p', 'note sandbox-note', t('Illustrative values, not evidence. Changes apply live.'));
     this.heading = el('p', 'sandbox-page-title');
     this.heading.hidden = true;
     this.menu = el('ol', 'sandbox-menu');
     this.back = el('ol', 'sandbox-menu sandbox-back');
-    const backBtn = el('button', 'sandbox-reply', 'Back.');
+    const backBtn = el('button', 'sandbox-backlink', `‹ ${t('Back')}`);
     backBtn.type = 'button';
     backBtn.addEventListener('click', () => this.goBack());
     const li = el('li');
     li.append(backBtn);
     this.back.append(li);
     this.back.hidden = true;
-    this.body.append(head, this.note, this.heading, this.menu);
+    this.body.append(head, this.note, this.back, this.heading, this.menu);
 
     const serviceGroups = new Set(['dropIn', 'outreach', 'clubHr']);
     for (const group of PARAM_GROUPS) {
@@ -132,8 +133,6 @@ export class SandboxPanel {
       this.body.append(fieldset);
       this.addPage(fieldset, group.label, serviceGroups.has(group.id) ? 'services' : undefined);
     }
-    this.body.append(this.back);
-
     // Escape steps back one level, then closes, without clearing the scene selection.
     this.root.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && !this.body.hidden) {
@@ -152,16 +151,19 @@ export class SandboxPanel {
   /** Adds an extra section (the organisation, context factors) as its own topic. */
   mount(section: HTMLElement): void {
     if (!section.id) section.id = section.classList.contains('context') ? 'context-section' : `section-${this.pages.size}`;
-    this.back.before(section);
+    this.body.append(section);
     // The budget slider lives with the rest of the organisation.
     const orgGroup = this.pages.get('group-org');
     if (section.id === 'org-section' && orgGroup) {
-      section.querySelector('legend')?.after(...orgGroup.section.querySelectorAll('.param'));
+      // The budget slider is a sandbox cheat: folded away under the actions.
+      const cheat = el('details', 'sandbox-sub');
+      cheat.append(el('summary', undefined, t('Set the budget (sandbox)')), ...orgGroup.section.querySelectorAll('.param'));
+      (section.querySelector('.org-actions') ?? section.lastElementChild)?.after(cheat);
       orgGroup.section.remove();
       this.pages.delete('group-org');
     }
     // Long lists inside a topic fold behind a reply of their own.
-    for (const [selector, label] of [['.org-grants', 'Funding applications'], ['.org-log', 'What has happened']] as const) {
+    for (const [selector, label] of [['.org-grants', t('Funding applications')], ['.org-log', t('What has happened')]] as const) {
       const part = section.querySelector(selector);
       if (!part) continue;
       const sub = el('details', 'sandbox-sub');
@@ -169,8 +171,8 @@ export class SandboxPanel {
       part.replaceWith(sub);
       sub.append(part);
     }
-    const label = section.querySelector('legend')?.textContent ?? 'More';
-    this.addPage(section, section.classList.contains('context') ? 'Context: law, city, police, services' : label);
+    const label = section.querySelector('legend')?.textContent ?? t('More');
+    this.addPage(section, section.classList.contains('context') ? t('Context: law, city, police, services') : label);
     this.show(this.current);
   }
 
@@ -186,7 +188,7 @@ export class SandboxPanel {
 
   private addPage(section: HTMLElement, label: string, parent?: string): void {
     this.pages.set(section.id, { section, label, parent });
-    if (parent && !this.pages.has(parent)) this.pages.set(parent, { section: this.menu, label: 'Services' });
+    if (parent && !this.pages.has(parent)) this.pages.set(parent, { section: this.menu, label: t('Services') });
   }
 
   private goBack(): void {
@@ -204,7 +206,8 @@ export class SandboxPanel {
     this.menu.hidden = !isMenu;
     this.back.hidden = !id;
     this.note.hidden = !!id;
-    this.heading.hidden = !id;
+    // The organisation's editable name is its own heading.
+    this.heading.hidden = !id || id === 'org-section';
     this.heading.textContent = page?.label ?? '';
     if (isMenu) this.fillMenu(id);
   }

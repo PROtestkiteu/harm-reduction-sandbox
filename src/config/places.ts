@@ -1,4 +1,5 @@
 import type { LocationId, ServiceId } from '../sim/types';
+import { t } from '../i18n';
 
 /** How each service is named in the interface, in plain, neutral words. */
 export interface ServiceText {
@@ -15,22 +16,22 @@ export interface ServiceText {
 }
 
 export const SERVICE_TEXT: Record<ServiceId, ServiceText> = {
-  dropIn: { label: 'Drop-in services', short: 'Drop-in', team: 'Drop-in centre team', place: 'the drop-in centre', servedAt: 'inside' },
-  outreach: { label: 'Mobile outreach', short: 'Outreach', team: 'Outreach team', place: 'the outreach camper', servedAt: 'at the counter' },
-  clubHr: { label: 'Club harm reduction', short: 'Club stand', team: 'Harm reduction stand team', place: 'the harm reduction stand', servedAt: 'at the stand' },
-  pharmacy: { label: 'Pharmacy NSP', short: 'Pharmacy', team: 'Pharmacy team', place: 'the pharmacy', servedAt: 'at the counter' },
-  drugChecking: { label: 'Drug checking', short: 'Checking', team: 'Drug checking team', place: 'the drug checking service', servedAt: 'inside' },
-  shelter: { label: 'Shelter and day centre', short: 'Shelter', team: 'Shelter team', place: 'the shelter', servedAt: 'inside' },
-  clinic: { label: 'Treatment clinic', short: 'Clinic', team: 'Clinic team', place: 'the clinic', servedAt: 'inside' },
+  dropIn: { label: t('Drop-in services'), short: t('Drop-in'), team: t('Drop-in centre team'), place: t('the drop-in centre'), servedAt: t('inside') },
+  outreach: { label: t('Mobile outreach'), short: t('Outreach'), team: t('Outreach team'), place: t('the outreach camper'), servedAt: t('at the counter') },
+  clubHr: { label: t('Club harm reduction'), short: t('Club stand'), team: t('Harm reduction stand team'), place: t('the harm reduction stand'), servedAt: t('at the stand') },
+  pharmacy: { label: t('Pharmacy NSP'), short: t('Pharmacy'), team: t('Pharmacy team'), place: t('the pharmacy'), servedAt: t('at the counter') },
+  drugChecking: { label: t('Drug checking'), short: t('Checking'), team: t('Drug checking team'), place: t('the drug checking service'), servedAt: t('inside') },
+  shelter: { label: t('Shelter and day centre'), short: t('Shelter'), team: t('Shelter team'), place: t('the shelter'), servedAt: t('inside') },
+  clinic: { label: t('Treatment clinic'), short: t('Clinic'), team: t('Clinic team'), place: t('the clinic'), servedAt: t('inside') },
 };
 
 /** Location names on labels, tooltips and the panel. */
 export const LOCATION_NAMES: Record<LocationId, string> = {
-  dropIn: 'Drop-in centre',
-  outreach: 'Outreach camper',
-  club: 'Music club',
-  pharmacy: 'Pharmacy',
-  drugChecking: 'Drug checking',
-  shelter: 'Shelter',
-  clinic: 'Clinic and A&E',
+  dropIn: t('Drop-in centre'),
+  outreach: t('Outreach camper'),
+  club: t('Music club'),
+  pharmacy: t('Pharmacy'),
+  drugChecking: t('Drug checking'),
+  shelter: t('Shelter'),
+  clinic: t('Clinic and A&E'),
 };

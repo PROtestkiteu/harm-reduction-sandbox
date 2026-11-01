@@ -1,3 +1,4 @@
+import { QUALITY } from './quality';
 /** Geometry of one rendered frame and how it maps onto the canvas. */
 export interface RenderFrame {
   cssW: number;
@@ -16,6 +17,6 @@ export interface RenderFrame {
  * not pay for detail nobody can see. Multisampling handles edge aliasing.
  */
 export function chooseFrame(cssW: number, cssH: number, deviceDpr: number): RenderFrame {
-  const dpr = Math.min(deviceDpr || 1, 2);
+  const dpr = Math.min(deviceDpr || 1, QUALITY.maxDpr);
   return { cssW, cssH, dpr, factor: 1, lowW: Math.max(1, Math.floor(cssW * dpr)), lowH: Math.max(1, Math.floor(cssH * dpr)) };
 }

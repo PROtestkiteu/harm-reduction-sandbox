@@ -6,7 +6,7 @@ import { DoorState, WindowBank, approach } from './animated';
 import { add, bench, bin, box, cylinder, planter, signBoard, stanchion, tree } from './kit';
 import { acUnit, antenna, bike, drainpipe, flowerPot, roofVent, windowTrim } from './details';
 import { roofClutter, wallClutter } from './grit';
-import { AMBULANCE_BAY, LOTS, type P2, type PlaceLot } from './layout';
+import { AE_ALONG, AMBULANCE_BAY, LOTS, type P2, type PlaceLot } from './layout';
 import { glowMat, mat } from './materials';
 import { dynamic, mergeStatic } from './mergeStatic';
 import type { LocationVisual } from './buildings';
@@ -246,7 +246,7 @@ export function buildClinic(random: Random): LocationVisual {
   const front = f.d / 2;
 
   // A&E entrance: its own lit doorway, red canopy and sign.
-  const aeX = f.along({ x: lot.door.x, z: AMBULANCE_BAY.z });
+  const aeX = AE_ALONG;
   const aeGlow = glowMat(0x5a2a2a, 0xff5a4a, 0.3);
   add(g, box(2.6, 2.5, 0.05, glowMat(PALETTE.warmWindowDim, 0xfff0e8, 0.6), aeX, 0.45, front + 0.01));
   add(g, box(4.6, 0.2, 3.2, mat(0x9a3a34), aeX, 3.0, front + 1.6));
@@ -255,19 +255,23 @@ export function buildClinic(random: Random): LocationVisual {
   add(g, ae.mesh).position.set(aeX, 3.22, front + 3.22);
   add(g, box(4.6, 0.04, 0.14, aeGlow, aeX, 2.95, front + 3.2));
 
-  // Ambulance waiting in the bay, in world coordinates on the unrotated root.
-  const amb = add(f.root, new Group());
-  amb.position.set(AMBULANCE_BAY.x, 0.02, AMBULANCE_BAY.z);
-  const white = mat(0xeeeeea);
-  add(amb, box(2.0, 0.3, 5.2, mat(PALETTE.tyre), 0, 0.3, 0));
-  add(amb, box(2.1, 2.1, 3.6, white, 0, 0.55, 0.6));
-  add(amb, box(2.0, 1.5, 1.5, white, 0, 0.55, -1.9));
-  add(amb, box(1.9, 0.6, 0.06, mat(PALETTE.glassDark), 0, 1.4, -2.66));
-  add(amb, box(2.14, 0.22, 3.62, mat(0x2f6a3a), 0, 1.1, 0.6));
-  add(amb, box(2.14, 0.16, 3.62, mat(0xd8b23a), 0, 1.32, 0.6));
+  // Ambulance waiting in the bay, in world coordinates on the unrotated root,
+  // where the street has a lane for it.
   const beacon = glowMat(0x2a3a6a, 0x5a8aff, 0.2);
-  for (const sx of [-0.7, 0.7]) add(amb, box(0.3, 0.16, 0.3, beacon, sx, 2.66, -1.0));
-  for (const wz of [-1.6, 1.8]) for (const wx of [-0.98, 0.98]) add(amb, box(0.24, 0.7, 0.7, mat(PALETTE.tyre), wx, 0, wz));
+  if (AMBULANCE_BAY) {
+    const amb = add(f.root, new Group());
+    amb.position.set(AMBULANCE_BAY.x, 0.02, AMBULANCE_BAY.z);
+    amb.rotation.y = lot.face === '+x' ? 0 : Math.PI / 2;
+    const white = mat(0xeeeeea);
+    add(amb, box(2.0, 0.3, 5.2, mat(PALETTE.tyre), 0, 0.3, 0));
+    add(amb, box(2.1, 2.1, 3.6, white, 0, 0.55, 0.6));
+    add(amb, box(2.0, 1.5, 1.5, white, 0, 0.55, -1.9));
+    add(amb, box(1.9, 0.6, 0.06, mat(PALETTE.glassDark), 0, 1.4, -2.66));
+    add(amb, box(2.14, 0.22, 3.62, mat(0x2f6a3a), 0, 1.1, 0.6));
+    add(amb, box(2.14, 0.16, 3.62, mat(0xd8b23a), 0, 1.32, 0.6));
+    for (const sx of [-0.7, 0.7]) add(amb, box(0.3, 0.16, 0.3, beacon, sx, 2.66, -1.0));
+    for (const wz of [-1.6, 1.8]) for (const wx of [-0.98, 0.98]) add(amb, box(0.24, 0.7, 0.7, mat(PALETTE.tyre), wx, 0, wz));
+  }
   add(g, bench()).position.set(sh.doorX + 2.6, 0, front + 0.6);
   add(g, planter(1.6, 0.5)).position.set(sh.doorX - 2.6, 0, front + 0.5);
 

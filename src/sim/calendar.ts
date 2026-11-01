@@ -3,11 +3,13 @@
  * moves the calendar on by `pace` days, so seasons can pass in a sitting.
  * Northern-hemisphere seasons; no leap years. Rendering-free.
  */
+import { t } from '../i18n';
+
 export type Season = 'winter' | 'spring' | 'summer' | 'autumn';
 
 const MONTH_DAYS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-export const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const MONTHS = [t('Jan'), t('Feb'), t('Mar'), t('Apr'), t('May'), t('Jun'), t('Jul'), t('Aug'), t('Sep'), t('Oct'), t('Nov'), t('Dec')];
+export const WEEKDAYS = [t('Mon'), t('Tue'), t('Wed'), t('Thu'), t('Fri'), t('Sat'), t('Sun')];
 
 export interface CalendarDate {
   /** 0 = 1 January. */
@@ -78,5 +80,5 @@ export class Calendar {
 }
 
 export function formatDate(d: CalendarDate): string {
-  return `${WEEKDAYS[d.weekday]} ${d.day} ${MONTHS[d.month]}`;
+  return t('{weekday} {day} {month}', { weekday: WEEKDAYS[d.weekday], day: d.day, month: MONTHS[d.month] });
 }
