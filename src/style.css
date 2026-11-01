@@ -174,6 +174,15 @@ html, body {
   html { height: calc(100% + env(safe-area-inset-top)); }
 }
 
+/*
+ * The top of the screen kept clear of the bars and the notch. Installed and upright, iOS also
+ * blurs a band under the status bar: the title and the top bar sit 20px below it.
+ */
+:root { --safe-top: env(safe-area-inset-top); }
+@media (display-mode: standalone) and (orientation: portrait), (display-mode: fullscreen) and (orientation: portrait) {
+  :root { --safe-top: calc(env(safe-area-inset-top) + 20px); }
+}
+
 #hud button, .column { pointer-events: auto; }
 
 button {
@@ -234,7 +243,7 @@ button:focus-visible {
 
 .hud-header {
   position: absolute;
-  top: max(14px, env(safe-area-inset-top));
+  top: max(14px, var(--safe-top));
   left: max(16px, env(safe-area-inset-left));
   right: calc(var(--column-w) + 16px);
   color: #f4ecdc;
@@ -257,7 +266,7 @@ button:focus-visible {
   width: var(--column-w);
   display: flex;
   flex-direction: column;
-  padding: max(16px, env(safe-area-inset-top)) max(22px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) 80px;
+  padding: max(16px, var(--safe-top)) max(22px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) 80px;
   background:
     var(--grain),
     linear-gradient(90deg, rgba(var(--fade), 0) 0, rgba(var(--fade), 0.9) 70px, rgba(var(--fade), 0.98) 160px);
@@ -633,7 +642,7 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
 .sandbox {
   position: absolute;
   right: max(12px, env(safe-area-inset-right));
-  top: calc(max(12px, env(safe-area-inset-top)) + 52px);
+  top: calc(max(12px, var(--safe-top)) + 52px);
   width: 300px;
   display: flex;
   flex-direction: column;
@@ -656,7 +665,7 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
 .sandbox-body {
   width: 100%;
   /* Stops above the controls dock, whose height the HUD measures into --dock-h. */
-  max-height: calc(100dvh - max(12px, env(safe-area-inset-top)) - 52px - 50px - var(--dock-h, 230px) - 12px);
+  max-height: calc(100dvh - max(12px, var(--safe-top)) - 52px - 50px - var(--dock-h, 230px) - 12px);
   overflow-y: auto;
   overscroll-behavior: contain;
   background: var(--panel);
@@ -730,7 +739,7 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
 @media (max-width: 760px) {
   .sandbox {
     right: max(8px, env(safe-area-inset-right));
-    top: calc(max(12px, env(safe-area-inset-top)) + 46px);
+    top: calc(max(12px, var(--safe-top)) + 46px);
     width: auto;
   }
   .sandbox-toggle { min-height: 36px; font-size: 13px; position: relative; }
@@ -833,7 +842,7 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
   --switch-on: var(--reply);
   left: max(16px, env(safe-area-inset-left));
   right: auto;
-  top: calc(max(14px, env(safe-area-inset-top)) + 54px);
+  top: calc(max(14px, var(--safe-top)) + 54px);
   width: min(380px, calc(100vw - var(--column-w) - 48px));
   align-items: flex-start;
   font-size: 16px;
@@ -857,7 +866,7 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
 .sandbox-toggle[aria-expanded='true'] { color: var(--reply-hover); text-decoration: underline; text-underline-offset: 5px; }
 
 .sandbox-body {
-  max-height: calc(100dvh - max(14px, env(safe-area-inset-top)) - 54px - 60px);
+  max-height: calc(100dvh - max(14px, var(--safe-top)) - 54px - 60px);
   background: var(--grain), linear-gradient(90deg, rgba(var(--fade), 0.98) 0, rgba(var(--fade), 0.95) calc(100% - 40px), rgba(var(--fade), 0.85) 100%);
   border: 0;
   border-left: 2px solid var(--reply);
@@ -877,7 +886,7 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
 .context-stats { border-radius: 0; background: rgba(0, 0, 0, 0.2); }
 
 @media (max-width: 760px) {
-  .sandbox { left: max(12px, env(safe-area-inset-left)); width: auto; top: calc(max(12px, env(safe-area-inset-top)) + 58px); }
+  .sandbox { left: max(12px, env(safe-area-inset-left)); width: auto; top: calc(max(12px, var(--safe-top)) + 58px); }
   .sandbox-toggle { font-size: 16px; }
   .sandbox-body { border-left: 0; border-top: 2px solid var(--reply); background: var(--grain), rgba(var(--fade), 0.98); }
 }
@@ -887,9 +896,9 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
 .events {
   position: absolute;
   left: max(12px, env(safe-area-inset-left));
-  top: calc(max(12px, env(safe-area-inset-top)) + 52px);
+  top: calc(max(12px, var(--safe-top)) + 52px);
   width: 300px;
-  max-height: calc(100dvh - max(12px, env(safe-area-inset-top)) - 52px - 200px);
+  max-height: calc(100dvh - max(12px, var(--safe-top)) - 52px - 200px);
   overflow-y: auto;
   overscroll-behavior: contain;
   display: grid;
@@ -1002,7 +1011,7 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
 @media (max-width: 760px) {
   .events {
     left: max(8px, env(safe-area-inset-left));
-    top: calc(max(12px, env(safe-area-inset-top)) + 46px);
+    top: calc(max(12px, var(--safe-top)) + 46px);
     width: min(64vw, 300px);
     max-height: 34dvh;
   }
@@ -1293,7 +1302,7 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
 }
 @media (max-width: 760px) {
   /* The bottom sheet covers the lower corners on phones; sit at the top right instead. */
-  .version { bottom: auto; left: auto; top: max(6px, env(safe-area-inset-top)); right: max(10px, env(safe-area-inset-right)); }
+  .version { bottom: auto; left: auto; top: max(6px, var(--safe-top)); right: max(10px, env(safe-area-inset-right)); }
 }
 
 /* A reply that cannot be taken right now reads as a remark, in grey. */
@@ -1338,7 +1347,7 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
 body:has(.sandbox-toggle[aria-expanded='true']) .portrait { display: none; }
 @media (max-width: 760px) {
   /* Phones: the sheet covers the bottom, so the portrait sits under the title. */
-  .portrait { bottom: auto; top: calc(max(12px, env(safe-area-inset-top)) + 96px); width: 96px; }
+  .portrait { bottom: auto; top: calc(max(12px, var(--safe-top)) + 96px); width: 96px; }
   .portrait figcaption { font-size: 12px; }
 }
 .portrait-sub { display: block; font-weight: 400; font-size: 12.5px; color: var(--muted); }
@@ -1506,7 +1515,7 @@ body:has(.sandbox-toggle[aria-expanded='true']) .portrait { display: none; }
 .time-left {
   position: fixed;
   left: 50%;
-  top: max(10px, env(safe-area-inset-top));
+  top: max(10px, var(--safe-top));
   transform: translateX(-50%);
   z-index: 25;
   margin: 0;
@@ -1653,7 +1662,7 @@ body:has(.sandbox-toggle[aria-expanded='true']) .portrait { display: none; }
 @media (max-width: 760px) {
   .top-bar {
     position: absolute;
-    top: max(10px, env(safe-area-inset-top));
+    top: max(10px, var(--safe-top));
     right: max(10px, env(safe-area-inset-right));
     width: min(60vw, 280px);
     padding: 6px 10px 8px;
@@ -1672,7 +1681,7 @@ body:has(.sandbox-toggle[aria-expanded='true']) .portrait { display: none; }
   /* The name on three lines, the tagline left to the welcome box. */
   .hud-header h1 { width: min-content; font-size: 20px; line-height: 1.05; }
   .subtitle { display: none; }
-  .sandbox { top: calc(max(12px, env(safe-area-inset-top)) + 74px); }
+  .sandbox { top: calc(max(12px, var(--safe-top)) + 74px); }
 }
 @media (max-width: 760px) {
   /* Half the size: small type, slim meters; the speed button looks small but keeps a 44 px tap area. */
@@ -1725,7 +1734,7 @@ body:has(.sandbox-toggle[aria-expanded='true']) .portrait { display: none; }
 @media (max-width: 760px) {
   .options > li.phone-only:not([hidden]) { display: list-item; }
   .sandbox-toggle { display: none; }
-  .sandbox { top: max(10px, env(safe-area-inset-top)); }
+  .sandbox { top: max(10px, var(--safe-top)); }
 
   /* A tighter bottom sheet: less fade above, shorter rows, a shorter Pause bar. */
   .column {
@@ -1787,7 +1796,7 @@ body:has(.sandbox-toggle[aria-expanded='true']) .portrait { display: none; }
 /* A new version is out: a calm banner across the top, the text left and a compact Reload right. */
 .update-bar {
   position: fixed; z-index: 30;
-  top: max(8px, env(safe-area-inset-top));
+  top: max(8px, var(--safe-top));
   left: max(12px, env(safe-area-inset-left)); right: max(12px, env(safe-area-inset-right));
   max-width: 520px; margin: 0 auto;
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
