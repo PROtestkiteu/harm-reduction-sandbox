@@ -268,6 +268,7 @@ export class Hud {
   private readonly aidBtn: HTMLButtonElement;
   private readonly staffGroupNeeds: HTMLElement;
   private readonly aidLong: HTMLElement;
+  private readonly aidShort: HTMLElement;
   private readonly reviewName: HTMLElement;
   private readonly reviewShort: HTMLElement;
   private readonly backOpt: HTMLElement;
@@ -464,7 +465,7 @@ export class Hud {
     // Staffing actions fold under one reply, so the list stays short.
     this.staffGroupBtn = button('opt group');
     this.staffGroupLong = el('span', 'long');
-    const groupShort = el('span', 'short', t('Staffing.'));
+    const groupShort = el('span', 'short', t('Staff and hiring.'));
     groupShort.setAttribute('aria-hidden', 'true');
     this.staffGroupNeeds = needTag();
     this.staffGroupBtn.append(this.staffGroupLong, groupShort, this.staffGroupNeeds);
@@ -609,15 +610,15 @@ export class Hud {
     // This season's aid for people outdoors, offered when nothing is selected.
     this.aidBtn = button('opt');
     this.aidLong = el('span', 'long');
-    const aidShort = el('span', 'short', t('Aid.'));
-    aidShort.setAttribute('aria-hidden', 'true');
-    this.aidBtn.append(this.aidLong, aidShort, needsFor(AID_NEEDS));
+    this.aidShort = el('span', 'short');
+    this.aidShort.setAttribute('aria-hidden', 'true');
+    this.aidBtn.append(this.aidLong, this.aidShort, needsFor(AID_NEEDS));
     this.aidBtn.addEventListener('click', () => { const k = this.lastSnapshot?.aid?.kind; if (k) cb.onAid(k); });
     this.aidOpt = opt(this.aidBtn);
     // A donation drive, offered when nothing is selected.
     this.driveBtn = button('opt');
     this.driveLong = el('span', 'long');
-    const driveShort = el('span', 'short', t('Fundraise.'));
+    const driveShort = el('span', 'short', t('Donation drive.'));
     driveShort.setAttribute('aria-hidden', 'true');
     this.driveBtn.append(this.driveLong, driveShort);
     this.driveBtn.addEventListener('click', () => cb.onDrive());
@@ -626,7 +627,7 @@ export class Hud {
     // A favour with city hall: one reply that opens the favours on offer.
     this.favourBtn = button('opt group');
     this.favourLong = el('span', 'long');
-    const favourShort = el('span', 'short', t('Favour.'));
+    const favourShort = el('span', 'short', t('City hall favour.'));
     favourShort.setAttribute('aria-hidden', 'true');
     this.favourBtn.append(this.favourLong, favourShort);
     this.favourBtn.addEventListener('click', () => {
@@ -680,7 +681,7 @@ export class Hud {
       this.switchOpts[id].append(toggle);
     }
     const reset = button('opt');
-    const resetShort = el('span', 'short', t('Overview.'));
+    const resetShort = el('span', 'short', t('Back to the overview.'));
     resetShort.setAttribute('aria-hidden', 'true');
     reset.append(el('span', 'long', t('Back to the overview.')), resetShort);
     reset.setAttribute('aria-label', t('Back to the overview'));
@@ -1078,6 +1079,7 @@ export class Hud {
     if (aid) {
       const perHour = price(aid.perHour);
       setText(this.aidLong, aid.kind === 'cold' ? (aid.on ? t('Warming bus out: stop') : t('Warming bus {price}/h', { price: perHour })) : (aid.on ? t('Water and shade out: stop') : t('Water and shade {price}/h', { price: perHour })));
+      setText(this.aidShort, aid.kind === 'cold' ? (aid.on ? t('Stop the warming bus.') : t('Send the warming bus.')) : (aid.on ? t('Stop water and shade.') : t('Put out water and shade.')));
       this.aidBtn.title = aid.kind === 'cold' ? t('A warming bus on cold nights: fewer people harmed outdoors.') : t('Water and shade on hot days: fewer people harmed outdoors.');
       setAttr(this.aidBtn, 'aria-pressed', String(aid.on));
     }
@@ -1397,6 +1399,7 @@ const MAX_SPOTS = 6;
 const MIX_SLOTS = 5;
 /** Actions nested under the Staffing reply. */
 const STAFF_ACTIONS: readonly PlaceAction[] = ['moreStaff', 'hire', 'volunteer', 'camper'];
-const ACTION_SHORT: Record<PlaceAction, string> = { moreStaff: t('More staff.'), moreWaiting: t('More places.'), hire: t('Hire.'), volunteer: t('Volunteer.'), camper: t('Another camper.'), move: t('Move it.'), path: t('Specialise.'), mix: t('Budget mix.'), hustle: t('Side income.'), invest: t('Invest.'), relaunch: t('Relaunch.') };
+/** Phone labels: short, but each one says what it does without the rest of the menu. */
+const ACTION_SHORT: Record<PlaceAction, string> = { moreStaff: t('One more on shift.'), moreWaiting: t('More waiting places.'), hire: t('Hire a paid worker.'), volunteer: t('Find a volunteer.'), camper: t('Send another camper.'), move: t('Move the camper.'), path: t('Specialise the camper.'), mix: t('Budget mix.'), hustle: t('Side income.'), invest: t('Invest: more places.'), relaunch: t('Reopen the service.') };
 /** Costs shown on the replies; the organisation charges the same (config/organisation.ts). */
 const ACTION_COST = { hire: RECRUIT.hirePaid.cost, volunteer: RECRUIT.volunteerDrive.cost, relaunch: ORG.reopen.cost };

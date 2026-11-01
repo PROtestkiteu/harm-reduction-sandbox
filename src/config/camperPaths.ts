@@ -10,19 +10,19 @@ export const CAMPER_PATH_IDS: readonly CamperPath[] = ['nightlife', 'health', 's
 export const CAMPER_PATH: Record<CamperPath, { label: string; short: string; does: string; cost: number }> = {
   nightlife: {
     label: t('Drug checking'),
-    short: t('Checking'),
+    short: t('Drug checking'),
     does: t('Checking and test kits on board: more people come by, and more of them find out what is in their drugs.'),
     cost: 300,
   },
   health: {
     label: t('Injections and infections'),
-    short: t('Injections'),
+    short: t('Safer injecting'),
     does: t('Sterile kits, wound care and overdose response: staff reach more people using alone, and kits cost less.'),
     cost: 350,
   },
   social: {
     label: t('General support'),
-    short: t('Support'),
+    short: t('General support'),
     does: t('Counselling, food and referrals to housing: the camps shrink faster and funders and neighbours think better of you.'),
     cost: 250,
   },

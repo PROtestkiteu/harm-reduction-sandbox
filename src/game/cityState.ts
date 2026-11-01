@@ -138,7 +138,7 @@ export class CityCards {
         actions: partnered ? [] : [{
           id: 'partner',
           label: t('Partner with the venue ({cost}; it pays {fee}/h)', { cost: price(VITALITY.partnerCost), fee: price(VITALITY.partnerFeePerHour) }),
-          short: t('Partner.'),
+          short: t('Partner with the venue.'),
           enabled: sim.org.budget >= VITALITY.partnerCost,
           helps: PARTNER_NEEDS,
         }],
@@ -237,7 +237,8 @@ export class CityCards {
         [t('Litter and discarded kit'), level(n.litter, [t('Little'), t('Some'), t('A lot')])],
         [t('Use seen on the street'), level(n.visibleUse, [t('Rare'), t('Sometimes'), t('Often')])],
         [t('Shops nearby'), level(n.shopTrade, [t('Struggling'), t('Getting by'), t('Trading well')])],
-        [t('Services have a name for being'), level(n.reputation, [t('Poor'), t('Mixed'), t('Good')])],
+        // How the people who use them speak of the services: those who come and get served spread the word.
+        [t("Your services' reputation"), level(n.reputation, [t('Poor'), t('Mixed'), t('Good')])],
         [t('Sleeping rough nearby'), String(n.roughSleepers)],
       ],
     };
@@ -287,8 +288,8 @@ export class CityCards {
       return {
         fact: [t('Harm reduction point'), t('{point}, level {level}', { point: POINT_NAME[q.service], level: q.level })],
         actions: [
-          ...(q.level < p.maxLevel ? [{ id: 'pointUp', label: t('Grow the point to level {level} ({price}; {places})', { level: q.level + 1, price: price(p.upgrade), places: placesPlus(p.placesPerLevel) }), short: t('Grow it.'), enabled: sim.org.budget >= p.upgrade, helps: serviceNeeds(q.service) }] : []),
-          { id: 'pointClose', label: t('Close the point.'), short: t('Close it.'), enabled: true },
+          ...(q.level < p.maxLevel ? [{ id: 'pointUp', label: t('Grow the point to level {level} ({price}; {places})', { level: q.level + 1, price: price(p.upgrade), places: placesPlus(p.placesPerLevel) }), short: t('Grow the point.'), enabled: sim.org.budget >= p.upgrade, helps: serviceNeeds(q.service) }] : []),
+          { id: 'pointClose', label: t('Close the point.'), short: t('Close the point.'), enabled: true },
         ],
       };
     }
@@ -331,7 +332,7 @@ export class CityCards {
     return {
       said: t('Rented by the project: a {unit}, {rent} an hour.', { unit: UNIT_NAME[u.service], rent: price(PROPERTY.rentPerHour) }),
       fact: [t('Shop'), t('Rented: {unit}', { unit: UNIT_NAME[u.service] })],
-      actions: [{ id: 'release', label: t('Give the unit back.'), short: t('Give it back.'), enabled: true }],
+      actions: [{ id: 'release', label: t('Give the unit back.'), short: t('Give the unit back.'), enabled: true }],
     };
   }
 }
