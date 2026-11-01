@@ -7,6 +7,8 @@ export const HUSTLE = {
   clubFeePerHour: 25,
   /** Chance the club agrees when asked. */
   clubAccepts: 0.7,
+  /** After a no, clock minutes before the club can be asked again. */
+  clubAskAgain: 180,
   /** A donation drive: what it costs to run, how long it runs, the range it can bring in. */
   driveCost: 40,
   driveHours: 3,

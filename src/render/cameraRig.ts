@@ -112,7 +112,7 @@ export class CameraRig {
     this.target(this.targetFocus.x, this.targetFocus.y, this.targetFocus.z, next);
   }
 
-  /** Continuous zoom by a factor, for pinches; snaps to a step when the pinch ends. */
+  /** Continuous zoom by a factor, for pinches; it stays where the fingers leave it. */
   zoomBy(factor: number, immediate: boolean): void {
     this.locked = false;
     const z = clamp(this.targetZoom * factor, this.minZoom, MAX_ZOOM);

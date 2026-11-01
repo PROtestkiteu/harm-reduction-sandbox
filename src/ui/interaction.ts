@@ -69,8 +69,12 @@ export class Interaction {
   private orbit: { x: number; y: number; az: number; el: number; pointer: number | 'touch' } | null = null;
   private down: { x: number; y: number; id: number; time: number } | null = null;
   private drag: { id: number; x: number; y: number; active: boolean } | null = null;
-  /** Finger spread at the last two-finger move, for pinch zoom; 0 when not pinching. */
-  private pinch = 0;
+  /**
+   * A two-finger gesture, read as a map app does: pinch zooms, twist turns, both fingers sliding
+   * up or down together tilt. Each takes over only once it clearly passes its threshold, so a
+   * pinch does not also turn the view; pinch and twist can run together, tilt runs alone.
+   */
+  private two: { spread: number; angle: number; y: number; az: number; el: number; zoom: number | null; turn: number | null; tilt: boolean; lastSpread: number } | null = null;
   private wheel = 0;
   private suppressTap = false;
   private longPress = 0;
@@ -371,7 +375,9 @@ export class Interaction {
           this.down = null;
           this.drag = null;
           this.suppressTap = true;
-          this.pinch = spread(this.touches);
+          const v = this.d.rig.view;
+          const d = spread(this.touches);
+          this.two = { spread: d, angle: angle(this.touches), y: centroid(this.touches).y, az: v.azimuthDeg, el: v.elevationDeg, zoom: null, turn: null, tilt: false, lastSpread: d };
           this.startOrbit(centroid(this.touches), 'touch');
           return;
         }
@@ -390,11 +396,8 @@ export class Interaction {
     c.addEventListener('pointermove', (e) => {
       if (e.pointerType === 'touch' && this.touches.has(e.pointerId)) {
         this.touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
-        if (this.orbit?.pointer === 'touch') {
-          this.moveOrbit(centroid(this.touches));
-          const d = spread(this.touches);
-          if (this.pinch > 0 && d > 0) this.d.rig.zoomBy(d / this.pinch, true);
-          this.pinch = d;
+        if (this.orbit?.pointer === 'touch' && this.two) {
+          this.moveTwo(this.two);
           this.releaseFollow();
           return;
         }
@@ -443,7 +446,7 @@ export class Interaction {
         this.touches.delete(e.pointerId);
         if (this.orbit?.pointer === 'touch' && this.touches.size < 2) {
           this.endOrbit();
-          this.pinch = 0;
+          this.two = null;
         }
         if (this.touches.size === 0 && this.suppressTap) {
           this.suppressTap = false;
@@ -578,6 +581,28 @@ export class Interaction {
     this.d.rig.setView({ azimuthDeg: o.az - (at.x - o.x) * 0.35, elevationDeg: o.el + (at.y - o.y) * 0.25 });
   }
 
+  private moveTwo(g: NonNullable<Interaction['two']>): void {
+    const d = spread(this.touches);
+    if (d <= 0 || g.spread <= 0) return;
+    const scale = Math.log(d / g.spread);
+    const twist = wrapDeg(angle(this.touches) - g.angle);
+    const dy = centroid(this.touches).y - g.y;
+    // Which parts of the gesture have taken over: tilt alone, or pinch and twist (together if both pass).
+    if (!g.tilt && g.zoom === null && g.turn === null && Math.abs(dy) > TILT_START && Math.abs(scale) < PINCH_START && Math.abs(twist) < TWIST_START / 2) g.tilt = true;
+    if (!g.tilt) {
+      if (g.zoom === null && Math.abs(scale) > PINCH_START) { g.zoom = 0; g.lastSpread = d; }
+      if (g.turn === null && Math.abs(twist) > TWIST_START) g.turn = twist;
+    }
+    const v = this.d.rig.view;
+    if (g.tilt) this.d.rig.setView({ azimuthDeg: v.azimuthDeg, elevationDeg: g.el + dy * 0.25 });
+    // The map turns with the fingers: a clockwise twist turns it clockwise (a larger azimuth).
+    if (g.turn !== null) this.d.rig.setView({ azimuthDeg: g.az + (twist - g.turn), elevationDeg: this.d.rig.view.elevationDeg });
+    if (g.zoom !== null) {
+      this.d.rig.zoomBy(d / g.lastSpread, true);
+      g.lastSpread = d;
+    }
+  }
+
   private endOrbit(): void {
     this.orbit = null;
     this.d.canvas.style.cursor = this.hover ? 'pointer' : 'default';
@@ -654,6 +679,20 @@ export class Interaction {
     }
   }
 }
+
+/** How far a two-finger gesture must go before it pinches (log of the spread ratio), twists (degrees) or tilts (pixels). */
+const PINCH_START = 0.07;
+const TWIST_START = 7;
+const TILT_START = 16;
+
+/** The angle (degrees) of the line from the first finger to the second. */
+function angle(points: Map<number, { x: number; y: number }>): number {
+  const [a, b] = [...points.values()];
+  return a && b ? (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI : 0;
+}
+
+/** Degrees into -180..180. */
+const wrapDeg = (deg: number) => ((((deg + 180) % 360) + 360) % 360) - 180;
 
 function spread(points: Map<number, { x: number; y: number }>): number {
   const [a, b] = [...points.values()];

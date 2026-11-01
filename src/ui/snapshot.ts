@@ -72,15 +72,17 @@ function serviceSnapshot(id: LocationId, s: ServiceModel, sim?: Simulation): Loc
       invest: { cost: INVEST.cost, level: sim.upgrades[s.id].level, progress: sim.upgrades[s.id].progress, max: INVEST.maxLevel },
       mix: mixLevers(sim, s.id),
       hustle: s.id === 'clubHr'
-        ? {
-          on: sim.clubContract,
-          label: sim.clubContract ? t('Club pays +{price}/h', { price: price(HUSTLE.clubFeePerHour) }) : t('Ask the club to pay'),
-          hint: sim.clubContract ? t('The club pays while the stand is open. Click to end the deal.') : t('The club pays {price} an hour while the stand is open, if it agrees.', { price: price(HUSTLE.clubFeePerHour) }),
-        }
+        ? sim.clubContract
+          ? { on: true, enabled: true, short: t('Club pays.'), label: t('Club pays +{price}/h', { price: price(HUSTLE.clubFeePerHour) }), hint: t('The club pays while the stand is open. Click to end the deal.') }
+          : sim.org.now < sim.clubAskAgainAt
+            ? { on: false, enabled: false, short: t('Club said no.'), label: t('The club said no: ask again later'), hint: t('The club turned the stand down for now. It can be asked again in a few hours.') }
+            : { on: false, enabled: true, short: t('Ask the club.'), label: t('Ask the club to pay'), hint: t('The club pays {price} an hour while the stand is open, if it agrees.', { price: price(HUSTLE.clubFeePerHour) }) }
         // Charging only makes sense where there are lab checks to charge for.
         : s.id === 'drugChecking' && sim.context.checkingAllowed
           ? {
             on: sim.commercialChecking,
+            enabled: true,
+            short: sim.commercialChecking ? t('Checks charged.') : t('Charge for checks.'),
             label: sim.commercialChecking ? t('Checking charged {price}: make it free', { price: price(HUSTLE.checkFee) }) : t('Charge {price} for checking', { price: price(HUSTLE.checkFee) }),
             hint: t('Charging for drug checking: a little money, but fewer people come and fewer results reach the early warning.'),
           }

@@ -3,6 +3,7 @@ import { MoodIcons, type Mood } from './moodIcons';
 import { SEASON_PROFILES } from '../config/seasons';
 import { createRandom, pick, type Random } from '../sim/random';
 import type { AcuteOutcome, Intent, SimEvent, Simulation, VisitorId } from '../sim/simulation';
+import type { Substance } from '../config/randomEvents';
 import { WALK_IN_SERVICE_IDS, type ServiceId, type WalkInServiceId } from '../sim/types';
 import type { World } from '../world/scene';
 import {
@@ -99,6 +100,8 @@ export interface PersonState {
   readonly role: PersonRole;
   /** Everyday group they belong to; never a statement about drug use. */
   readonly archetype: Archetype;
+  /** What a visitor uses, for matching tonight's events to them; never shown as a label. */
+  readonly substance?: Substance;
   /** How they look (illustrative), for their painted portrait. */
   readonly look: Appearance;
   /** Resting on a bench with their belongings, not part of any flow. */
@@ -250,6 +253,7 @@ export class Crowd {
       id: a.id,
       role: a.role,
       archetype: a.rig.look.style ?? 'everyday',
+      substance: a.visitor !== undefined ? this.sim.substanceOf(a.visitor) : undefined,
       look: a.rig.look,
       resting: !!a.resting,
       crowding: a.crowding,

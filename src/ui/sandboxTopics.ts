@@ -1,4 +1,5 @@
 import { normalize } from '../config/sandboxParams';
+import { newGameAddress } from '../game/liveGame';
 import { LANG, LANGS, t, type Lang } from '../i18n';
 
 /** Small topics of the sandbox menu: New game, Language and About. */
@@ -36,7 +37,8 @@ export function randomSection(setDateClock: (v: DateClock) => void): HTMLFieldSe
   const season = button(t('Only a new season and time'), t('A random date and time of day; the city and this game stay as they are'), () => setDateClock(pick()));
   const city = button(t('Start a new game'), t('A freshly laid out city, its places in new spots, on a random date and time'), () => {
     try { sessionStorage.setItem(SHUFFLE_KEY, JSON.stringify(pick())); } catch { /* private mode: the city still changes */ }
-    location.href = `${location.pathname}${location.search}`;
+    // A new game gets a new address: the old game's id stays with the old game.
+    location.href = newGameAddress();
   });
   const note = Object.assign(document.createElement('p'), { className: 'note', textContent: t('Share or save this game first if you want to keep it.') });
   section.append(legend, city, note, season);

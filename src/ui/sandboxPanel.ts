@@ -53,6 +53,7 @@ export class SandboxPanel {
   private current: string | null = null;
   private readonly heading: HTMLElement;
   private readonly back: HTMLOListElement;
+  private readonly title: HTMLElement;
 
   constructor(parent: HTMLElement, initial: SandboxSettings, cb: SandboxPanelCallbacks) {
     this.root = el('section', 'sandbox');
@@ -80,6 +81,7 @@ export class SandboxPanel {
     close.setAttribute('aria-label', t('Close sandbox settings'));
     close.addEventListener('click', () => this.setOpen(false, true));
     // Reset sits at the bottom of the panel, well away from the close button.
+    this.title = title;
     head.append(title, close);
     const resetRow = el('p', 'sandbox-reset-row');
     resetRow.append(reset);
@@ -96,7 +98,9 @@ export class SandboxPanel {
     li.append(backBtn);
     this.back.append(li);
     this.back.hidden = true;
-    this.body.append(head, this.note, this.back, this.heading, this.menu, resetRow);
+    // Inside a topic, Back takes the title's place in the header row: no row of its own.
+    title.before(this.back);
+    this.body.append(head, this.note, this.heading, this.menu, resetRow);
 
     const serviceGroups = new Set(['dropIn', 'outreach', 'clubHr']);
     for (const group of PARAM_GROUPS) {
@@ -157,7 +161,8 @@ export class SandboxPanel {
   /** Adds an extra section (the organisation, context factors) as its own topic. */
   mount(section: HTMLElement): void {
     if (!section.id) section.id = section.classList.contains('context') ? 'context-section' : `section-${this.pages.size}`;
-    this.body.append(section);
+    // Above the Reset row, which stays at the bottom of every page.
+    this.resetRow.before(section);
     // The budget slider lives with the rest of the organisation.
     const orgGroup = this.pages.get('group-org');
     if (section.id === 'org-section' && orgGroup) {
@@ -225,6 +230,7 @@ export class SandboxPanel {
     // Reset only under the top menu, not inside a topic.
     this.resetRow.hidden = !!id;
     this.back.hidden = !id;
+    this.title.hidden = !!id;
     this.note.hidden = !!id;
     // The organisation's editable name is its own heading.
     this.heading.hidden = !id || id === 'org-section';

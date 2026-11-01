@@ -6,6 +6,7 @@
  * Energy Control about EUR 50,000 as a project-funded NGO, ChEck iT! about
  * EUR 145,000 with stable public funding, roughly one to three).
  */
+import type { ServiceId } from '../sim/types';
 import type { Citation, FactorId } from './contextFactors';
 import { t } from '../i18n';
 
@@ -13,14 +14,23 @@ const HR = 'HR Drug Checking/';
 const cite = (ref: string, type: Citation['type'], note: string, source: string): Citation => ({ ref, type, note, source: `${HR}${source}` });
 
 export const ORG = {
-  /** Tight on purpose: left alone, a run goes broke in about ten clock hours. */
+  /**
+   * A new game starts about level: three services, one paid worker and four volunteers on the
+   * project funding. Money to grow comes from what the player does (the club deal, donations,
+   * grants); opening more services or hiring tips it into the red until they bring more in.
+   */
   startBudget: 750,
-  startPaid: 4,
-  startVolunteers: 2,
+  startPaid: 1,
+  startVolunteers: 4,
+  /**
+   * A new game opens the three original services only, so it starts close to breaking even and
+   * the player grows from there; the rest wait under Services until the money allows them.
+   */
+  startServices: ['dropIn', 'outreach', 'clubHr'] as readonly ServiceId[],
   /** Wage per paid worker per clock hour on shift. Volunteers are unpaid. */
   wagePerHour: 35,
   /** Running cost per clock hour of each open place: rent, heating, cleaning, insurance (illustrative). */
-  runningPerPlace: 10,
+  runningPerPlace: 8,
   /** Income per clock hour by the national funding option (context factor `funding`). */
   incomePerHour: { volunteer: 15, project: 90, stable: 260 } as Record<string, number>,
   costs: { sterileKit: 2, onsiteCheck: 6, labCheck: 15, overdoseResponse: 20 },

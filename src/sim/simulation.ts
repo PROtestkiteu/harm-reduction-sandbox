@@ -277,6 +277,8 @@ export class Simulation {
   campHoldUntil = 0;
   /** The club pays for the stand while it is open. */
   clubContract = false;
+  /** The club said no: it can be asked again from this time (`org.now` minutes). */
+  clubAskAgainAt = 0;
   /** The drug checking service sells its checks: a little money, less public good. */
   commercialChecking = false;
   /** A donation drive runs until this time (`org.now` minutes), or null. */
@@ -367,6 +369,7 @@ export class Simulation {
       shelter: new ServiceModel('shelter', p.shelter),
       clinic: new ServiceModel('clinic', p.clinic),
     };
+    for (const id of SERVICE_IDS) this.services[id].switchedOn = ORG.startServices.includes(id);
     this.club = {
       name: ILLUSTRATIVE.club.name,
       inside: ILLUSTRATIVE.club.initialInside,
@@ -836,8 +839,10 @@ export class Simulation {
   /** Asks the club to pay for the stand; it may say no. */
   proposeClubContract(): boolean {
     if (this.clubContract) return true;
+    if (this.org.now < this.clubAskAgainAt) return false;
     if (this.random() >= HUSTLE.clubAccepts) {
-      this.org.notice(this.clockMinutes, t('The club would not pay for the stand this time. Ask again another night.'));
+      this.clubAskAgainAt = this.org.now + HUSTLE.clubAskAgain;
+      this.org.notice(this.clockMinutes, t('The club would not pay for the stand this time. Ask again in a few hours.'));
       return false;
     }
     this.clubContract = true;

@@ -5,8 +5,6 @@ const helpedText = (n: number) => plural(n, ['{n} helped', '{n} helped'], ['{n} 
 const nightsText = (n: number) => plural(n, ['{n} night', '{n} nights'], ['{n} noc', '{n} noce', '{n} nocy']);
 
 export interface SavePanelCallbacks {
-  /** A link that opens this game where it is now. */
-  shareLink(): Promise<string>;
   saveHere(): void;
   loadHere(): void;
   hasSaved(): boolean;
@@ -25,12 +23,12 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
 }
 
 /**
- * Sandbox topic: share this game as a link, keep one save in this browser,
- * and the public leaderboard under the organisation's name.
+ * Sandbox topic: the game's address is its link (it saves itself as it is
+ * played), one save kept in this browser, and the public leaderboard under
+ * the organisation's name.
  */
 export class SavePanel {
   readonly section: HTMLFieldSetElement;
-  private readonly linkOut: HTMLInputElement;
   private readonly status: HTMLElement;
   private readonly loadBtn: HTMLButtonElement;
   private readonly submitBtn: HTMLButtonElement;
@@ -43,10 +41,8 @@ export class SavePanel {
     this.section.id = 'save-section';
     this.section.append(el('legend', undefined, t('Save or load game')));
 
+    const live = el('p', 'note', t("The game saves itself as you play, and this page's address is its link: share the address to show someone your city as it is now."));
     const actions = el('div', 'save-actions');
-    const share = el('button', 'btn save-btn', t('Copy a link to this game'));
-    share.type = 'button';
-    share.addEventListener('click', () => void this.share());
     const save = el('button', 'btn save-btn', t('Save here'));
     save.type = 'button';
     save.title = t('Keep this game in this browser');
@@ -61,14 +57,7 @@ export class SavePanel {
       cb.loadHere();
       this.say(t('Loaded your saved game.'));
     });
-    actions.append(share, save, this.loadBtn);
-
-    this.linkOut = el('input', 'save-link');
-    this.linkOut.type = 'text';
-    this.linkOut.readOnly = true;
-    this.linkOut.hidden = true;
-    this.linkOut.setAttribute('aria-label', t('Link to this game'));
-    this.linkOut.addEventListener('focus', () => this.linkOut.select());
+    actions.append(save, this.loadBtn);
     this.status = el('p', 'save-status');
     this.status.setAttribute('role', 'status');
 
@@ -84,7 +73,7 @@ export class SavePanel {
     board.append(this.submitBtn, this.boardStatus, this.list, el('p', 'note', t('Ranked by people helped. A shared link starts a fresh run, so scores count only what you played yourself.')));
     board.addEventListener('toggle', () => { if (board.open) void this.refresh(); });
 
-    this.section.append(actions, this.linkOut, this.status, board);
+    this.section.append(live, actions, this.status, board);
     this.sync();
   }
 
@@ -98,20 +87,6 @@ export class SavePanel {
 
   private say(text: string): void {
     this.status.textContent = text;
-  }
-
-  private async share(): Promise<void> {
-    try {
-      const link = await this.cb.shareLink();
-      this.linkOut.value = link;
-      this.linkOut.hidden = false;
-      let copied = false;
-      try { await navigator.clipboard.writeText(link); copied = true; } catch { /* clipboard blocked: the link is shown to copy by hand */ }
-      this.say(copied ? t('Link copied. Anyone opening it gets this city as it is now.') : t('Copy the link above to share this city.'));
-      if (!copied) this.linkOut.select();
-    } catch {
-      this.say(t('Could not make a link in this browser.'));
-    }
   }
 
   private async submit(): Promise<void> {

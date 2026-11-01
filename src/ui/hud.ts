@@ -30,6 +30,10 @@ export interface HudCallbacks {
   onRename(name: string): void;
   /** One of the selected building's own actions (rent it, give it back). */
   onBuildingAction(action: string): void;
+  /** The game's title was pressed: open the settings. */
+  onTitle(): void;
+  /** The money figure was pressed: open the organisation and budget page. */
+  onMoney(): void;
   /** Changes how much a place spends on one activity. */
   onMix(service: ServiceId, activity: Activity, weight: number): void;
   /** Pays a place's one-off set-up for an activity. */
@@ -80,7 +84,8 @@ export interface PlaceLevers {
   /** Investing: cost, level and progress. */
   invest: { cost: number; level: number; progress: number; max: number };
   /** A side income this place can bring in (the club's fee for the stand, sold checks), on or off. */
-  hustle?: { label: string; hint: string; on: boolean };
+  /** Side income here: what it is now, in full and short (all a phone shows), and whether it can be pressed. */
+  hustle?: { label: string; short: string; hint: string; on: boolean; enabled: boolean };
   /** The budget mix: what visits here are spent on, and the visit cost it comes to. */
   mix: { visitCost: number; items: MixItem[] };
   /** Outreach only: extra campers out, the most allowed, and their costs. */
@@ -305,7 +310,13 @@ export class Hud {
     this.header = el('header', 'hud-header');
     // "How it works" lives in the Settings menu.
     const subtitle = el('p', 'subtitle', t('Help people stay alive without going bankrupt.'));
-    this.header.append(el('h1', undefined, t('Harm reduction project')), subtitle);
+    // The title opens the settings, like the Settings link under it.
+    const titleBtn = button('hud-title', t('Harm reduction project'));
+    titleBtn.title = t('Change the night, the street and the services');
+    titleBtn.addEventListener('click', () => cb.onTitle());
+    const h1 = el('h1');
+    h1.append(titleBtn);
+    this.header.append(h1, subtitle);
 
     this.column = el('aside', 'column');
     this.column.setAttribute('aria-label', t('Details and controls'));
@@ -328,7 +339,12 @@ export class Hud {
     this.crisisLine = el('span', 'crisis-line');
     this.unmet.append(el('strong', 'crisis-title', t('Crisis')), this.crisisLine);
     const right = el('div', 'column-right');
-    right.append(this.money);
+    // Pressing the money opens the organisation and budget page; the figure inside stays a live status.
+    const moneyBtn = button('money-btn');
+    moneyBtn.title = t('Organisation: money and staff. Opens the Sandbox panel.');
+    moneyBtn.addEventListener('click', () => cb.onMoney());
+    moneyBtn.append(this.money);
+    right.append(moneyBtn);
     top.append(time, right);
     // Phones: a handle folds the sheet down to the clock and the Pause bar.
     this.foldBtn = button('sheet-handle');
@@ -1181,7 +1197,11 @@ export class Hud {
     show('invest', !a.closedDown, full ? t('Fully upgraded') : t('Invest {price}', { price: price(inv.cost) }), !full && afford(inv.cost), t('Build on: more places here once the work is done.'));
     const don = a.donations;
     const rate = t('{each}/h × {staff} staff on shift = +{total}/h', { each: price(don.each), staff: don.staff, total: price(don.each * don.staff) });
-    show('hustle', !!a.hustle && !a.closedDown, a.hustle?.label ?? '', true, a.hustle?.hint ?? '');
+    if (a.hustle) {
+      setText(this.actionOpts.hustle.short, a.hustle.short);
+      setAttr(this.actionOpts.hustle.button, 'aria-pressed', String(a.hustle.on));
+    }
+    show('hustle', !!a.hustle && !a.closedDown, a.hustle?.label ?? '', a.hustle?.enabled ?? true, a.hustle?.hint ?? '');
     // Budget mix: what visits here are spent on.
     show('mix', !a.closedDown, t('Budget mix ({price} a visit)', { price: price(a.mix.visitCost) }), true, a.mix.items.filter((m) => m.share > 0).map((m) => `${ACTIVITY[m.id].short} ${Math.round(m.share * 100)}%`).join(', ') || t('Nothing on offer'));
     setAttr(this.actionOpts.mix.button, 'aria-expanded', String(this.mixOpen));

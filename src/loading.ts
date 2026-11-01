@@ -100,5 +100,14 @@ for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
   document.addEventListener(type, (e) => e.preventDefault(), { passive: false });
 }
 
+// The offline worker (built as sw.js, see vite.config.ts): an installed game starts without the
+// network, and on a slow one without waiting for it. Registered once the page has loaded, so it
+// never competes with the game's own first download; not in development.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register(new URL('sw.js', document.baseURI), { scope: './' }).catch(() => { /* not allowed here: the game plays online */ });
+  });
+}
+
 // The game: its own chunk, fetched once the language's text is in (t() reads it as modules load).
 void loadCatalogue().catch(() => { /* offline mid-load: English */ }).then(() => import('./main'));

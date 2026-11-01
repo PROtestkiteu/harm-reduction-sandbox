@@ -24,6 +24,8 @@ export interface SaveData {
   day: number;
   year: number;
   org: { budget: number; paid: number; volunteers: number; grantIncome: number; closedDown: ServiceId[] };
+  /** The services switched on (older saves: all of them). */
+  on?: ServiceId[];
   team: { name: string; paid: boolean; traits: TraitId[]; energy: number; assignment: Assignment }[];
   upgrades: Record<string, { level: number; progress: number }>;
   units: UnitState[];
@@ -56,6 +58,7 @@ export function captureSave(sim: Simulation, name: string, run?: SaveData['run']
     day: sim.calendar.dayOfYear,
     year: sim.calendar.year,
     org: { budget: Math.round(o.budget), paid: o.paid, volunteers: o.volunteers, grantIncome: o.grantIncome, closedDown: [...o.closedDown] },
+    on: SERVICE_IDS.filter((id) => sim.services[id].switchedOn),
     team: sim.team.members.map((m) => ({ name: m.name, paid: m.paid, traits: [...m.traits], energy: Math.round(m.energy * 100) / 100, assignment: m.assignment })),
     upgrades: Object.fromEntries(SERVICE_IDS.map((id) => [id, { level: sim.upgrades[id].level, progress: Math.round(sim.upgrades[id].progress * 1000) / 1000 }])),
     units: sim.property.units.map((u) => ({ ...u })),
@@ -92,6 +95,7 @@ export function parseSave(raw: unknown): SaveData | null {
       grantIncome: num(org.grantIncome, 0, 2000, 0),
       closedDown: (Array.isArray(org.closedDown) ? org.closedDown : []).filter(isService),
     },
+    on: Array.isArray(r.on) ? SERVICE_IDS.filter((id) => (r.on as unknown[]).includes(id)) : [...SERVICE_IDS],
     team: team.map((t) => {
       const m = (t ?? {}) as Record<string, unknown>;
       const traits = (Array.isArray(m.traits) ? m.traits : []).filter((x): x is TraitId => typeof x === 'string' && x in TRAITS).slice(0, 3);
@@ -107,6 +111,7 @@ export function parseSave(raw: unknown): SaveData | null {
     units: units.map((u): UnitState => {
       const k = (u ?? {}) as Record<string, unknown>;
       if (k.kind === 'vacant') return { kind: 'vacant', since: num(k.since, -1e9, 1e9, 0) };
+      if (k.kind === 'squatted') return { kind: 'squatted', since: num(k.since, -1e9, 1e9, 0) };
       if (k.kind === 'rented' && typeof k.service === 'string' && (SATELLITE_SERVICES as readonly string[]).includes(k.service)) return { kind: 'rented', service: k.service as SatelliteService };
       return { kind: 'trading' };
     }),
@@ -136,6 +141,7 @@ export function applySave(sim: Simulation, s: SaveData): void {
   for (const k of Object.keys(QUESTS) as InstitutionId[]) sim.quests[k] = s.quests?.[k] ?? 0;
   o.closedDown.clear();
   for (const id of s.org.closedDown) o.closedDown.add(id);
+  for (const id of SERVICE_IDS) sim.services[id].switchedOn = (s.on ?? SERVICE_IDS).includes(id);
   // The team: rebuilt from the save, then trimmed or grown to the head counts.
   const members = sim.team.members;
   members.length = 0;
@@ -161,6 +167,27 @@ const fromB64url = (s: string) => Uint8Array.from(atob(s.replace(/-/g, '+').repl
 async function pipe(bytes: Uint8Array<ArrayBuffer>, stream: CompressionStream | DecompressionStream): Promise<Uint8Array<ArrayBuffer>> {
   const out = new Blob([bytes]).stream().pipeThrough(stream);
   return new Uint8Array(await new Response(out).arrayBuffer()) as Uint8Array<ArrayBuffer>;
+}
+
+/**
+ * A save as plain base64url JSON, at once (no compression): for the live game,
+ * whose last save must go out while the page is closing, with no time to wait.
+ */
+export function encodeSave(s: SaveData): string {
+  const bytes = new TextEncoder().encode(JSON.stringify(s));
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+/** Reads `encodeSave`'s text; null for anything that is not a valid save. */
+export function decodeSave(code: string): SaveData | null {
+  if (!code || code.length > 12000 || !/^[A-Za-z0-9_-]+$/.test(code)) return null;
+  try {
+    return parseSave(JSON.parse(new TextDecoder().decode(fromB64url(code))));
+  } catch {
+    return null;
+  }
 }
 
 /** Packs a save into the text after '#g=' in a link. */

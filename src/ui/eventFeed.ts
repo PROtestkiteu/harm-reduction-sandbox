@@ -49,6 +49,9 @@ export class EventFeed {
   private readonly heading: HTMLButtonElement;
   private readonly cards = new Map<ActiveEvent, Card>();
   private recentText = '';
+  /** Which events belong to what is selected, or null to show them all. */
+  private match: ((id: EventId) => boolean) | null = null;
+  private active: readonly ActiveEvent[] = [];
 
   constructor(parent: HTMLElement, private readonly cb: EventFeedCallbacks) {
     this.root = el('section', 'events');
@@ -100,9 +103,8 @@ export class EventFeed {
       }
     }
     for (const e of active) if (!this.cards.has(e)) this.list.prepend(this.buildCard(e));
-    this.heading.textContent = active.length
-      ? t('Tonight: {events}', { events: plural(active.length, ['{n} active event', '{n} active events'], ['{n} aktywne zdarzenie', '{n} aktywne zdarzenia', '{n} aktywnych zdarzeń']) })
-      : t('Tonight: no events');
+    this.active = active;
+    this.applyFilter();
     const ended = recent.slice(0, 2).map((e) => e.acuteHarms
       ? t('{event} ({collapsed} collapsed, {helped} reached by staff)', { event: EVENTS[e.id].label, collapsed: e.acuteHarms, helped: e.helped })
       : EVENTS[e.id].label);
@@ -113,6 +115,33 @@ export class EventFeed {
       this.recent.hidden = !text;
     }
     this.refresh(clock);
+  }
+
+  /**
+   * Narrows tonight's events to what is selected (a place, a person), or shows them all (null).
+   * Touches the DOM only when which cards show, or the heading, changes.
+   */
+  setFilter(match: ((id: EventId) => boolean) | null): void {
+    this.match = match;
+    this.applyFilter();
+  }
+
+  private applyFilter(): void {
+    const match = this.match;
+    let shown = 0;
+    for (const [e, card] of this.cards) {
+      const show = !match || match(e.id);
+      if (card.root.hidden === show) card.root.hidden = !show;
+      if (show) shown++;
+    }
+    const all = this.active.length;
+    const events = (n: number) => plural(n, ['{n} active event', '{n} active events'], ['{n} aktywne zdarzenie', '{n} aktywne zdarzenia', '{n} aktywnych zdarzeń']);
+    const text = !all
+      ? t('Tonight: no events')
+      : match
+        ? t('Tonight here: {events} of {all}', { events: events(shown), all })
+        : t('Tonight: {events}', { events: events(all) });
+    if (this.heading.textContent !== text) this.heading.textContent = text;
   }
 
   /** Cheap per-refresh update of status and counts. */

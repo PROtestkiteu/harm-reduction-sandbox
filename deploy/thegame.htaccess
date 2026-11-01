@@ -3,7 +3,8 @@
 
 Options -Indexes -MultiViews
 DirectoryIndex index.html
-LimitRequestBody 1024
+# Saves of the live game are a few KB (board.php refuses more than 16 KB itself).
+LimitRequestBody 16384
 
 <IfModule mod_rewrite.c>
   RewriteEngine On
@@ -45,7 +46,7 @@ LimitRequestBody 1024
   Header always set X-Frame-Options "SAMEORIGIN"
   Header always set Cross-Origin-Opener-Policy "same-origin"
   Header always set Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
-  Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' blob:; worker-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'self'"
+  Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' blob:; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'self'"
 
   # Hashed build files never change; the page itself is always checked.
   <FilesMatch "\.(js|css|woff2?)$">
@@ -53,6 +54,10 @@ LimitRequestBody 1024
   </FilesMatch>
   <FilesMatch "\.(glb|txt)$">
     Header set Cache-Control "public, max-age=86400"
+  </FilesMatch>
+  # The offline worker is checked on every visit, so a new version reaches it at once.
+  <FilesMatch "^sw\.js$">
+    Header set Cache-Control "no-cache"
   </FilesMatch>
   # Private: Cloudflare must not keep its own copy of the page (or its headers).
   <FilesMatch "^index\.html$">

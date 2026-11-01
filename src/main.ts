@@ -44,7 +44,8 @@ import { SERVICE_NAMES } from './sim/organisation';
 import { loadKits } from './world/kits';
 import { QueueBox } from './ui/queueBox';
 import { startPresence } from './game/presence';
-import { applySave, captureSave, packSave, parseSave, unpackSave, type SaveData } from './game/saveGame';
+import { applySave, captureSave, parseSave, unpackSave, type SaveData } from './game/saveGame';
+import { LiveGame, fetchGame, linkedGame, newGameAddress } from './game/liveGame';
 import { currentRun, ensureRun, setRun, submitScore, topRuns } from './game/leaderboard';
 import { LOCATION_NAMES } from './config/places';
 import type { SatelliteService } from './sim/property';
@@ -53,7 +54,7 @@ import { EventFeed, HINT_ROW, hintInputId, markHintedRows } from './ui/eventFeed
 import { OrgPanel } from './ui/orgPanel';
 import { FACTOR_BY_ID } from './config/contextFactors';
 import type { PolicyInfo } from './sim/simulation';
-import type { EventId } from './config/randomEvents';
+import { EVENTS, type EventId } from './config/randomEvents';
 import { SandboxPanel } from './ui/sandboxPanel';
 import { buildSnapshot } from './ui/snapshot';
 import { aboutSection, applyShuffle, homeScreenNote, languageSection, randomSection } from './ui/sandboxTopics';
@@ -137,6 +138,28 @@ const marks = new HostileMarks(world.scene, () => reducedMotion.matches);
 const threatTags = new FxTags(hudRoot);
 type Threat = { kind: 'threatPress' | 'threatRaid' | 'threatOfficer' | 'threatCar'; x: number; y: number; z: number; r: number };
 let threats: Threat[] = [];
+/**
+ * Tonight's events that belong to the selection: at a place, those that play out there (or at the
+ * busiest place, when it is this one) and those whose tips name its service; for a person, those
+ * that affect what they use. Nothing selected (or a building, a car): all of them.
+ */
+function eventMatch(): ((id: EventId) => boolean) | null {
+  const sel = interaction.selected;
+  if (sel?.kind === 'location') {
+    const service = serviceAt(sel.id);
+    const busiest = sim.busiest.service;
+    return (id) => {
+      const at = EVENT_PLACE[id];
+      return at === sel.id || (at === 'busiest' && busiest === service) || EVENTS[id].hints.some((h) => 'param' in h && h.param.startsWith(`${service}.`));
+    };
+  }
+  if (sel?.kind === 'person') {
+    const use = crowd.person(sel.id)?.substance;
+    return (id) => !!use && EVENTS[id].affects.includes(use);
+  }
+  return null;
+}
+
 /** Finds the threats near the selection (refreshed with the HUD, a few times a second). */
 function updateThreats(): void {
   const sel = interaction.selected;
@@ -263,6 +286,8 @@ const hud = new Hud(hudRoot, {
   onToggleFocus: () => interaction.toggleFocus(),
   onAction: (service, action) => queuePlaceAction(service, action),
   onBuildingAction: (action) => queueBuildingAction(action),
+  onTitle: () => sandbox.setOpen(true),
+  onMoney: () => openOrg(),
   onMix: (service, activity, weight) => queueOrg(() => { sim.setMix(service, activity, weight); refreshHud(); }),
   onMixSetUp: (service, activity) => queueOrg(() => { sim.setUpMix(service, activity); refreshHud(); }),
   onDrive: () => queueOrg(() => { sim.startDonationDrive(); refreshHud(); }),
@@ -413,6 +438,7 @@ function refreshHud(): void {
   if (sel?.kind === 'building') hud.showBuilding(cards.describeBuilding(sel.id));
   interaction.refresh();
   updateThreats();
+  feed.setFilter(eventMatch());
   sandbox.syncLive('clock', sim.clockMinutes);
   feed.refresh(sim.clockMinutes);
   syncStreet();
@@ -535,22 +561,20 @@ const org = new OrgPanel({
   onApply: (id) => queueOrg(() => sim.applyFor(id)),
   onReopen: (id) => queueOrg(() => { sim.reopen(id); syncContextProps(); }),
   onAssign: (member, to) => queueOrg(() => sim.assignMember(member, to)),
-  onOpen: () => {
-    sandbox.setOpen(true);
-    sandbox.reveal(org.section);
-    org.section.scrollIntoView({ block: 'start', behavior: reducedMotion.matches ? 'auto' : 'smooth' });
-  },
+  onOpen: () => openOrg(),
 });
 sandbox.mount(org.section);
+/** The organisation and budget page in the settings, from the money figure or the organisation bar. */
+function openOrg(): void {
+  sandbox.setOpen(true);
+  sandbox.reveal(org.section);
+  org.section.scrollIntoView({ block: 'start', behavior: reducedMotion.matches ? 'auto' : 'smooth' });
+}
 
 // Saves, shared links and the leaderboard.
 const SAVE_KEY = 'hrp-save';
 const orgName = () => displayName('org', 'name', t('Your organisation'));
 const savePanel = new SavePanel({
-  shareLink: async () => {
-    const code = await packSave(captureSave(sim, orgName()));
-    return `${location.origin}${location.pathname}${location.search}#g=${code}`;
-  },
   saveHere: () => {
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(captureSave(sim, orgName(), currentRun()))); } catch { /* storage blocked */ }
   },
@@ -603,7 +627,7 @@ const gameOver = new GameOver(document.body, {
     return t('Sent. {name} is number {rank}.', { name: orgName(), rank });
   },
   // A new page is a new game; settings in the address stay, a shared save does not.
-  restart: () => { location.href = `${location.pathname}${location.search}`; },
+  restart: () => { location.href = newGameAddress(); },
 });
 // Big events: every 10 to 25 game hours one may stop the clock and ask for a decision.
 const eventRandom = createRandom((Math.random() * 0x7fffffff) | 0);
@@ -668,12 +692,21 @@ function afterLoad(): void {
   refreshHud();
 }
 
+/** Saves the game to its address while it is played; set up once the start has decided which game this is. */
+let live: LiveGame | null = null;
+/** How often (real seconds) the game saves to its address, when anything changed. */
+const LIVE_SAVE_SECONDS = 20;
+
 /**
- * A new page is a new game and a new leaderboard run (its clock starts now).
- * A link with '#g=' opens someone's city: their state, your fresh run.
+ * The address names the game (`?g=`). This browser's own game carries on, run
+ * and all; someone else's opens as their city with your fresh leaderboard run,
+ * saved under a new address of your own. No `g`: a new game and a new run.
+ * An old-style link with '#g=' opens a city the same way as someone else's.
  */
 async function startGame(): Promise<void> {
-  setRun(undefined);
+  const gid = linkedGame();
+  const own = gid !== null && LiveGame.owns(gid);
+  if (!own) setRun(undefined);
   // Back from an update reload: the same run, as it was a moment ago.
   let resume: SaveData | null = null;
   try {
@@ -689,7 +722,34 @@ async function startGame(): Promise<void> {
       afterLoad();
     });
   }
+  // The address's game, as it was last saved (an update reload already has a newer state).
+  const linked = !resume && gid ? await fetchGame(gid) : null;
+  // Our game did not load: this is a fresh start, so a fresh leaderboard run too.
+  if (own && !linked && !resume) setRun(undefined);
+  if (linked) {
+    queueOrg(() => {
+      applySave(sim, linked);
+      if (own) sim.org.notice(sim.clockMinutes, t('Your game carries on where you left it.'));
+      else {
+        sim.totals.helped = 0;
+        sim.totals.nights = 0;
+        sim.org.notice(sim.clockMinutes, linked.name ? t('Opened a shared city from {name}. Your own leaderboard run starts now.', { name: linked.name }) : t('Opened a shared city. Your own leaderboard run starts now.'));
+      }
+      afterLoad();
+    });
+  }
+  // The leaderboard ticket stays in this browser: a save anyone can open never carries it.
+  // Carry on writing to our own game only when it loaded (or an update reload resumed it): a
+  // fresh start must never overwrite it, so a game that did not load gets a new address.
+  live = new LiveGame(own && (linked || resume) ? gid : null, () => captureSave(sim, orgName()));
+  window.setInterval(() => live?.save(), LIVE_SAVE_SECONDS * 1000);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) live?.flush(); });
+  window.addEventListener('pagehide', () => live?.flush());
   const code = location.hash.startsWith('#g=') ? location.hash.slice(3) : '';
+  // A fresh game: say where it starts and how it grows.
+  if (!resume && !linked && !code) {
+    queueOrg(() => sim.org.notice(sim.clockMinutes, t('You start with three services: the drop-in, the outreach camper and the club stand. Open more under Services once the money comes in steadily.')));
+  }
   if (code) {
     const save = await unpackSave(code);
     // Drop the save from the address bar, so a refresh starts clean and the link is not re-applied.
@@ -914,7 +974,9 @@ function writeUrl(): void {
 }
 
 function layout(): void {
-  pipeline.resize(window.innerWidth, window.innerHeight, (window.devicePixelRatio || 1) * resolution.scale);
+  // The canvas's own size: installed on a phone it runs under the status bar and the home bar,
+  // past what the window reports.
+  pipeline.resize(canvas.clientWidth || window.innerWidth, canvas.clientHeight || window.innerHeight, (window.devicePixelRatio || 1) * resolution.scale);
   rig.invalidate();
 }
 
