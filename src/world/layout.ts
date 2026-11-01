@@ -149,11 +149,16 @@ const turn = (f: Frame, d: P2): P2 => {
   return { x: d.x * c + d.z * s, z: -d.x * s + d.z * c };
 };
 
+/** Where the outer ring's sites stand: halfway across the outer band, north and south. */
+const OUTER_Z = (RING.pave1 + DISTRICT) / 2;
+
 /**
- * The six building sites of the district, each a front edge on a pavement
+ * The building sites of the district, each a front edge on a pavement
  * (`front` is its middle) with room `along` the street and `depth` behind it,
- * and the walk node in front of it. Every launch deals the club, the drop-in
- * and the four walk-in services out over them at random.
+ * and the walk node in front of it: six round the centre and four in the outer
+ * ring, on the main and east streets. Every launch deals the club, the drop-in,
+ * the pharmacy and the walk-in services out over them at random, so the action
+ * spreads differently through the district each time.
  */
 const SITES = {
   centreWest: { front: p(-8.5, 0), face: '+x', along: 16.4, depth: 10 },
@@ -162,6 +167,10 @@ const SITES = {
   north: { front: p(12, -25.6), face: '+z', along: 18, depth: 14 },
   southWest: { front: p(-9.2, 34), face: '+x', along: 18, depth: 12.8 },
   east: { front: p(20.8, 34), face: '+x', along: 18, depth: 16.8 },
+  outerNorthWest: { front: p(-9.2, -OUTER_Z), face: '+x', along: 13, depth: 12 },
+  outerSouthWest: { front: p(-9.2, OUTER_Z), face: '+x', along: 13, depth: 12 },
+  outerNorthEast: { front: p(20.8, -OUTER_Z), face: '+x', along: 13, depth: 12 },
+  outerSouthEast: { front: p(20.8, OUTER_Z), face: '+x', along: 13, depth: 12 },
 } as const satisfies Record<string, { front: P2; face: '+x' | '+z'; along: number; depth: number }>;
 type SiteId = keyof typeof SITES;
 /** Walk-in services with a building of their own (the foot patrol works from a table at the squat). */
@@ -419,11 +428,13 @@ export const NODES = {
   // Main street north and south of the centre block.
   wN: p(W, NN),
   wPharm: p(W, SITES.west.front.z),
+  wOuterN: p(W, -OUTER_Z),
   wN2: p(W, -EDGE),
   eN: p(E, NN),
   eN2: p(E, -EDGE),
   wS: p(W, SS),
   wShelter: p(W, SITES.southWest.front.z),
+  wOuterS: p(W, OUTER_Z),
   wS2: p(W, EDGE),
   eS: p(E, SS),
   eS2: p(E, EDGE),
@@ -443,7 +454,9 @@ export const NODES = {
 
   // East street, west pavement.
   xN2: p(X, -EDGE),
+  xOuterN: p(X, -OUTER_Z),
   clinicFront: p(X, SITES.east.front.z),
+  xOuterS: p(X, OUTER_Z),
   xS2: p(X, EDGE),
 } as const;
 
@@ -457,21 +470,24 @@ export const EDGES: [NodeId, NodeId][] = [
   ['eCross', 'pathCenter'], ['pathCenter', 'centerFront'], ['pathCenter', 'pathEast'],
   ['eJunction', 'park'], ['park', 'parkEast'], ['park', 'parkFront'],
   // Main street: pavements, plus zebras across the cross streets and across the main road.
-  ['wN2', 'wPharm'], ['wPharm', 'wN'], ['wN', 'wBack'], ['wN', 'eN'], ['eN2', 'eN'], ['eN', 'eBack'],
-  ['wFront', 'wS'], ['wS', 'wShelter'], ['wShelter', 'wS2'], ['wS', 'eS'], ['eFront', 'eS'], ['eS', 'eS2'],
+  ['wN2', 'wOuterN'], ['wOuterN', 'wPharm'], ['wPharm', 'wN'], ['wN', 'wBack'], ['wN', 'eN'], ['eN2', 'eN'], ['eN', 'eBack'],
+  ['wFront', 'wS'], ['wS', 'wShelter'], ['wShelter', 'wOuterS'], ['wOuterS', 'wS2'], ['wS', 'eS'], ['eFront', 'eS'], ['eS', 'eS2'],
   // North cross street pavements.
   ['nW', 'wN'], ['eN', 'nCheck'], ['nCheck', 'nEast'], ['nEast', 'nE'], ['eBack', 'nsEast'],
   // South cross street pavements.
   ['sW', 'wS'], ['eS', 'sEast'], ['sEast', 'sE'], ['eFront', 'parkFront'], ['parkFront', 'snEast'],
   // East street, west pavement, crossing both cross streets.
-  ['xN2', 'nEast'], ['nEast', 'nsEast'], ['nsEast', 'pathEast'], ['pathEast', 'parkEast'], ['parkEast', 'snEast'],
-  ['snEast', 'sEast'], ['sEast', 'clinicFront'], ['clinicFront', 'xS2'],
+  ['xN2', 'xOuterN'], ['xOuterN', 'nEast'], ['nEast', 'nsEast'], ['nsEast', 'pathEast'], ['pathEast', 'parkEast'], ['parkEast', 'snEast'],
+  ['snEast', 'sEast'], ['sEast', 'clinicFront'], ['clinicFront', 'xOuterS'], ['xOuterS', 'xS2'],
 ];
 
 export const ENTRY_NODES: NodeId[] = ['wN2', 'eN2', 'wS2', 'eS2', 'nW', 'nE', 'sW', 'sE', 'xN2', 'xS2'];
 
 /** The street node in front of each site. */
-const SITE_NODE: Record<SiteId, NodeId> = { centreWest: 'wClub', centreEast: 'pathCenter', west: 'wPharm', north: 'nCheck', southWest: 'wShelter', east: 'clinicFront' };
+const SITE_NODE: Record<SiteId, NodeId> = {
+  centreWest: 'wClub', centreEast: 'pathCenter', west: 'wPharm', north: 'nCheck', southWest: 'wShelter', east: 'clinicFront',
+  outerNorthWest: 'wOuterN', outerSouthWest: 'wOuterS', outerNorthEast: 'xOuterN', outerSouthEast: 'xOuterS',
+};
 const nodeFor = (v: Venue): NodeId => {
   // The designs' own approaches where they stand at home.
   if (v === 'dropIn' && SITE_OF.dropIn === 'centreEast') return 'centerFront';
