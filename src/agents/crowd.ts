@@ -369,7 +369,8 @@ export class Crowd {
   }
 
   private spawnVisitor(visitor: VisitorId, intent: Intent, wantsStand: boolean, turnsBack: boolean, kind?: PasserbyKind): void {
-    if (this.agents.size >= MAX_PEOPLE) return;
+    // The street is full: this person never shows up, and the sim lets go of them.
+    if (this.agents.size >= MAX_PEOPLE) return this.sim.forget(visitor);
     const entry = this.entryFor(intent);
     const role: PersonRole = intent === 'passerby' ? 'passerby' : intent === 'club' ? 'clubgoer' : 'visitor';
     // Populations (calendar) bring their own look; everyone else dresses by why they are out.
@@ -378,7 +379,8 @@ export class Crowd {
     a.goal = intent === 'passerby' ? 'exit' : intent === 'club' ? (wantsStand ? 'clubHr' : 'club') : intent;
     this.byVisitor.set(visitor, a);
     if (turnsBack) {
-      const service: ServiceId = intent === 'dropIn' || intent === 'outreach' ? intent : 'clubHr';
+      // Club-goers turn back from the stand; everyone else from the service they set out for.
+      const service: ServiceId = intent === 'club' || intent === 'party' || intent === 'passerby' ? 'clubHr' : intent;
       return this.approachThenTurnBack(a, service);
     }
     if (intent === 'dropIn' || intent === 'outreach' || intent === 'footPatrol' || intent === 'drugChecking' || intent === 'shelter' || intent === 'clinic') {

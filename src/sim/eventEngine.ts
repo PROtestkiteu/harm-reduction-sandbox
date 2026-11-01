@@ -57,6 +57,15 @@ export class EventEngine {
     return { started, ended };
   }
 
+  /** The clock looped back by `minutes` (18:00 to 18:00): events under way keep their remaining time. */
+  shiftClock(minutes: number): void {
+    for (const e of this.active) {
+      e.startedAt -= minutes;
+      e.endsAt -= minutes;
+      if (e.detectedAt !== null) e.detectedAt -= minutes;
+    }
+  }
+
   /** Starts an event now (random schedule or a manual trigger). */
   start(id: EventId, clock: number): ActiveEvent {
     const existing = this.get(id);

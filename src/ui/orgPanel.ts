@@ -29,6 +29,10 @@ export interface OrgView {
   services: Record<ServiceId, ServiceModel>;
   clock: number;
   incomePerHour: number;
+  /** Running costs now: the base for every place plus the strain of a busy street on open ones. */
+  runningPerHour: number;
+  /** Paid staff drawing a wage now. */
+  payroll: number;
   applicationContext: ApplicationContext;
   team: Team;
 }
@@ -186,7 +190,7 @@ export class OrgPanel {
     }
     const letGo = el('button', 'btn org-action', t('Let one go'));
     letGo.type = 'button';
-    letGo.title = t('Saves {wage} per hour while they would be on shift.', { wage: price(ORG.wagePerHour) });
+    letGo.title = t('Saves {wage} per hour in wages.', { wage: price(ORG.wagePerHour) });
     letGo.id = 'org-letGo';
     letGo.addEventListener('click', () => cb.onLetGo());
     actions.append(letGo);
@@ -258,7 +262,6 @@ export class OrgPanel {
       if (root.dataset.state !== state) { root.dataset.state = state; fill.dataset.state = state; }
     }
     const assigned = Object.values(v.services).reduce((n, s) => n + s.assigned, 0);
-    const paidOn = Object.values(v.services).reduce((n, s) => n + s.paidAssigned, 0);
     const wanted = Object.values(v.services).reduce((n, s) => n + (s.closedReason === null || s.closedReason === 'noStaff' ? s.requested : 0), 0);
     const short = Math.max(0, wanted - assigned);
     const budget = `${money(o.budget)} (${signed(o.netPerHour)}/h)`;
@@ -284,7 +287,7 @@ export class OrgPanel {
     setText(this.staffStat, `${o.paid} + ${o.volunteers}`);
     setText(this.shiftStat, `${assigned} / ${wanted}`);
     this.shiftStat.dataset.state = short ? 'short' : 'ok';
-    setText(this.summary, t('In {total}/h (funding {funding}, grants {grants}) · wages {wages}/h · running costs {running}/h', { total: money(v.incomePerHour + o.grantIncome), funding: money(v.incomePerHour), grants: money(o.grantIncome), wages: money(paidOn * ORG.wagePerHour), running: money((SERVICE_IDS.length - o.closedDown.size) * ORG.runningPerPlace) }));
+    setText(this.summary, t('In {total}/h (funding {funding}, grants {grants}) · wages {wages}/h · running costs {running}/h', { total: money(v.incomePerHour + o.grantIncome), funding: money(v.incomePerHour), grants: money(o.grantIncome), wages: money(v.payroll * ORG.wagePerHour), running: money(v.runningPerHour) }));
     const recruiting = o.recruiting.length ? t('Recruiting: {list}.', { list: o.recruiting.map((r) => t('{what} until {time}', { what: RECRUIT[r.id].label.toLowerCase(), time: formatClock(o.clockAt(r.readyAt, v.clock)) })).join('; ') }) : '';
     setText(this.recruiting, recruiting);
     if (this.recruiting.hidden !== !recruiting) this.recruiting.hidden = !recruiting;

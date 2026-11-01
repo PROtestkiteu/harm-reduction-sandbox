@@ -50,7 +50,7 @@ export class EventPopup {
   }
 
   private result(text: string): void {
-    // A choice with nothing to report (a guide's "Got it") just closes the box.
+    // A choice with nothing to report (a guide's replies) just closes the box.
     if (!text) {
       this.dialog.close();
       this.onChange(false);

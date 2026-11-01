@@ -29,8 +29,13 @@ export const ORG = {
   startServices: ['dropIn', 'outreach', 'clubHr'] as readonly ServiceId[],
   /** Wage per paid worker per clock hour on shift. Volunteers are unpaid. */
   wagePerHour: 35,
-  /** Running cost per clock hour of each open place: rent, heating, cleaning, insurance (illustrative). */
+  /** Base running cost per clock hour of each place: rent, heating, cleaning, insurance (illustrative). */
   runningPerPlace: 8,
+  /**
+   * Extra wear on an open place while the street is busier than usual: its running cost grows by
+   * this share of the foot traffic above ordinary (illustrative; 1 doubles it at twice the people).
+   */
+  footfallStrain: 1,
   /** Income per clock hour by the national funding option (context factor `funding`). */
   incomePerHour: { volunteer: 15, project: 90, stable: 260 } as Record<string, number>,
   costs: { sterileKit: 2, onsiteCheck: 6, labCheck: 15, overdoseResponse: 20 },
@@ -39,8 +44,12 @@ export const ORG = {
    * Drug checking is charged per check instead. Demand is never profit here.
    */
   visitCost: { dropIn: 0.6, outreach: 0.5, clubHr: 0.4, footPatrol: 0.35, drugChecking: 0, shelter: 1.2, clinic: 1.5 } as Record<string, number>,
+  /** Less than this left counts as out of money: nothing costs less, so nothing can be done. */
+  brokeBelow: 10,
   /** After running out, paid staff come back only once the budget recovers to this (no flapping at zero). */
   recoverAt: 300,
+  /** Out of money this long (clock minutes, after the last closure below) and the run is over. */
+  gameOverAfter: 480,
   /**
    * Out of money for this long (clock minutes) and a service closes down for
    * good, in this order. Restoring the budget before a deadline resets the count.

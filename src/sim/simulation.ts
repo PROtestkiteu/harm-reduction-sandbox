@@ -156,6 +156,11 @@ export class ServiceModel {
   enabled = true;
   /** The on/off switch in the HUD. */
   switchedOn = true;
+  /**
+   * Run at some point this game: its regulars know it and keep coming, even while it is switched
+   * off. Nobody sets out for a service the organisation has never run.
+   */
+  everRun = true;
   closedReason: ClosedReason | null = null;
   /** People who set out for this service and turned back before reaching it (part of unmet need). */
   turnedBack = 0;
@@ -345,8 +350,6 @@ export class Simulation {
   readonly calendar = new Calendar();
   /** Calendar waves already started tonight. */
   private readonly wavesTonight = new Set<string>();
-  /** Paid staff assigned across services (they draw wages). */
-  private paidOnShift = 0;
   readonly checking: CheckingCounts = { samples: 0, resultsReceived: 0, unexpected: 0, changedPlans: 0, selfTests: 0 };
   /** Possession stops that took place in the scene, and how many ended in arrest. */
   policeStops = 0;
@@ -379,7 +382,7 @@ export class Simulation {
       shelter: new ServiceModel('shelter', p.shelter),
       clinic: new ServiceModel('clinic', p.clinic),
     };
-    for (const id of SERVICE_IDS) this.services[id].switchedOn = ORG.startServices.includes(id);
+    for (const id of SERVICE_IDS) this.services[id].switchedOn = this.services[id].everRun = ORG.startServices.includes(id);
     this.club = {
       name: ILLUSTRATIVE.club.name,
       inside: ILLUSTRATIVE.club.initialInside,
@@ -545,16 +548,13 @@ export class Simulation {
         crew[id].push(free.shift()!);
       }
     }
-    let paidTotal = 0;
     for (const id of SERVICE_IDS) {
       const c = crew[id];
       for (const m of c) m.workingAt = id;
       const paid = c.filter((m) => m.paid).length;
-      paidTotal += paid;
       const reason = reasons[id] ?? (c.length === 0 ? 'noStaff' : null);
       this.applyPlan(id, { reason, assigned: c.length, paid });
     }
-    this.paidOnShift = paidTotal;
     this.updateSkill();
   }
 
@@ -1004,7 +1004,35 @@ export class Simulation {
   private boxPerHour(id: ServiceId): number {
     const s = this.services[id];
     if (s.status !== 'open') return 0;
-    return s.staffOnSite * DONATION_PER_STAFF_HOUR * this.vitality.footfall * this.city.footfall(this.clockMinutes, this.calendar.date);
+    return s.staffOnSite * DONATION_PER_STAFF_HOUR * this.footfallNow;
+  }
+
+  /** How many people are out on the street now: a thriving district at a busy hour (1 is ordinary). */
+  private get footfallNow(): number {
+    return this.vitality.footfall * this.city.footfall(this.clockMinutes, this.calendar.date);
+  }
+
+  /**
+   * Running costs per clock hour. Every place not closed down pays its base (rent, heating,
+   * insurance), staffed or not; an open place also wears faster while the street is busier than
+   * usual (more cleaning, supplies, repairs), the cost side of the fuller donation box.
+   */
+  /**
+   * Paid staff drawing a wage: everyone employed, on shift or not (closing the doors does not stop
+   * the salaries). Out of money, paid staff stay home unpaid until the budget recovers.
+   */
+  get payroll(): number {
+    return this.org.broke ? 0 : this.org.paid;
+  }
+
+  get runningPerHour(): number {
+    const surplus = Math.max(0, this.footfallNow - 1);
+    let total = 0;
+    for (const id of SERVICE_IDS) {
+      if (this.org.closedDown.has(id)) continue;
+      total += ORG.runningPerPlace * (1 + (this.services[id].status === 'open' ? ORG.footfallStrain * surplus : 0));
+    }
+    return total;
   }
 
   get donationIncome(): number {
@@ -1199,6 +1227,7 @@ export class Simulation {
   /** The HUD switch. The service opens only if hours and permissions allow it too. */
   setEnabled(id: ServiceId, on: boolean): void {
     this.services[id].switchedOn = on;
+    if (on) this.services[id].everRun = true;
     this.reallocate();
   }
 
@@ -1215,11 +1244,23 @@ export class Simulation {
     if (this.mods.outOfService.has(id)) return 'outOfService';
     if ((id === 'outreach' && !c.outreachPermitted) || (id === 'clubHr' && !c.standPermitted)) return 'notPermitted';
     // Where lab checking is not allowed the checking service stays open: test kits and advice (its mix locks checking).
-    // Closing time means closed overnight, until the morning.
-    if (c.closesAt !== null && this.clockMinutes >= c.closesAt && this.clockMinutes < MORNING) return 'hours';
-    // The club stand works the club's hours.
-    if (id === 'clubHr' && this.clockMinutes >= CLUB_CLOSES && this.clockMinutes < CLUB_OPENS) return 'hours';
+    if (this.outsideHours(id)) return 'hours';
     return null;
+  }
+
+  /** Closing time means closed overnight, until the morning; the club stand works the club's hours. */
+  private outsideHours(id: ServiceId): boolean {
+    const closesAt = this.context.closesAt;
+    if (closesAt !== null && this.clockMinutes >= closesAt && this.clockMinutes < MORNING) return true;
+    return id === 'clubHr' && this.clockMinutes >= CLUB_CLOSES && this.clockMinutes < CLUB_OPENS;
+  }
+
+  /**
+   * Whether people set out for a service now: one the organisation runs (or ran, see `everRun`),
+   * within its opening hours. People know the hours; they do not queue at a door that opens at 08:00.
+   */
+  private expected(id: ServiceId): boolean {
+    return this.services[id].everRun && !this.outsideHours(id);
   }
 
   /** True when hours, permissions or switches changed what can open since the last allocation. */
@@ -1241,12 +1282,15 @@ export class Simulation {
     s.staffOnSite = Math.max(0, s.staffOnSite - 1);
   }
 
-  /** A person who set out for the service turned back before reaching it. */
+  /**
+   * A person who set out for the service turned back before reaching it (put off by police nearby).
+   * Their need still goes unmet, but the service never saw them: it does not count toward the crisis.
+   */
   turnBack(id: ServiceId, visitor: VisitorId): void {
     const s = this.services[id];
     s.metrics.demand++;
     s.turnedBack++;
-    this.recordUnmet(s, visitor, false);
+    this.recordUnmet(s, visitor, false, false);
   }
 
   /** The crowd carried out a possession stop. */
@@ -1291,6 +1335,7 @@ export class Simulation {
     // A full day, 18:00 round to 18:00; then the next evening begins.
     if (this.clockMinutes >= DAY_END) {
       this.clockMinutes -= DAY_END - DAY_START;
+      this.events.shiftClock(DAY_END - DAY_START);
       // A new evening: the calendar moves on and tonight's waves can start again.
       this.calendar.nextNight();
       this.wavesTonight.clear();
@@ -1418,9 +1463,7 @@ export class Simulation {
     if (this.openingChanged()) this.reallocate();
     const income = this.fundingIncome;
     const wasBroke = this.org.broke;
-    // Every place that is not closed down costs its running costs, staffed or not.
-    const running = SERVICE_IDS.filter((id) => !this.org.closedDown.has(id)).length * ORG.runningPerPlace;
-    if (this.org.tick(this.clockMinutes, dt * this.minuteRate, income, this.paidOnShift, this.applicationContext(), running)) {
+    if (this.org.tick(this.clockMinutes, dt * this.minuteRate, income, this.payroll, this.applicationContext(), this.runningPerHour)) {
       if (this.org.broke !== wasBroke) {
         // The money warning opens when the budget runs out and closes when it recovers.
         if (this.org.broke) this.triggerEvent('fundsRunningOut');
@@ -1453,13 +1496,13 @@ export class Simulation {
       this.emit({ type: 'spawnVisitor', visitor, intent, wantsStand, turnsBack, kind });
     };
 
-    if ((t.dropIn -= dt) <= 0) { spawn('dropIn'); t.dropIn = nextArrival(this.random, this.rate('dropIn')); }
-    if ((t.outreach -= dt) <= 0) { spawn('outreach'); t.outreach = nextArrival(this.random, this.rate('outreach')); }
+    if ((t.dropIn -= dt) <= 0) { if (this.expected('dropIn')) spawn('dropIn'); t.dropIn = nextArrival(this.random, this.rate('dropIn')); }
+    if ((t.outreach -= dt) <= 0) { if (this.expected('outreach')) spawn('outreach'); t.outreach = nextArrival(this.random, this.rate('outreach')); }
     for (const id of WALK_IN_SERVICE_IDS) {
-      if ((t[id] -= dt) <= 0) { spawn(id); t[id] = nextArrival(this.random, this.rate(id)); }
+      if ((t[id] -= dt) <= 0) { if (this.expected(id)) spawn(id); t[id] = nextArrival(this.random, this.rate(id)); }
     }
     if ((t.club -= dt) <= 0) {
-      spawn('club', this.random() < this.standInterest);
+      spawn('club', this.random() < this.standInterest && this.expected('clubHr'));
       t.club = nextArrival(this.random, this.rate('club'));
     }
     if ((t.passerby -= dt) <= 0) { spawn('passerby'); t.passerby = nextArrival(this.random, this.rate('passerby')); }
@@ -1592,12 +1635,14 @@ export class Simulation {
     if (notify) this.emit({ type: 'admitted', service: s.id, visitor });
   }
 
-  private recordUnmet(s: ServiceModel, visitor: VisitorId, notify = true): void {
+  private recordUnmet(s: ServiceModel, visitor: VisitorId, notify = true, reachedDoor = true): void {
     s.metrics.unmetNeed++;
-    this.unmetLog.push(this.org.now);
-    // In a crisis nobody is simply gone: they come back worse off, and the team patches them up at the door.
-    const doorstep = CRISIS.doorstepCost * this.crisis;
-    if (doorstep > 0 && this.org.spend(doorstep)) this.flow(s.id, -doorstep);
+    if (reachedDoor) {
+      this.unmetLog.push(this.org.now);
+      // In a crisis nobody is simply gone: they come back worse off, and the team patches them up at the door.
+      const doorstep = CRISIS.doorstepCost * this.crisis;
+      if (doorstep > 0 && this.org.spend(doorstep)) this.flow(s.id, -doorstep);
+    }
     const adverse = this.random() < ILLUSTRATIVE.adverse.perUnmetNeed * ILLUSTRATIVE.adverse.serviceContactMultiplier;
     if (adverse) s.metrics.adverse++;
     // Only people who came for the drop-in or the outreach camper are modelled as using nearby afterwards.

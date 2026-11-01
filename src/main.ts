@@ -4,6 +4,7 @@ import { LANG, LANG_KEY, t } from './i18n';
 import { ILLUSTRATIVE } from './config/illustrative';
 import { combineEffects, decodeContext, defaultContext, encodeContext, type ContextSelection } from './config/contextFactors';
 import { NATIONAL_MODELS, selectionFor } from './config/nationalModels';
+import { ORG } from './config/organisation';
 import { CAMPER_SPOTS, camperSpot } from './world/layout';
 import { exposureNow } from './sim/exposure';
 import { PARAM_BY_ID, decodeSettings, defaultSettings, encodeSettings, type ParamId, type SandboxSettings } from './config/sandboxParams';
@@ -740,7 +741,8 @@ function checkBigEvent(): void {
 }
 
 function checkGameOver(): void {
-  if (gameOver.open || !sim.org.broke) return;
+  // Out of money is a warning first: services close one by one, and the run ends after the last.
+  if (gameOver.open || sim.org.brokeMinutes < ORG.gameOverAfter) return;
   setPaused(true);
   gameOver.show(orgName(), sim.totals.nights, sim.totals.helped);
 }
@@ -843,7 +845,7 @@ watchForUpdates(() => {
 
 function refreshOrg(): void {
   savePanel.sync();
-  org.update({ org: sim.org, stress: { police: sim.cityStress.police, medics: sim.cityStress.medics, sobering: sim.cityStress.sobering, district: sim.vitality.level }, services: sim.services, clock: sim.clockMinutes, incomePerHour: sim.fundingIncome, applicationContext: sim.applicationContext(), team: sim.team });
+  org.update({ org: sim.org, stress: { police: sim.cityStress.police, medics: sim.cityStress.medics, sobering: sim.cityStress.sobering, district: sim.vitality.level }, services: sim.services, clock: sim.clockMinutes, incomePerHour: sim.fundingIncome, runningPerHour: sim.runningPerHour, payroll: sim.payroll, applicationContext: sim.applicationContext(), team: sim.team });
 }
 
 function syncEvents(): void {
@@ -1142,7 +1144,7 @@ hud.setSpeed(speed);
 // `?off=dropIn,outreach,clubHr` starts with those services switched off (shareable scenarios).
 const params = new URLSearchParams(location.search);
 const off = params.get('off')?.split(',') ?? [];
-for (const id of SERVICE_IDS) if (off.includes(id)) sim.services[id].switchedOn = false;
+for (const id of SERVICE_IDS) if (off.includes(id)) sim.services[id].switchedOn = sim.services[id].everRun = false;
 // `?view=azimuth,elevation` (degrees) opens at a saved camera angle.
 const [az, el] = (params.get('view') ?? '').split(',').map(Number);
 if (Number.isFinite(az) && Number.isFinite(el)) rig.setView({ azimuthDeg: az, elevationDeg: el });

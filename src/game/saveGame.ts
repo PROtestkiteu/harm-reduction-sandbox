@@ -26,6 +26,8 @@ export interface SaveData {
   org: { budget: number; paid: number; volunteers: number; grantIncome: number; closedDown: ServiceId[] };
   /** The services switched on (older saves: all of them). */
   on?: ServiceId[];
+  /** The services ever run this game (older saves: those switched on). */
+  ran?: ServiceId[];
   team: { name: string; paid: boolean; traits: TraitId[]; energy: number; assignment: Assignment }[];
   upgrades: Record<string, { level: number; progress: number }>;
   units: UnitState[];
@@ -59,6 +61,7 @@ export function captureSave(sim: Simulation, name: string, run?: SaveData['run']
     year: sim.calendar.year,
     org: { budget: Math.round(o.budget), paid: o.paid, volunteers: o.volunteers, grantIncome: o.grantIncome, closedDown: [...o.closedDown] },
     on: SERVICE_IDS.filter((id) => sim.services[id].switchedOn),
+    ran: SERVICE_IDS.filter((id) => sim.services[id].everRun),
     team: sim.team.members.map((m) => ({ name: m.name, paid: m.paid, traits: [...m.traits], energy: Math.round(m.energy * 100) / 100, assignment: m.assignment })),
     upgrades: Object.fromEntries(SERVICE_IDS.map((id) => [id, { level: sim.upgrades[id].level, progress: Math.round(sim.upgrades[id].progress * 1000) / 1000 }])),
     units: sim.property.units.map((u) => ({ ...u })),
@@ -141,7 +144,11 @@ export function applySave(sim: Simulation, s: SaveData): void {
   for (const k of Object.keys(QUESTS) as InstitutionId[]) sim.quests[k] = s.quests?.[k] ?? 0;
   o.closedDown.clear();
   for (const id of s.org.closedDown) o.closedDown.add(id);
-  for (const id of SERVICE_IDS) sim.services[id].switchedOn = (s.on ?? SERVICE_IDS).includes(id);
+  for (const id of SERVICE_IDS) {
+    const svc = sim.services[id];
+    svc.switchedOn = (s.on ?? SERVICE_IDS).includes(id);
+    svc.everRun = svc.switchedOn || (s.ran ?? []).includes(id);
+  }
   // The team: rebuilt from the save, then trimmed or grown to the head counts.
   const members = sim.team.members;
   members.length = 0;

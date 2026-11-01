@@ -138,12 +138,12 @@ export class Organisation {
    * shift, volunteer churn, recruits arriving, applications decided.
    * Returns true when the staff pool changed (the simulation reallocates).
    */
-  tick(clock: number, dtMinutes: number, incomePerHour: number, paidOnShift: number, ctx: ApplicationContext, runningPerHour = 0): boolean {
+  tick(clock: number, dtMinutes: number, incomePerHour: number, payroll: number, ctx: ApplicationContext, runningPerHour = 0): boolean {
     const hours = dtMinutes / 60;
     this.now += dtMinutes;
     const wasBroke = this.broke;
     const before = this.paid * 1000 + this.volunteers;
-    const delta = (incomePerHour + this.grantIncome) * hours - (paidOnShift * ORG.wagePerHour + runningPerHour) * hours;
+    const delta = (incomePerHour + this.grantIncome) * hours - (payroll * ORG.wagePerHour + runningPerHour) * hours;
     this.budget += delta;
     this.flow += delta;
     this.flowMinutes += dtMinutes;
@@ -189,7 +189,7 @@ export class Organisation {
       this.notice(clock, approved ? t('{grant}: approved. {reward}.', { grant: g.label, reward: g.rewardText }) : t('{grant}: declined. You can apply again.', { grant: g.label }), approved ? g.reward.unlock : undefined);
     }
 
-    if (!this.broke && this.budget <= 0) this.broke = true;
+    if (!this.broke && this.budget < ORG.brokeBelow) this.broke = true;
     else if (this.broke && this.budget >= ORG.recoverAt) this.broke = false;
 
     // Out of money for too long: services close down for good, one by one.

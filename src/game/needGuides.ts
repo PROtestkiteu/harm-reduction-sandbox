@@ -5,8 +5,8 @@ import type { MajorEvent } from './majorEvents';
 
 /**
  * A short guide when one of the city's meters goes red: what is pressing on it in this game, what
- * eases it, and a reply that takes the player to the place to act. Stops the clock like the big
- * events. Each guide shows the first time its meter goes red, then at most once a game day.
+ * eases it, and a reply that selects the place to act. Stops the clock like the big events. Each
+ * guide shows the first time its meter goes red, then at most once a game day.
  */
 export const GUIDE_AGAIN_MINUTES = 24 * 60;
 
@@ -14,40 +14,40 @@ const GUIDE: Record<Need, { title: string; lines: string[]; show: string }> = {
   police: {
     title: t('The police are stretched'),
     lines: [
-      t('Incidents, stops, the camp in the park and people turned away from a bed keep the police busy. A stretched force makes the council lean on your funders.'),
-      t('What helps: beds at the night shelter, outreach and the General support camper path to shrink the camp, and a police agreement (the side quest at the police station).'),
+      t('The police are kept busy by incidents, stop-and-search, the camp in the park and people who found no bed for the night. When they are stretched, the council leans on your funders.'),
+      t('More beds at the night shelter ease it. Outreach shrinks the camp, and so does the camper on the General support path. The police station\'s side quest ends in an agreement with them.'),
     ],
-    show: t('Show the shelter'),
+    show: t('Go to the shelter'),
   },
   medics: {
     title: t('Ambulances and A&E are stretched'),
     lines: [
-      t('Overdoses nobody reached, people harmed outdoors and people turned away from services fill ambulances and A&E. Stretched, fewer of them survive.'),
-      t('What helps: naloxone and first aid in the budget mix, more staff where people are turned away, the foot patrol and drug checking, the warming bus or water in bad weather, and working with A&E (the hospital\'s side quest).'),
+      t('Ambulances and A&E fill up with overdoses nobody reached in time, people hurt outdoors and people your services had to turn away. The fuller they are, the fewer people survive.'),
+      t('Put naloxone and first aid in the budget mix, and add staff wherever people are turned away. The foot patrol and drug checking catch trouble early. In bad weather, send the warming bus or hand out water. The hospital\'s side quest gets A&E working with you.'),
     ],
-    show: t('Show where most are turned away'),
+    show: t('Go to the busiest service'),
   },
   sobering: {
     title: t('The sobering-up centre is full'),
     lines: [
-      t('Drunk club leavers end up in the izba, more of them when the club stand turns people away.'),
-      t('What helps: more staff at the club stand, partnering with the new venues as they open, and working with the izba (its side quest).'),
+      t('People who leave the club drunk end up in the izba, and more of them do when your club stand has to turn people away.'),
+      t('Add staff at the club stand and partner with new venues as they open. The izba\'s side quest gets them working with you.'),
     ],
-    show: t('Show the club stand'),
+    show: t('Go to the club stand'),
   },
   district: {
     title: t('The district is struggling'),
     lines: [
-      t('A crisis and stretched city services wear the district down: fewer people come out, and venues close.'),
-      t('What helps: turn fewer people away. Open more services under Services, and add staff and waiting places where queues build.'),
+      t('A crisis and overstretched city services wear the district down. Fewer people go out, and venues start to close.'),
+      t('Turn fewer people away. Open more services under Services, and add staff and waiting places where queues build up.'),
     ],
-    show: t('Show where most are turned away'),
+    show: t('Go to the busiest service'),
   },
 };
 
 /**
  * The guide for `need` as a popup: the first reply selects the place to act (`busiest`: the
- * service turning most people away now), the second just closes it.
+ * service turning most people away now) and closes on its panel; the second just closes.
  */
 export function needGuide(need: Need, busiest: ServiceId, select: (id: LocationId) => void): MajorEvent {
   const g = GUIDE[need];
@@ -59,7 +59,7 @@ export function needGuide(need: Need, busiest: ServiceId, select: (id: LocationI
     place,
     eligible: () => true,
     choices: [
-      { label: g.show, apply: () => { select(place); return t('It is selected: its replies are in the panel.'); } },
+      { label: g.show, apply: () => { select(place); return ''; } },
       { label: t('Got it'), apply: () => '' },
     ],
   };

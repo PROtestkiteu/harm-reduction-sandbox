@@ -134,6 +134,9 @@
 
 * { box-sizing: border-box; }
 
+/* Headings avoid a lone last word ("…in the / media"). */
+h1, h2, h3 { text-wrap: pretty; }
+
 html, body {
   margin: 0;
   height: 100%;

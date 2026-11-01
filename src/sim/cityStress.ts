@@ -12,8 +12,8 @@ import type { ServiceId } from './types';
 export const STRESS = {
   /** Share that eases per clock hour. */
   easePerHour: 0.12,
-  crime: 0.05,
-  scuffle: 0.1,
+  crime: 0.02,
+  scuffle: 0.04,
   policeStop: 0.03,
   /** An overdose staff did not reach: an ambulance and an A&E bed. */
   overdoseAlone: 0.12,
