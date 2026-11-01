@@ -1,0 +1,10 @@
+People in the harm-reduction sandbox are built from CC0 assets by Quaternius:
+- Universal Base Characters (Standard): base bodies, eyes, brows and hairstyles
+- Universal Animation Library (Standard): animation clips
+https://quaternius.com
+
+License: CC0 1.0 Universal (Public Domain Dedication)
+https://creativecommons.org/publicdomain/zero/1.0/
+
+Prepared with scripts/build-people.mjs: meshes simplified, textures resized
+to 512 px WebP, unused maps, clips, finger and scale tracks removed.
