@@ -46,7 +46,8 @@ function offlineWorker(): Plugin {
     name: 'offline-worker',
     apply: 'build',
     generateBundle(_options, bundle) {
-      const files = Object.keys(bundle).filter((f) => !f.endsWith('.map') && f !== 'version.json' && f !== 'index.html');
+      // Old .woff fonts are only for browsers that cannot run the game anyway (they all take .woff2).
+      const files = Object.keys(bundle).filter((f) => !f.endsWith('.map') && !f.endsWith('.woff') && f !== 'version.json' && f !== 'index.html');
       const keep = ['./', ...files, 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'protest-logo.webp'];
       const source = `const BUILD = ${JSON.stringify(BUILD)};
 const CACHE = 'hrs-' + BUILD;

@@ -1,9 +1,9 @@
 import { CAMPER_PATH, CAMPER_PATH_IDS, type CamperPath } from '../config/camperPaths';
-import { ACTIVITY, MIX_MAX, type Activity } from '../config/serviceMix';
+import { ACTIVITY, type Activity } from '../config/serviceMix';
 import type { FavourId } from '../config/favours';
 import { ORG, RECRUIT } from '../config/organisation';
-import { AID_NEEDS, PATH_NEEDS, serviceNeeds, type Need } from '../config/needs';
-import { NEED_ICONS, needTag, needsFor, setNeeds } from './needIcons';
+import { ACTIVITY_NEEDS, AID_NEEDS, PATH_NEEDS, serviceNeeds, type Need } from '../config/needs';
+import { NEED_ICONS, meterState, needTag, needsFor, setNeeds } from './needIcons';
 import { price } from './money';
 import { SERVICE_TEXT } from '../config/places';
 import type { Insets } from '../render/camera';
@@ -34,8 +34,11 @@ export interface HudCallbacks {
   onTitle(): void;
   /** The money figure was pressed: open the organisation and budget page. */
   onMoney(): void;
+  /** Send a camper to the kerb nearest the selected person. */
+  onPersonCamper(): void;
   /** Changes how much a place spends on one activity. */
-  onMix(service: ServiceId, activity: Activity, weight: number): void;
+  /** One activity's share of the place's visits, in percent; the others keep their proportions. */
+  onMix(service: ServiceId, activity: Activity, percent: number): void;
   /** Pays a place's one-off set-up for an activity. */
   onMixSetUp(service: ServiceId, activity: Activity): void;
   /** Uses the favour held with city hall. */
@@ -51,7 +54,7 @@ export interface HudCallbacks {
 }
 
 /** What can be done at a place, free or paid from the organisation's budget. */
-export type PlaceAction = 'moreStaff' | 'moreWaiting' | 'hire' | 'volunteer' | 'relaunch' | 'camper' | 'move' | 'path' | 'mix' | 'hustle' | 'invest' | 'donations' | `camper:${number}`;
+export type PlaceAction = 'moreStaff' | 'moreWaiting' | 'hire' | 'volunteer' | 'relaunch' | 'camper' | 'move' | 'path' | 'mix' | 'hustle' | 'invest' | `camper:${number}`;
 
 /** The selected place's levers, for its action replies. */
 /** One activity in a place's budget mix. */
@@ -59,8 +62,6 @@ export interface MixItem {
   id: Activity;
   label: string;
   does: string;
-  /** Slider value, 0 to MIX_MAX. */
-  weight: number;
   /** Share of visits now, 0 to 1. */
   share: number;
   /** Not on offer now: not allowed by law, or needs a paid set-up first. */
@@ -79,8 +80,6 @@ export interface PlaceLevers {
   budget: number;
   /** Why it is closed now, if it is: decides which replies can still help. */
   closedReason?: string | null;
-  /** Donation box: out or not, what each staff member on shift brings in per hour, and how many are on shift. */
-  donations: { on: boolean; each: number; staff: number };
   /** Investing: cost, level and progress. */
   invest: { cost: number; level: number; progress: number; max: number };
   /** A side income this place can bring in (the club's fee for the stand, sold checks), on or off. */
@@ -191,6 +190,9 @@ interface MetricRow { value: HTMLElement; line: SVGPolylineElement }
 /** What the column currently describes. */
 type Mode = { kind: 'location'; id: LocationId } | { kind: 'person' } | { kind: 'building' } | null;
 
+/** Sending a camper to a selected person: what the reply says, whether it can be pressed, and why. */
+export interface PersonCamperOffer { label: string; hint: string; enabled: boolean }
+
 /** An ordinary building's card: what it is, and figures for it and the neighbourhood. */
 export interface BuildingCard {
   title: string;
@@ -271,6 +273,11 @@ export class Hud {
   private readonly backOpt: HTMLElement;
   private servicesOpen = false;
   private readonly focusOpt: HTMLElement;
+  private readonly personCamperOpt: HTMLElement;
+  private readonly personCamperBtn: HTMLButtonElement;
+  private readonly personCamperLong: HTMLElement;
+  /** The camper offer for the selected person, kept so the reply can show while their card does. */
+  private personCamper: PersonCamperOffer | null = null;
   private readonly staffGroupBtn: HTMLButtonElement;
   private readonly staffGroupLong: HTMLElement;
   private readonly staffGroupOpt: HTMLLIElement;
@@ -281,7 +288,7 @@ export class Hud {
   private readonly pathOpts: { li: HTMLLIElement; button: HTMLButtonElement; long: HTMLElement; short: HTMLElement; id: CamperPath }[] = [];
   private mixOpen = false;
   /** One row per activity slot: a labelled slider, its share, and a set-up button when it needs one. */
-  private readonly mixRows: { li: HTMLLIElement; label: HTMLLabelElement; input: HTMLInputElement; out: HTMLOutputElement; note: HTMLElement; setup: HTMLButtonElement; setupLabel: HTMLElement; setupNeeds: HTMLElement; id: Activity | null; editingUntil: number }[] = [];
+  private readonly mixRows: { li: HTMLLIElement; label: HTMLLabelElement; labelText: HTMLElement; labelNeeds: HTMLElement; input: HTMLInputElement; out: HTMLOutputElement; note: HTMLElement; setup: HTMLButtonElement; setupLabel: HTMLElement; setupNeeds: HTMLElement; id: Activity | null; editingUntil: number }[] = [];
   private readonly spotOpts: { li: HTMLLIElement; button: HTMLButtonElement; long: HTMLElement; short: HTMLElement }[] = [];
   private readonly actionOpts = {} as Record<PlaceAction, { li: HTMLLIElement; button: HTMLButtonElement; label: HTMLElement; short: HTMLElement; needs: HTMLElement }>;
   private readonly focusBtn: HTMLButtonElement;
@@ -445,6 +452,15 @@ export class Hud {
     this.focusBtn.append(this.focusLong, this.focusShort);
     this.focusBtn.addEventListener('click', () => cb.onToggleFocus());
     this.focusOpt = opt(this.focusBtn);
+    // For someone a camper could help: send one to the kerb nearest them.
+    this.personCamperBtn = button('opt');
+    this.personCamperLong = el('span', 'long');
+    const camperShort = el('span', 'short', t('Send camper.'));
+    camperShort.setAttribute('aria-hidden', 'true');
+    this.personCamperBtn.append(this.personCamperLong, camperShort);
+    this.personCamperBtn.addEventListener('click', () => cb.onPersonCamper());
+    this.personCamperOpt = opt(this.personCamperBtn);
+    this.personCamperOpt.hidden = true;
     // Staffing actions fold under one reply, so the list stays short.
     this.staffGroupBtn = button('opt group');
     this.staffGroupLong = el('span', 'long');
@@ -538,21 +554,26 @@ export class Hud {
       const inputId = `mix-${i}`;
       const label = el('label');
       label.htmlFor = inputId;
+      // The activity's name, then the needs it eases.
+      const labelText = el('span');
+      const labelNeeds = needTag();
+      label.append(labelText, labelNeeds);
       const out = el('output');
       out.htmlFor.add(inputId);
       const input = el('input');
       input.type = 'range';
       input.id = inputId;
       input.min = '0';
-      input.max = String(MIX_MAX);
-      input.step = '1';
+      // Percent of the visits: moving one share moves the others, so the mix stays at 100%.
+      input.max = '100';
+      input.step = '5';
       const note = el('span', 'mix-note');
       const setup = button('opt mix-setup');
       setup.hidden = true;
       const setupLabel = el('span');
       const setupNeeds = needTag();
       setup.append(setupLabel, setupNeeds);
-      const row = { li, label, input, out, note, setup, setupLabel, setupNeeds, id: null as Activity | null, editingUntil: 0 };
+      const row = { li, label, labelText, labelNeeds, input, out, note, setup, setupLabel, setupNeeds, id: null as Activity | null, editingUntil: 0 };
       input.addEventListener('input', () => {
         row.editingUntil = performance.now() + 1200;
         const levers = this.mode?.kind === 'location' ? this.lastSnapshot?.locations[this.mode.id].actions : undefined;
@@ -859,7 +880,13 @@ export class Hud {
   }
 
   /** Shows the person. `card` null means they have left the scene. */
-  showPerson(card: PersonCard | null, following: boolean, lastTitle?: string): void {
+  showPerson(card: PersonCard | null, following: boolean, lastTitle?: string, camper: PersonCamperOffer | null = null): void {
+    this.personCamper = card ? camper : null;
+    if (this.personCamper) {
+      setText(this.personCamperLong, this.personCamper.label);
+      if (this.personCamperBtn.title !== this.personCamper.hint) this.personCamperBtn.title = this.personCamper.hint;
+      if (this.personCamperBtn.disabled === this.personCamper.enabled) this.personCamperBtn.disabled = !this.personCamper.enabled;
+    }
     if (this.mode?.kind !== 'person') {
       this.mode = { kind: 'person' };
       for (const l of LOCATION_IDS) setAttr(this.labels[l], 'aria-pressed', 'false');
@@ -1038,8 +1065,7 @@ export class Hud {
         const f = this.stressFill[key];
         const w = `${Math.round(v * 100)}%`;
         if (f.style.width !== w) f.style.width = w;
-        // Green, amber, red: pressure on a service is bad high; the district doing well is good high.
-        const state = key === 'district' ? (v >= 0.55 ? 'low' : v >= 0.3 ? 'mid' : 'high') : v >= 0.7 ? 'high' : v >= 0.4 ? 'mid' : 'low';
+        const state = meterState(key, v);
         if (f.dataset.state !== state) {
           f.dataset.state = state;
           this.stressMeters[key].dataset.state = state;
@@ -1196,8 +1222,6 @@ export class Hud {
     const full = inv.level >= inv.max && inv.progress >= 1;
     // Building work goes on whether or not the place is open tonight.
     show('invest', !a.closedDown, full ? t('Fully upgraded') : t('Invest {price}', { price: price(inv.cost) }), !full && afford(inv.cost), t('Build on: more places here once the work is done.'));
-    const don = a.donations;
-    const rate = t('{each}/h × {staff} staff on shift = +{total}/h', { each: price(don.each), staff: don.staff, total: price(don.each * don.staff) });
     if (a.hustle) {
       setText(this.actionOpts.hustle.short, a.hustle.short);
       setAttr(this.actionOpts.hustle.button, 'aria-pressed', String(a.hustle.on));
@@ -1207,17 +1231,20 @@ export class Hud {
     show('mix', !a.closedDown, t('Budget mix ({price} a visit)', { price: price(a.mix.visitCost) }), true, a.mix.items.filter((m) => m.share > 0).map((m) => `${ACTIVITY[m.id].short} ${Math.round(m.share * 100)}%`).join(', ') || t('Nothing on offer'));
     setAttr(this.actionOpts.mix.button, 'aria-expanded', String(this.mixOpen));
     const now = performance.now();
+    const shown = wholePercents(a.mix.items.map((m) => (m.lock ? 0 : m.share)));
     this.mixRows.forEach((r, i) => {
       const m = a.mix.items[i];
       const hidden = !m || !this.mixOpen || this.servicesOpen || a.closedDown;
       if (r.li.hidden !== hidden) r.li.hidden = hidden;
       if (!m) { r.id = null; return; }
       r.id = m.id;
-      setText(r.label, m.label);
+      setText(r.labelText, m.label);
+      setNeeds(r.labelNeeds, ACTIVITY_NEEDS[m.id]);
       r.input.title = m.does;
       r.input.disabled = m.lock !== null;
-      if (now > r.editingUntil && r.input.value !== String(m.weight)) r.input.value = String(m.weight);
-      setText(r.out, m.lock ? '' : `${Math.round(m.share * 100)}%`);
+      const pct = String(shown[i]);
+      if (now > r.editingUntil && r.input.value !== pct) r.input.value = pct;
+      setText(r.out, m.lock ? '' : `${shown[i]}%`);
       setText(r.note, m.lock === 'law' ? t('Not allowed by law here.') : m.lock === 'setup' ? t('Needs equipment first ({price}).', { price: price(m.setupCost) }) : m.does);
       r.note.dataset.alert = m.lock === 'law' ? 'law' : '';
       const showSetup = m.lock === 'setup';
@@ -1228,10 +1255,6 @@ export class Hud {
         r.setup.disabled = !afford(m.setupCost);
       }
     });
-    // A switch: the short label (all a phone shows) says whether the box is out.
-    setText(this.actionOpts.donations.short, don.on ? t('Donation box: out.') : t('Donation box: in.'));
-    setAttr(this.actionOpts.donations.button, 'aria-pressed', String(don.on));
-    show('donations', !a.closedDown, don.on ? t('Donation box +{price}/h', { price: price(don.each * don.staff) }) : t('Put out a donation box'), true, don.on ? t('{rate}. Click to take it in.', { rate }) : t('{price} an hour per staff member on shift.', { price: price(don.each) }));
     show('relaunch', a.closedDown, a.reopening ? t('Relaunching…') : t('Relaunch {price}', { price: price(ACTION_COST.relaunch) }), !a.reopening && afford(ACTION_COST.relaunch), t('Back in about 2 hours.'));
   }
 
@@ -1271,6 +1294,7 @@ export class Hud {
     else this.profileView.hidden = !this.profileView.dataset.key;
     const open = this.servicesOpen;
     this.focusOpt.hidden = m === null || open || m.kind !== 'person';
+    this.personCamperOpt.hidden = m?.kind !== 'person' || open || !this.personCamper;
     if (m?.kind !== 'building') for (const o of this.buildingOpts) o.li.hidden = true;
     if (m?.kind !== 'location') {
       for (const action of ACTIONS) this.actionOpts[action].li.hidden = true;
@@ -1351,13 +1375,28 @@ export class Hud {
 
 /** Replies that spend money (now or by the hour) on the selected place. */
 const SPEND_ACTIONS: readonly PlaceAction[] = ['moreStaff', 'hire', 'volunteer', 'camper', 'invest', 'relaunch'];
-const ACTIONS: readonly PlaceAction[] = ['moreStaff', 'hire', 'volunteer', 'camper', 'moreWaiting', 'move', 'path', 'mix', 'hustle', 'invest', 'donations', 'relaunch'];
+/** Shares (0 to 1) as whole percents that add up to exactly 100 (largest remainders get the leftover points). */
+function wholePercents(shares: readonly number[]): number[] {
+  const total = shares.reduce((n, v) => n + v, 0);
+  if (total <= 0) return shares.map(() => 0);
+  const exact = shares.map((v) => (v / total) * 100);
+  const out = exact.map(Math.floor);
+  let left = 100 - out.reduce((n, v) => n + v, 0);
+  for (const i of exact.map((_, i) => i).sort((p, q) => (exact[q] - out[q]) - (exact[p] - out[p]))) {
+    if (left <= 0) break;
+    out[i]++;
+    left--;
+  }
+  return out;
+}
+
+const ACTIONS: readonly PlaceAction[] = ['moreStaff', 'hire', 'volunteer', 'camper', 'moreWaiting', 'move', 'path', 'mix', 'hustle', 'invest', 'relaunch'];
 /** Most camper spots the replies offer. */
 const MAX_SPOTS = 6;
 /** The most activities any place offers. */
 const MIX_SLOTS = 5;
 /** Actions nested under the Staffing reply. */
 const STAFF_ACTIONS: readonly PlaceAction[] = ['moreStaff', 'hire', 'volunteer', 'camper'];
-const ACTION_SHORT: Record<PlaceAction, string> = { moreStaff: t('More staff.'), moreWaiting: t('More places.'), hire: t('Hire.'), volunteer: t('Volunteer.'), camper: t('Another camper.'), move: t('Move it.'), path: t('Specialise.'), mix: t('Budget mix.'), hustle: t('Side income.'), invest: t('Invest.'), donations: t('Donations.'), relaunch: t('Relaunch.') };
+const ACTION_SHORT: Record<PlaceAction, string> = { moreStaff: t('More staff.'), moreWaiting: t('More places.'), hire: t('Hire.'), volunteer: t('Volunteer.'), camper: t('Another camper.'), move: t('Move it.'), path: t('Specialise.'), mix: t('Budget mix.'), hustle: t('Side income.'), invest: t('Invest.'), relaunch: t('Relaunch.') };
 /** Costs shown on the replies; the organisation charges the same (config/organisation.ts). */
 const ACTION_COST = { hire: RECRUIT.hirePaid.cost, volunteer: RECRUIT.volunteerDrive.cost, relaunch: ORG.reopen.cost };

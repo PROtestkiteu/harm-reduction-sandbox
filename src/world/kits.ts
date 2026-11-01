@@ -1,6 +1,5 @@
 import { Color, InstancedMesh, Matrix4, Mesh, MeshLambertMaterial, Object3D, Vector3, type Material, type MeshStandardMaterial, type WebGLProgramParametersWithUniforms } from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
+import { gltfLoader } from './gltfLoader';
 import { dynamic } from './mergeStatic';
 import { SNOW } from './materials';
 import type { Season } from '../config/seasons';
@@ -17,9 +16,9 @@ export interface Kits {
 }
 
 export async function loadKits(): Promise<Kits | null> {
-  const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
   const url = (file: string) => new URL(`kits/${file}`, document.baseURI).toString();
   try {
+    const loader = await gltfLoader();
     const [city, nature] = await Promise.all([loader.loadAsync(url('city.glb')), loader.loadAsync(url('nature.glb'))]);
     const pieces = new Map<string, Object3D>();
     for (const gltf of [city, nature]) {

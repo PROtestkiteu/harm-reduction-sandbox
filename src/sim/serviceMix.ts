@@ -27,8 +27,19 @@ export class ServiceMix {
     return this.weights[id][a] ?? 0;
   }
 
-  setWeight(id: ServiceId, a: Activity, w: number): void {
-    if (a in this.weights[id]) this.weights[id][a] = Math.max(0, Math.round(w));
+  /**
+   * Sets one activity to `percent` of the visits; the other activities on offer share the rest
+   * in the proportions they had, so the mix always adds up to 100%. With nothing else on offer,
+   * it is all the place does.
+   */
+  setShare(id: ServiceId, a: Activity, percent: number, checkingAllowed: boolean): void {
+    if (!(a in this.weights[id]) || this.lock(id, a, checkingAllowed)) return;
+    const s = this.shares(id, checkingAllowed);
+    const others = SERVICE_ACTIVITIES[id].filter((x) => x !== a && !this.lock(id, x, checkingAllowed));
+    const p = others.length ? Math.min(100, Math.max(0, percent)) : 100;
+    const rest = others.reduce((n, x) => n + (s[x] ?? 0), 0);
+    this.weights[id][a] = p;
+    for (const x of others) this.weights[id][x] = rest > 0 ? ((s[x] ?? 0) / rest) * (100 - p) : (100 - p) / others.length;
   }
 
   isSetUp(id: ServiceId, a: Activity): boolean {

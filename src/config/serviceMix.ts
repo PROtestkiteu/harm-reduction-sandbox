@@ -50,6 +50,5 @@ export const SERVICE_ACTIVITIES: Record<ServiceId, readonly Activity[]> = {
 /** Places where checking is part of the service from the start: no set-up to pay. */
 export const CHECKING_BUILT_IN: readonly ServiceId[] = ['drugChecking', 'clubHr'];
 
-/** Slider steps per activity: 0 (none) to 10. */
-export const MIX_MAX = 10;
+/** Each activity's starting weight: an even split of what a place offers. */
 export const MIX_DEFAULT = 5;

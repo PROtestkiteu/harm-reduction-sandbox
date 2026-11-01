@@ -169,7 +169,8 @@ html, body {
  * screen there; in a browser tab it would run under the toolbar, so only here.
  */
 @media (display-mode: standalone), (display-mode: fullscreen) {
-  html, body { height: 100lvh; }
+  /* Only the fixed layers: a taller page itself scrolls under the status bar, and iOS then
+     blurs and darkens a tall band at the top. */
   #scene, #hud { bottom: auto; height: 100lvh; }
 }
 
@@ -665,6 +666,8 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
 
 .sandbox-head { display: flex; align-items: center; gap: 8px; }
 .sandbox-head h2 { margin: 0; font-size: 16px; flex: 1; white-space: nowrap; }
+/* Close and Back: large enough to see and hit at a glance. */
+.sandbox-head .close { flex: none; min-width: 44px; min-height: 44px; padding: 0; border: 0; background: none; color: var(--reply); font-size: 30px; line-height: 1; cursor: pointer; }
 .sandbox-reset { font-size: 13px; }
 .sandbox-note { margin-top: 4px; }
 
@@ -1154,13 +1157,13 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
 .sandbox-head h2[hidden] { display: none; }
 .sandbox-back[hidden] { display: none; }
 .sandbox-backlink {
-  min-height: 36px;
+  min-height: 44px;
   padding: 0;
   border: 0;
   background: none;
   color: var(--reply);
   font: inherit;
-  font-size: 14px;
+  font-size: 17px;
   cursor: pointer;
 }
 .sandbox-backlink:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
@@ -1188,6 +1191,10 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
   font: 600 17px var(--body);
 }
 .org-name:hover { border-color: rgba(255, 255, 255, 0.18); }
+/* The name with its pencil, then the city's four meters, as at the top of the screen. */
+.org-name-row { display: flex; align-items: center; gap: 2px; }
+.org-name-row .org-name { flex: 1; min-width: 0; }
+.org-meters { grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0 0 8px; }
 .org-name:focus { outline: none; border: 1px solid var(--reply); background: rgba(0, 0, 0, 0.3); }
 .org-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 .org-stat { display: flex; flex-direction: column; padding: 0 6px; border-left: 2px solid rgba(255, 255, 255, 0.12); }
@@ -1236,7 +1243,7 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
   cursor: pointer;
 }
 .sandbox-sub > summary::-webkit-details-marker { display: none; }
-.sandbox-sub > summary::after { content: '\203A'; color: var(--reply); font-size: 18px; transition: transform 0.15s; }
+.sandbox-sub > summary::after { content: '\203A'; color: var(--reply); font-size: 28px; line-height: 1; padding: 0 4px; transition: transform 0.15s; }
 .sandbox-sub[open] > summary::after { transform: rotate(90deg); }
 @media (prefers-reduced-motion: reduce) { .sandbox-sub > summary::after { transition: none; } }
 @media (hover: hover) {
@@ -1838,7 +1845,6 @@ body:has(.sandbox-toggle[aria-expanded='true']) .portrait { display: none; }
   .sandbox-head h2 { font-size: 17px; }
   .sandbox-body .sandbox-group .note { margin-top: 8px; font-size: 11.5px; }
   .sandbox-reply { min-height: 38px; font-size: 15px; }
-  .sandbox-backlink { min-height: 36px; }
   .sandbox-sub > summary { min-height: 38px; font-size: 14px; }
   .org-name { min-height: 36px; font-size: 16px; margin-bottom: 2px; }
   .org-stats { gap: 4px; }

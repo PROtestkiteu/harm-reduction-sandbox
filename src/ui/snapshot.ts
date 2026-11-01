@@ -8,7 +8,7 @@ import { EXPOSURE, aidSeason } from '../sim/exposure';
 import { HUSTLE } from '../config/hustles';
 import { FAVOURS, type FavourId } from '../config/favours';
 import { camperSpot } from '../world/layout';
-import { DONATION_PER_STAFF_HOUR, INVEST } from '../sim/simulation';
+import { INVEST } from '../sim/simulation';
 import { PROPERTY } from '../sim/property';
 import { LOCATION_NAMES, SERVICE_TEXT } from '../config/places';
 import { PARAM_BY_ID, type ParamId } from '../config/sandboxParams';
@@ -68,7 +68,6 @@ function serviceSnapshot(id: LocationId, s: ServiceModel, sim?: Simulation): Loc
       reopening: sim.org.reopening.some((r) => r.id === s.id),
       budget: sim.org.budget,
       closedReason: s.closedReason,
-      donations: { on: sim.donations.has(s.id), each: DONATION_PER_STAFF_HOUR, staff: s.status === 'open' ? s.staffOnSite : 0 },
       invest: { cost: INVEST.cost, level: sim.upgrades[s.id].level, progress: sim.upgrades[s.id].progress, max: INVEST.maxLevel },
       mix: mixLevers(sim, s.id),
       hustle: s.id === 'clubHr'
@@ -123,7 +122,6 @@ function mixLevers(sim: Simulation, id: ServiceId): PlaceLevers['mix'] {
       id: a,
       label: ACTIVITY[a].label,
       does: ACTIVITY[a].does,
-      weight: sim.mix.weight(id, a),
       share: shares[a] ?? 0,
       lock: sim.mix.lock(id, a, allowed),
       setupCost: ACTIVITY[a].setup ?? 0,

@@ -1,6 +1,7 @@
 import { STRESS } from '../sim/cityStress';
 import type { ServiceId } from '../sim/types';
 import type { CamperPath } from './camperPaths';
+import type { Activity } from './serviceMix';
 import type { InstitutionId } from './institutionQuests';
 
 /**
@@ -29,6 +30,19 @@ export const QUEST_NEEDS: Record<InstitutionId, Need[]> = {
   cityHall: ['district'],
   hospital: ['medics'],
   sobering: ['sobering'],
+};
+
+/**
+ * What each budget-mix activity eases: checking, test kits, needles, naloxone and food and warmth
+ * keep people out of ambulances and A&E; counselling wins funders and neighbours over.
+ */
+export const ACTIVITY_NEEDS: Record<Activity, Need[]> = {
+  checking: ['medics'],
+  kits: ['medics'],
+  needles: ['medics'],
+  naloxone: ['medics'],
+  counselling: ['district'],
+  basics: ['medics'],
 };
 
 /** A partnered venue keeps water and info at the bar: fewer people end up in the izba. */

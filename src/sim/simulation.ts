@@ -308,8 +308,18 @@ export class Simulation {
    * CRISIS.calm, 1 at CRISIS.full and above. A crisis feeds itself: more
    * random events, warier funders, more harm outdoors (illustrative).
    */
+  /** How many more people in trouble come to the services: 1 when calm (see CRISIS.demandSurge). */
+  get surge(): number {
+    const s = this.cityStress;
+    const stretched = Math.max(0, (Math.max(s.police, s.medics, s.sobering) - CRISIS.surgeFrom) / (1 - CRISIS.surgeFrom));
+    return 1 + CRISIS.demandSurge * this.crisis + CRISIS.stressSurge * stretched;
+  }
+
   get crisis(): number {
-    return Math.min(1, Math.max(0, (this.unmet24 - CRISIS.calm) / (CRISIS.full - CRISIS.calm)));
+    const turnedAway = (this.unmet24 - CRISIS.calm) / (CRISIS.full - CRISIS.calm);
+    const s = this.cityStress;
+    const stretched = (Math.max(s.police, s.medics, s.sobering) - CRISIS.stressFrom) / (CRISIS.stressFull - CRISIS.stressFrom);
+    return Math.min(1, Math.max(0, turnedAway, stretched));
   }
 
   /** A camper (the first or an extra one) stands by the squat: its residents come to the counter. */
@@ -497,7 +507,9 @@ export class Simulation {
     const fee = id === 'drugChecking' && this.commercialChecking ? HUSTLE.commercialDemand : 1;
     // A thriving district brings more people out, and more people needing the services.
     const v = id === 'passerby' || id === 'club' ? this.vitality.footfall * (1 + 0.15 * this.vitality.venues) : this.vitality.demand;
-    return this.rates[id] * boost * street * seasonal * squat * fee * v;
+    // Neglect brings people to the door: more of them in a crisis and while the city is stretched.
+    const surge = id === 'passerby' || id === 'club' || id === 'party' ? 1 : this.surge;
+    return this.rates[id] * boost * street * seasonal * squat * fee * v * surge;
   }
 
   private setStaff(id: ServiceId, staff: number): void {
@@ -756,9 +768,9 @@ export class Simulation {
     return base + per * (n ? sum / n : 1);
   }
 
-  /** Changes how much a place spends on one activity (0 to MIX_MAX). */
-  setMix(id: ServiceId, a: Activity, weight: number): void {
-    this.mix.setWeight(id, a, weight);
+  /** Sets one activity's share of a place's visits (percent); the rest keep their proportions. */
+  setMix(id: ServiceId, a: Activity, percent: number): void {
+    this.mix.setShare(id, a, percent, this.context.checkingAllowed);
   }
 
   /** Pays a place's one-off set-up for an activity (checking equipment). */
@@ -959,10 +971,6 @@ export class Simulation {
     return (ORG.incomePerHour[this.policy.funding] ?? 0) + boxes + club;
   }
 
-  /** Services with a donation box out (all, to begin with). */
-  readonly donations = new Set<ServiceId>(SERVICE_IDS);
-
-  /** Small change from donation boxes: a little per staff member on shift, per clock hour. ILLUSTRATIVE. */
   /** Money moved at each place, not yet shown as a coin. */
   private readonly flowAcc: Partial<Record<ServiceId, number>> = {};
 
@@ -981,23 +989,26 @@ export class Simulation {
   private tickPlaceIncome(dtMinutes: number): void {
     const hours = dtMinutes / 60;
     const drive = this.driveUntil !== null ? HUSTLE.driveBoxes : 1;
-    for (const id of this.donations) {
-      const s = this.services[id];
-      if (s.status === 'open') this.flow(id, s.staffOnSite * DONATION_PER_STAFF_HOUR * this.vitality.footfall * drive * hours);
+    for (const id of SERVICE_IDS) {
+      const box = this.boxPerHour(id);
+      if (box > 0) this.flow(id, box * drive * hours);
     }
     if (this.clubContract && this.services.clubHr.status === 'open') this.flow('clubHr', HUSTLE.clubFeePerHour * hours);
   }
 
-  get donationIncome(): number {
-    let staff = 0;
-    for (const id of this.donations) if (this.services[id].status === 'open') staff += this.services[id].staffOnSite;
-    // More people out on a thriving street, more in the boxes.
-    return staff * DONATION_PER_STAFF_HOUR * this.vitality.footfall;
+  /**
+   * Every open place has a donation box out (no switch): what it brings in per clock hour grows with
+   * the staff on shift (someone to talk to, and to thank) and with how many people pass by now, on
+   * a thriving street and at a busy hour. ILLUSTRATIVE.
+   */
+  private boxPerHour(id: ServiceId): number {
+    const s = this.services[id];
+    if (s.status !== 'open') return 0;
+    return s.staffOnSite * DONATION_PER_STAFF_HOUR * this.vitality.footfall * this.city.footfall(this.clockMinutes, this.calendar.date);
   }
 
-  setDonations(id: ServiceId, on: boolean): void {
-    if (on) this.donations.add(id);
-    else this.donations.delete(id);
+  get donationIncome(): number {
+    return SERVICE_IDS.reduce((n, id) => n + this.boxPerHour(id), 0);
   }
 
   applicationContext(): ApplicationContext {
@@ -1273,13 +1284,15 @@ export class Simulation {
   }
 
   tick(dt: number): void {
+    const before = this.clockMinutes;
     this.clockMinutes += dt * this.minuteRate;
+    // A night is done in the morning: it counts for the leaderboard then, not at the next evening.
+    if (before < MORNING && this.clockMinutes >= MORNING) this.totals.nights++;
     // A full day, 18:00 round to 18:00; then the next evening begins.
     if (this.clockMinutes >= DAY_END) {
       this.clockMinutes -= DAY_END - DAY_START;
       // A new evening: the calendar moves on and tonight's waves can start again.
       this.calendar.nextNight();
-      this.totals.nights++;
       this.wavesTonight.clear();
     }
     const date = this.calendar.date;
@@ -1388,9 +1401,11 @@ export class Simulation {
     const inCrisis = this.crisis > 0;
     if (inCrisis !== this.inCrisis) {
       this.inCrisis = inCrisis;
-      this.org.notice(this.clockMinutes, inCrisis
-        ? t('Crisis on the street: {people} turned away in a day. More trouble, warier funders, more harm outdoors until fewer are turned away.', { people: plural(this.unmet24, ['{n} person', '{n} people'], ['{n} osoba', '{n} osoby', '{n} osób']) })
-        : t('The crisis is easing: fewer people are being turned away.'));
+      this.org.notice(this.clockMinutes, !inCrisis
+        ? t('The crisis is easing: fewer people are being turned away.')
+        : this.unmet24 >= CRISIS.calm
+          ? t('Crisis on the street: {people} turned away in a day. More trouble, warier funders, more harm outdoors until fewer are turned away.', { people: plural(this.unmet24, ['{n} person', '{n} people'], ['{n} osoba', '{n} osoby', '{n} osób']) })
+          : t("Crisis: the city's services are at breaking point. More trouble, warier funders, more harm outdoors until the pressure eases."));
     }
     if (this.movingUntil !== null && this.org.now >= this.movingUntil) {
       this.movingUntil = null;
@@ -1564,7 +1579,8 @@ export class Simulation {
     this.totals.helped++;
     // Every visit costs money and wears the place; unpaid, it wears twice as fast.
     const mix = this.mix.factors(s.id, this.context.checkingAllowed);
-    const cost = (ORG.visitCost[s.id] ?? 0) * mix.cost;
+    // In a crisis people come in a worse state: more dressings, more supplies, longer care.
+    const cost = (ORG.visitCost[s.id] ?? 0) * mix.cost * (1 + CRISIS.visitCostBoost * this.crisis);
     const paid = cost <= 0 || this.org.spend(cost);
     if (paid && cost > 0) this.flow(s.id, -cost);
     this.wear(s.id, INVEST.wearPerVisit * (paid ? 1 : 2));
@@ -1579,6 +1595,9 @@ export class Simulation {
   private recordUnmet(s: ServiceModel, visitor: VisitorId, notify = true): void {
     s.metrics.unmetNeed++;
     this.unmetLog.push(this.org.now);
+    // In a crisis nobody is simply gone: they come back worse off, and the team patches them up at the door.
+    const doorstep = CRISIS.doorstepCost * this.crisis;
+    if (doorstep > 0 && this.org.spend(doorstep)) this.flow(s.id, -doorstep);
     const adverse = this.random() < ILLUSTRATIVE.adverse.perUnmetNeed * ILLUSTRATIVE.adverse.serviceContactMultiplier;
     if (adverse) s.metrics.adverse++;
     // Only people who came for the drop-in or the outreach camper are modelled as using nearby afterwards.

@@ -48,6 +48,7 @@ import { ParkActivities } from './parkActivities';
 import { buildMurals, type MuralSpot } from './murals';
 import type { Figure } from '../agents/character';
 import { Letting, type UnitLook } from './letting';
+import { OpeningFx } from './openingFx';
 import { allBuildings, cityBuilding, registerBuilding, type CityBuilding } from './cityBuildings';
 import { t } from '../i18n';
 import { PROPERTY } from '../sim/property';
@@ -477,7 +478,13 @@ export function buildWorld(random: Random): World {
     .sort((a, c) => a.d - c.d)
     .filter((_, i) => i % 3 === 1)
     .slice(0, NIGHTLIFE_SIGNS.length)
-    .map(({ b }) => ({ b, sign: new Letting(lettingRoot, b, roofOf(b)), shown: '' }));
+    .map(({ b }) => { const roof = roofOf(b); return { b, roof, sign: new Letting(lettingRoot, b, roof), shown: '' }; });
+  // The city's own openings and closings: balloons up from a new business, a puff of dust from one that shuts.
+  const opening = new OpeningFx(scene, () => still, mulberry(97 ^ launch));
+  const atRoof = (b: CityBuilding, roof: number): [number, number, number] => [(b.x0 + b.x1) / 2, roof, (b.z0 + b.z1) / 2];
+  /** What each shop unit showed last, so a change can be told from the first sync. */
+  const unitShown: (UnitLook | undefined)[] = [];
+  let nightlifeSynced = false;
   // Harm reduction points the player opens in ordinary buildings: a sign each, made when first needed.
   const pointSigns = new Map<number, Letting>();
   // The park camp: tents of tarps and old canvas, nearest the district first.
@@ -584,6 +591,14 @@ export function buildWorld(random: Random): World {
     },
     setUnit(i, look) {
       lettings[i]?.set(look);
+      const before = unitShown[i];
+      unitShown[i] = look;
+      const unit = shopUnits[i];
+      if (before === undefined || !unit) return;
+      const at = atRoof(unit.b, unit.roof);
+      // A new business takes the unit: balloons. A shop shuts: dust. (A squat moving in gets neither.)
+      if (before !== 'trading' && look === 'trading') opening.opened(...at);
+      else if (before === 'trading' && look === 'toLet') opening.closed(...at);
     },
     camperCounter(spot) {
       return CAMPER_SPOTS[spot] ? counterAt(spot) : undefined;
@@ -612,10 +627,13 @@ export function buildWorld(random: Random): World {
       nightlife.forEach((n, i) => {
         const key = i < open ? (partnered.has(i) ? 'p' : 'o') : '';
         if (n.shown === key) return;
+        if (nightlifeSynced && !n.shown && key) opening.opened(...atRoof(n.b, n.roof));
+        else if (nightlifeSynced && n.shown && !key) opening.closed(...atRoof(n.b, n.roof));
         n.shown = key;
         const look = NIGHTLIFE_SIGNS[i];
         n.sign.set(key ? { ...look, sign: key === 'p' ? `${look.sign} ★` : look.sign } : 'trading');
       });
+      nightlifeSynced = true;
     },
     setExtraCampers(spots) {
       for (const spot of spots) {
@@ -686,6 +704,7 @@ export function buildWorld(random: Random): World {
       for (const id in expansions) expansions[id as LocationId].update(dt);
       for (const l of lettings) l.update(dt, still);
       for (const l of shopSigns) l.update(dt, still);
+      opening.update(dt);
       // New campers drive in from up the street and pull up at their spot.
       for (const [spot, c] of campers) {
         if (c.arrive >= 1) continue;

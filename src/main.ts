@@ -7,7 +7,7 @@ import { NATIONAL_MODELS, selectionFor } from './config/nationalModels';
 import { CAMPER_SPOTS, camperSpot } from './world/layout';
 import { exposureNow } from './sim/exposure';
 import { PARAM_BY_ID, decodeSettings, defaultSettings, encodeSettings, type ParamId, type SandboxSettings } from './config/sandboxParams';
-import { Crowd } from './agents/crowd';
+import { Crowd, type PersonState } from './agents/crowd';
 import { createIsoCamera, frameCamera, worldToClient } from './render/camera';
 import { CameraRig, MIN_ZOOM, PHONE_MIN_ZOOM } from './render/cameraRig';
 import { Highlight, OVERLAY_LAYER } from './render/highlight';
@@ -21,7 +21,7 @@ import { loadPeople } from './agents/humanFigure';
 import { SEASON_PROFILES } from './config/seasons';
 import { LOCATION_IDS, SERVICE_IDS, serviceAt, type LocationId, type ServiceId, type ServiceStatus } from './sim/types';
 import { ContextSection } from './ui/contextSection';
-import { Hud, type PlaceAction } from './ui/hud';
+import { Hud, type PersonCamperOffer, type PlaceAction } from './ui/hud';
 import { PORTRAIT_H, PORTRAIT_W, PortraitStudio } from './render/portraitStudio';
 import { describePerson } from './ui/personInfo';
 import { ActionMenu } from './ui/actionMenu';
@@ -46,9 +46,13 @@ import { QueueBox } from './ui/queueBox';
 import { startPresence } from './game/presence';
 import { applySave, captureSave, parseSave, unpackSave, type SaveData } from './game/saveGame';
 import { LiveGame, fetchGame, linkedGame, newGameAddress } from './game/liveGame';
+import { GUIDE_AGAIN_MINUTES, needGuide } from './game/needGuides';
+import { METER_ORDER, meterState } from './ui/needIcons';
+import type { Need } from './config/needs';
 import { currentRun, ensureRun, setRun, submitScore, topRuns } from './game/leaderboard';
 import { LOCATION_NAMES } from './config/places';
-import type { SatelliteService } from './sim/property';
+import { PROPERTY, type SatelliteService } from './sim/property';
+import { price } from './ui/money';
 import { Interaction } from './ui/interaction';
 import { EventFeed, HINT_ROW, hintInputId, markHintedRows } from './ui/eventFeed';
 import { OrgPanel } from './ui/orgPanel';
@@ -289,6 +293,7 @@ const hud = new Hud(hudRoot, {
   onBuildingAction: (action) => queueBuildingAction(action),
   onTitle: () => sandbox.setOpen(true),
   onMoney: () => openOrg(),
+  onPersonCamper: () => queueOrg(() => sendCamperToSelected()),
   onMix: (service, activity, weight) => queueOrg(() => { sim.setMix(service, activity, weight); refreshHud(); }),
   onMixSetUp: (service, activity) => queueOrg(() => { sim.setUpMix(service, activity); refreshHud(); }),
   onDrive: () => queueOrg(() => { sim.startDonationDrive(); refreshHud(); }),
@@ -346,6 +351,7 @@ const interaction = new Interaction({
   marker,
   reducedMotion,
   buildingCard: (id) => cards.describeBuilding(id),
+  personCamper: (p) => personCamperOffer(p),
   vehicleCard: (id) => cards.describeVehicle(id),
   openMenu: (x, y) => {
     // Let the column catch up with the new selection first, so the menu lists its actions.
@@ -374,6 +380,48 @@ function moveCamperTo(spot: number): void {
   world.moveCamper(spot);
   sim.org.notice(sim.clockMinutes, t('The outreach camper is on its way to a new spot: {spot}.', { spot: CAMPER_SPOTS[spot].name.toLowerCase() }));
   property.sync();
+  refreshHud();
+}
+
+/**
+ * Sending a camper to someone a camper could help (sleeping out, or using): to the free kerb spot
+ * nearest them. The outreach camper goes if it is free (outreach closes while it drives); if it
+ * is busy, a new one, if the money allows.
+ */
+function camperSpotNear(x: number, z: number): number | null {
+  let best: number | null = null;
+  let d = Infinity;
+  CAMPER_SPOTS.forEach((s, i) => {
+    if (i === camperSpot() || sim.property.campers.includes(i)) return;
+    const e = Math.hypot(s.x - x, s.z - z);
+    if (e < d) { d = e; best = i; }
+  });
+  return best;
+}
+
+function personCamperOffer(p: PersonState): PersonCamperOffer | null {
+  if (p.role !== 'sleeper' && !describePerson(p).profile) return null;
+  const spot = camperSpotNear(p.root.position.x, p.root.position.z);
+  const near = spot === null ? '' : CAMPER_SPOTS[spot].name.toLowerCase();
+  if (spot !== null && !sim.outreachMoving && sim.services.outreach.switchedOn) {
+    return { label: t('Send the camper near them'), hint: t('The outreach camper drives to {spot}; outreach closes while it moves.', { spot: near }), enabled: true };
+  }
+  const canBuy = spot !== null && sim.property.extraCampers < PROPERTY.maxExtraCampers;
+  return {
+    label: t('Send another camper near them ({price})', { price: price(PROPERTY.camperCost) }),
+    hint: canBuy ? t('A new camper parks at {spot}: {price}, then {perHour} an hour.', { spot: near, price: price(PROPERTY.camperCost), perHour: price(PROPERTY.camperPerHour) }) : t('Every camper is out.'),
+    enabled: canBuy && sim.org.budget >= PROPERTY.camperCost,
+  };
+}
+
+function sendCamperToSelected(): void {
+  const sel = interaction.selected;
+  const p = sel?.kind === 'person' ? crowd.person(sel.id) : undefined;
+  if (!p) return;
+  const spot = camperSpotNear(p.root.position.x, p.root.position.z);
+  if (spot === null) return;
+  if (!sim.outreachMoving && sim.services.outreach.switchedOn) moveCamperTo(spot);
+  else if (sim.sendCamper(spot)) syncProperty();
   refreshHud();
 }
 
@@ -655,6 +703,8 @@ const eventWorld: EventWorld = {
     if (index >= 0) setContext({ ...contextSelection, [id]: index }, null);
   },
 };
+/** When each meter's guide last showed (org minutes). */
+const guidedAt: Partial<Record<Need, number>> = {};
 function checkBigEvent(): void {
   if (eventPopup.open || gameOver.open) return;
   // City hall's concession comes as soon as it is due.
@@ -664,6 +714,16 @@ function checkBigEvent(): void {
     focusPlace(event.place);
     event.opening?.(eventWorld);
     eventPopup.show(event, sim.org.budget, (choice) => choice.apply(eventWorld));
+    return;
+  }
+  // A city meter gone red: a guide to what eases it, the first time and then at most once a game day.
+  for (const need of METER_ORDER) {
+    const v = need === 'district' ? sim.vitality.level : sim.cityStress[need];
+    if (meterState(need, v) !== 'high' || sim.org.now < (guidedAt[need] ?? -Infinity) + GUIDE_AGAIN_MINUTES) continue;
+    guidedAt[need] = sim.org.now;
+    const guide = needGuide(need, sim.busiest.service, (id) => interaction.selectLocation(id));
+    focusPlace(guide.place);
+    eventPopup.show(guide, sim.org.budget, (choice) => choice.apply(eventWorld));
     return;
   }
   // Money running out: a pause with suggestions, at most every 8 clock hours.
@@ -783,7 +843,7 @@ watchForUpdates(() => {
 
 function refreshOrg(): void {
   savePanel.sync();
-  org.update({ org: sim.org, services: sim.services, clock: sim.clockMinutes, incomePerHour: sim.fundingIncome, applicationContext: sim.applicationContext(), team: sim.team });
+  org.update({ org: sim.org, stress: { police: sim.cityStress.police, medics: sim.cityStress.medics, sobering: sim.cityStress.sobering, district: sim.vitality.level }, services: sim.services, clock: sim.clockMinutes, incomePerHour: sim.fundingIncome, applicationContext: sim.applicationContext(), team: sim.team });
 }
 
 function syncEvents(): void {
@@ -947,7 +1007,6 @@ function queuePlaceAction(service: ServiceId, action: PlaceAction): void {
       interaction.startPlacing(() => world.camperSpotMarkers(), (spot) => queueOrg(() => moveCamperTo(spot)), () => { world.showCamperSpots(null); dirty = true; });
     }
     else if (action === 'invest') sim.invest(service);
-    else if (action === 'donations') sim.setDonations(service, !sim.donations.has(service));
     else if (action === 'hustle') {
       if (service === 'clubHr') { if (sim.clubContract) sim.endClubContract(); else sim.proposeClubContract(); }
       else if (service === 'drugChecking') sim.setCommercialChecking(!sim.commercialChecking);

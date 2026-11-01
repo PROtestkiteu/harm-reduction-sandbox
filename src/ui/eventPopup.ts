@@ -50,6 +50,12 @@ export class EventPopup {
   }
 
   private result(text: string): void {
+    // A choice with nothing to report (a guide's "Got it") just closes the box.
+    if (!text) {
+      this.dialog.close();
+      this.onChange(false);
+      return;
+    }
     const outcome = Object.assign(document.createElement('p'), { className: 'welcome-lead', textContent: text });
     outcome.setAttribute('role', 'status');
     this.body.replaceChildren(outcome);

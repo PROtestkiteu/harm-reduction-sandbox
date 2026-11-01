@@ -22,10 +22,9 @@ import {
   type Texture,
   type Bone,
 } from 'three';
-import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
+import { gltfLoader } from '../world/gltfLoader';
 import { PALETTE } from '../config/palette';
 import type { Appearance, BodyState, Pose } from './character';
 
@@ -80,7 +79,7 @@ export async function loadPeople(base = `${import.meta.env.BASE_URL}people/`): P
   if (library) return library;
   try {
     // The files are meshopt-compressed (scripts/compress-people.mjs): half the download.
-    const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+    const loader = await gltfLoader();
     const [male, female, hair, anims] = await Promise.all(['male', 'female', 'hair', 'anims'].map((n) => loader.loadAsync(`${base}${n}.glb`)));
     const body = (g: Group): BodySource => {
       let mesh: SkinnedMesh | undefined, eyes: SkinnedMesh | undefined, brows: SkinnedMesh | undefined;

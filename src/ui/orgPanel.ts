@@ -1,5 +1,5 @@
-import { serviceNeeds } from '../config/needs';
-import { needsFor } from './needIcons';
+import { serviceNeeds, type Need } from '../config/needs';
+import { METER_ORDER, NEED_ICONS, meterState, needsFor } from './needIcons';
 import { GRANT_IDS, GRANTS, ORG, RECRUIT, type ApplicationContext, type GrantId, type RecruitId } from '../config/organisation';
 import { price } from './money';
 import { LOCALE, plural, t } from '../i18n';
@@ -24,6 +24,8 @@ export interface OrgPanelCallbacks {
 
 export interface OrgView {
   org: Organisation;
+  /** The four city meters, 0 to 1 (police, medics, sobering: pressure; district: how it is doing). */
+  stress: Record<Need, number>;
   services: Record<ServiceId, ServiceModel>;
   clock: number;
   incomePerHour: number;
@@ -101,6 +103,9 @@ export class OrgPanel {
   private teamKey = '';
   private readonly memberRows = new Map<number, MemberRow>();
   private readonly cb: OrgPanelCallbacks;
+  private readonly meters = {} as Record<Need, { root: HTMLElement; fill: HTMLElement }>;
+  private readonly meterRow: HTMLElement;
+  private readonly nameRow: HTMLElement;
 
   constructor(cb: OrgPanelCallbacks) {
     this.cb = cb;
@@ -125,6 +130,33 @@ export class OrgPanel {
     };
     this.nameInput.addEventListener('change', saveName);
     this.nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') this.nameInput.blur(); });
+    // A pencil beside the name, as for places and people: it puts the name up for editing.
+    const pencil = el('button', 'rename-pencil');
+    pencil.type = 'button';
+    pencil.setAttribute('aria-label', t('Rename'));
+    pencil.title = t('Click to rename your organisation');
+    pencil.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M3 17.25V21h3.75L17.8 9.94l-3.75-3.75L3 17.25zm17.7-10.2a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>';
+    pencil.addEventListener('click', () => { this.nameInput.focus(); this.nameInput.select(); });
+    const nameRow = el('div', 'org-name-row');
+    nameRow.append(this.nameInput, pencil);
+    // The city's four meters, as at the top of the screen: what the organisation is up against.
+    const meters = el('div', 'stress-row org-meters');
+    meters.setAttribute('role', 'group');
+    meters.setAttribute('aria-label', t('City services under pressure'));
+    for (const key of METER_ORDER) {
+      const m = el('span', 'stress');
+      m.dataset.key = key;
+      const icon = el('span', 'stress-icon');
+      icon.innerHTML = NEED_ICONS[key];
+      const bar = el('span', 'stress-bar');
+      const fill = el('span', 'stress-fill');
+      bar.append(fill);
+      m.append(icon, bar);
+      meters.append(m);
+      this.meters[key] = { root: m, fill };
+    }
+    this.meterRow = meters;
+    this.nameRow = nameRow;
     // Three figures at a glance, then one small line on where money goes.
     const stats = el('div', 'org-stats');
     const stat = (label: string) => {
@@ -212,12 +244,19 @@ export class OrgPanel {
     team.append(this.teamSummary, el('p', 'factor-summary', t('Pin someone to a service or send them to rest. Automatic places people where they fit best, paid staff first; tired people go home until rested.')));
     this.teamList = el('ul', 'team-list');
     team.append(this.teamList);
-    this.section.append(this.nameInput, stats, this.summary, this.recruiting, actions, team, this.closed, grants, this.log, note);
+    this.section.append(this.nameRow, this.meterRow, stats, this.summary, this.recruiting, actions, team, this.closed, grants, this.log, note);
   }
 
   /** Per-refresh update; text-only writes. */
   update(v: OrgView): void {
     const o = v.org;
+    for (const key of METER_ORDER) {
+      const { root, fill } = this.meters[key];
+      const w = `${Math.round(v.stress[key] * 100)}%`;
+      if (fill.style.width !== w) fill.style.width = w;
+      const state = meterState(key, v.stress[key]);
+      if (root.dataset.state !== state) { root.dataset.state = state; fill.dataset.state = state; }
+    }
     const assigned = Object.values(v.services).reduce((n, s) => n + s.assigned, 0);
     const paidOn = Object.values(v.services).reduce((n, s) => n + s.paidAssigned, 0);
     const wanted = Object.values(v.services).reduce((n, s) => n + (s.closedReason === null || s.closedReason === 'noStaff' ? s.requested : 0), 0);

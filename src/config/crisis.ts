@@ -7,11 +7,33 @@ export const CRISIS = {
   /** Unmet need over 24 clock hours below which there is no crisis. */
   calm: 20,
   /** Unmet need over 24 clock hours at which the crisis is at its worst. */
-  full: 80,
+  full: 60,
+  /**
+   * A city service pushed near its limit brings a crisis on its own: from this pressure (0 to 1)
+   * on the busiest of police, medics and the sobering-up centre, full at `stressFull`.
+   */
+  stressFrom: 0.7,
+  stressFull: 0.95,
   /** Random events come this much more often at the worst. */
-  eventBoost: 1,
+  eventBoost: 1.6,
   /** Grant chances drop by this share at the worst. */
-  grantCut: 0.4,
+  grantCut: 0.6,
   /** Harm to people outdoors rises by this share at the worst. */
-  harmBoost: 0.8,
+  harmBoost: 1.2,
+  /**
+   * Neglect comes back as clients: in a crisis, and while the city's services are stretched, more
+   * people in trouble come to the harm reduction services (this much more at the worst, and up to
+   * `stressSurge` more as the busiest city service goes from `surgeFrom` to its limit), and they
+   * come in a worse state, so a visit costs up to `visitCostBoost` more.
+   */
+  demandSurge: 1.5,
+  stressSurge: 0.8,
+  surgeFrom: 0.4,
+  visitCostBoost: 1.5,
+  /**
+   * In a crisis, people turned away come back worse off and the team gives first aid at the door:
+   * supplies and staff time, up to this much per person at the worst.
+   */
+  doorstepCost: 6,
 } as const;
+

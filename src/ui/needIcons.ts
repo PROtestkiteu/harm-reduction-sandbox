@@ -11,6 +11,18 @@ export const NEED_ICONS: Record<Need, string> = {
 
 const NEED_NAME: Record<Need, string> = { police: t('Police'), medics: t('Medics'), sobering: t('Sobering'), district: t('District') };
 
+/**
+ * A meter's state for its colour: green, amber, red. Pressure on a city service is bad high;
+ * the district doing well is good high.
+ */
+export function meterState(need: Need, v: number): 'low' | 'mid' | 'high' {
+  if (need === 'district') return v >= 0.55 ? 'low' : v >= 0.3 ? 'mid' : 'high';
+  return v >= 0.7 ? 'high' : v >= 0.4 ? 'mid' : 'low';
+}
+
+/** The four city meters, in the order the HUD shows them. */
+export const METER_ORDER: readonly Need[] = ['police', 'medics', 'district', 'sobering'];
+
 /** An empty holder for need icons, to put at the end of a priced reply. */
 export function needTag(): HTMLElement {
   const tag = document.createElement('span');

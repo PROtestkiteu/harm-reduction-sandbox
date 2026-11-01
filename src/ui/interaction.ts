@@ -1,5 +1,5 @@
 import { Vector3, type Object3D, type OrthographicCamera } from 'three';
-import type { Crowd } from '../agents/crowd';
+import type { Crowd, PersonState } from '../agents/crowd';
 import type { CameraRig } from '../render/cameraRig';
 import type { Highlight } from '../render/highlight';
 import type { RenderFrame } from '../render/frame';
@@ -9,7 +9,7 @@ import type { Hud } from './hud';
 import { describePerson } from './personInfo';
 import { ScenePicker, sameTarget, type Target } from './picking';
 import { cityBuilding } from '../world/cityBuildings';
-import type { BuildingCard } from './hud';
+import type { BuildingCard, PersonCamperOffer } from './hud';
 import type { SelectionMarker } from './selection';
 import { t } from '../i18n';
 
@@ -31,6 +31,8 @@ export interface InteractionDeps {
   vehicleCard(id: number): BuildingCard | undefined;
   /** Right-click or long press: open the action menu for what is now selected. */
   openMenu(x: number, y: number): void;
+  /** Whether a camper can be sent to this person, and how; null for someone a camper would not help. */
+  personCamper(p: PersonState): PersonCamperOffer | null;
 }
 
 const PERSON_ZOOM = 2.6;
@@ -202,7 +204,7 @@ export class Interaction {
     if (this.selection?.kind !== 'person') return;
     const p = this.d.crowd.person(this.selection.id);
     const card = p ? describePerson(p) : null;
-    this.d.hud.showPerson(card, this.following, this.leftTitle ?? undefined);
+    this.d.hud.showPerson(card, this.following, this.leftTitle ?? undefined, p ? this.d.personCamper(p) : null);
     this.syncFocusButton();
   }
 
