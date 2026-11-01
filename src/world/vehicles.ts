@@ -1,4 +1,4 @@
-import { BufferGeometry, CapsuleGeometry, CylinderGeometry, Float32BufferAttribute, Group, LatheGeometry, Mesh, SphereGeometry, Vector2, type Material, type Object3D } from 'three';
+import { Box3, BufferGeometry, CapsuleGeometry, CylinderGeometry, Float32BufferAttribute, Group, LatheGeometry, Mesh, SphereGeometry, Vector2, type Material, type Object3D } from 'three';
 import { PALETTE } from '../config/palette';
 import { glowMat, vehicleMat } from './materials';
 import { solid } from './solids';
@@ -354,8 +354,9 @@ export function emergencyVehicle(kind: 'police' | 'ambulance'): EmergencyVehicle
   const g = car(ambulance ? 0xe8e4dc : 0x1e2a4a, true, ambulance ? 'van' : 'saloon');
   g.rotation.z = 0;
   const p = PROFILES[ambulance ? 'van' : 'saloon'];
-  // The roof's highest point under the bar (it crowns in the middle): the bar sits on top of it, not in it.
-  const roof = Math.max(roofAt(p, 0), roofAt(p, -0.2), roofAt(p, -0.4)) + 0.04;
+  // The car's real top (the moulded roof crowns above its profile line): the bar sits on it, not in it.
+  g.updateMatrixWorld(true);
+  const roof = new Box3().setFromObject(g).max.y - g.position.y - 0.01;
   // Livery: a band along each side (yellow-green and red for the ambulance, white and blue for police).
   const band = vehicleMat(ambulance ? 0x9ac83a : 0xe8e8e4, 1);
   const band2 = vehicleMat(ambulance ? 0xc83a32 : 0x2a5ab8, 1);
