@@ -236,18 +236,22 @@ button:focus-visible {
 .sheet-handle { display: none; }
 .column-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; color: var(--muted); }
 .column-time { display: flex; align-items: center; gap: 10px; }
+/* Small to look at (about 30 by 24), with an invisible margin keeping the tap area at 44 px. */
 .speed-toggle {
-  min-width: 44px;
-  min-height: 44px;
-  padding: 0 8px;
-  border: 1px solid currentColor;
+  position: relative;
+  min-width: 30px;
+  min-height: 24px;
+  padding: 0 6px;
+  border: 1px solid color-mix(in srgb, currentColor 70%, transparent);
+  border-radius: 3px;
   align-self: center;
   color: var(--reply);
   background: none;
-  font: 500 15px var(--body);
+  font: 500 13px var(--body);
   font-variant-numeric: tabular-nums;
   cursor: pointer;
 }
+.speed-toggle::before { content: ''; position: absolute; inset: -10px -7px; }
 .speed-toggle[data-fast='true'] { background: var(--bar); border-color: var(--bar); color: var(--bar-text); }
 .speed-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .clock, .money { white-space: nowrap; }
@@ -358,6 +362,9 @@ button:focus-visible {
 }
 
 .options > li { counter-increment: reply; }
+/* Back is reply 0: it heads the list without moving the others' numbers. */
+.options > li.zero { counter-increment: none; }
+.options > li.zero .opt::before { content: '0.'; }
 .options > li[hidden] { display: none; }
 /* Too expensive or not possible right now: plainly grey, not just dimmed. */
 button.opt:disabled { color: var(--muted); cursor: not-allowed; }
@@ -390,8 +397,14 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
 
 .short { display: none; }
 .switch .state { margin-left: auto; font-family: var(--body); font-weight: 500; font-size: 16px; color: var(--muted); }
-.switch[aria-checked='true'] .state { color: var(--open); }
-.switch[aria-checked='false'] .name { text-decoration: line-through; text-decoration-thickness: 2px; }
+.svc-row { display: flex; align-items: center; }
+.svc-row > .opt { flex: 1; min-width: 0; }
+/* The ON/OFF switch at the row's end: its own target, separate from the name that picks the place. */
+.svc-toggle { flex: none; min-width: 52px; min-height: 34px; padding: 0 4px 0 10px; margin: 0; background: none; border: 0; text-align: right; cursor: pointer; }
+.svc-toggle .state { font-family: var(--body); font-weight: 500; font-size: 16px; text-transform: uppercase; color: var(--muted); }
+.svc-toggle[aria-checked='true'] .state { color: var(--open); }
+.svc-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+.svc-row[data-on='false'] .name { text-decoration: line-through; text-decoration-thickness: 2px; }
 
 .speeds { color: var(--reply); }
 .speeds-label { margin-right: auto; }
@@ -1736,3 +1749,17 @@ body:has(.sandbox-toggle[aria-expanded='true']) .portrait { display: none; }
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
 }
 .update-go { min-height: 34px; padding: 0 14px; border-radius: 999px; background: var(--bar); color: var(--bar-text); border: 0; font-weight: 600; white-space: nowrap; }
+
+/* Reset all settings: at the bottom of the panel, apart from the close button. */
+.sandbox-reset-row { margin: 18px 0 4px; display: flex; justify-content: flex-start; }
+
+/* Tags on what works against the selected place or person: red, so they read as a threat at a glance. */
+.fx-tag[data-kind^='threat'] { --fx: #ff3a2a; background: rgba(60, 8, 6, 0.88); color: #ffe4e0; box-shadow: 0 0 0 1.5px #ff3a2a, 0 2px 8px rgba(0, 0, 0, 0.5); font-size: 12px; }
+
+/* A crisis: a red section of its own above tonight's events; amber while it builds. */
+.crisis-box { margin: 8px 0 2px; padding: 7px 10px; border-left: 3px solid var(--law); background: color-mix(in srgb, var(--law) 16%, transparent); border-radius: 3px; font-size: 13px; line-height: 1.35; }
+.crisis-box[data-state='rising'] { border-left-color: var(--closing); background: color-mix(in srgb, var(--closing) 14%, transparent); }
+.crisis-box[hidden] { display: none; }
+.crisis-title { display: block; color: var(--law); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; font-size: 12px; }
+.crisis-box[data-state='rising'] .crisis-title { color: var(--closing); }
+.crisis-line { color: var(--text); }

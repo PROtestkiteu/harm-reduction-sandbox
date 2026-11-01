@@ -46,6 +46,7 @@ const ROLE_TITLE: Record<PersonRole, string> = {
   seller: t('Street seller'),
   sleeper: t('Person sleeping rough'),
   cleaner: t('Council cleaner'),
+  bouncer: t('Bouncer'),
 };
 
 const ROLE_SUBTITLE: Record<Exclude<PersonRole, 'staff'>, string> = {
@@ -57,6 +58,7 @@ const ROLE_SUBTITLE: Record<Exclude<PersonRole, 'staff'>, string> = {
   seller: t('Here because the street has a market'),
   sleeper: t('Without stable housing'),
   cleaner: t('On the early shift'),
+  bouncer: t('On the club door'),
 };
 
 /** Person-first context for visitors and passers-by; says nothing about drug use. */
@@ -84,7 +86,7 @@ const PLACE_PL: Record<ServiceId | 'club', Record<PlaceCase, string>> = {
   dropIn: { to: 'punktu drop-in', at: 'w punkcie drop-in', outside: 'punktem drop-in' },
   outreach: { to: 'kampera streetworkingowego', at: 'przy kamperze streetworkingowym', outside: 'kamperem streetworkingowym' },
   clubHr: { to: 'stoiska redukcji szkód', at: 'przy stoisku redukcji szkód', outside: 'stoiskiem redukcji szkód' },
-  pharmacy: { to: 'apteki', at: 'w aptece', outside: 'apteką' },
+  footPatrol: { to: 'patrolu streetworkerów', at: 'przy patrolu streetworkerów', outside: 'patrolem streetworkerów' },
   drugChecking: { to: 'punktu testowania substancji', at: 'w punkcie testowania substancji', outside: 'punktem testowania substancji' },
   shelter: { to: 'noclegowni', at: 'w noclegowni', outside: 'noclegownią' },
   clinic: { to: 'poradni', at: 'w poradni', outside: 'poradnią' },
@@ -149,6 +151,7 @@ function contextActivity(p: PersonState): string {
   }
   if (p.role === 'seller') return p.mode === 'standing' ? t('Standing on the corner') : t('Walking');
   if (p.role === 'sleeper') return p.mode === 'standing' ? t('Sleeping in a doorway') : t('Looking for somewhere to sleep');
+  if (p.role === 'bouncer') return t('Watching the door');
   if (p.role === 'cleaner') return p.mode === 'leaving' ? t('Going off shift') : t('Sweeping the park');
   if (p.mode === 'standing') return t('Standing with a blank placard');
   return p.mode === 'leaving' ? t('Heading home') : t('Walking');

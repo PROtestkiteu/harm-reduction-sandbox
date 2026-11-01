@@ -3,6 +3,7 @@ import { nearestNode } from '../agents/nav';
 import type { Simulation } from '../sim/simulation';
 import { PROPERTY, SATELLITE_SERVICES, type SatelliteService } from '../sim/property';
 import { plural, t } from '../i18n';
+import { QUESTS, type InstitutionId } from '../config/institutionQuests';
 import type { BuildingCard } from '../ui/hud';
 import { price } from '../ui/money';
 import { displayName } from '../ui/names';
@@ -60,13 +61,13 @@ const shopKindOf = (world: World, id: number): ShopKind | undefined => world.sho
 const POINT_NAME: Record<SatelliteService, string> = {
   dropIn: t('drop-in point'),
   drugChecking: t('drug checking point'),
-  pharmacy: t('needle exchange point'),
+  footPatrol: t('needle exchange point'),
 };
 /** A rented shop's service, as in "Rent it and open a drop-in". */
 const UNIT_NAME: Record<SatelliteService, string> = {
   dropIn: t('drop-in'),
   drugChecking: t('drug checking point'),
-  pharmacy: t('needle exchange'),
+  footPatrol: t('needle exchange'),
 };
 /** What a police car or ambulance is doing now. */
 const VEHICLE_STATE: Record<string, string> = {
@@ -74,14 +75,18 @@ const VEHICLE_STATE: Record<string, string> = {
   'At the scene': t('At the scene'),
   Leaving: t('Leaving'),
   'On patrol': t('On patrol'),
+  'On its route': t('On its route'),
+  'Held up': t('Held up in traffic'),
+  Parked: t('Parked'),
 };
+const VEHICLE_TITLE = { police: t('Police car'), ambulance: t('Ambulance'), bus: t('City bus'), warmingBus: t('Warming bus') } as const;
 const placesPlus = (n: number) => plural(n, ['+{n} place', '+{n} places'], ['+{n} miejsce', '+{n} miejsca', '+{n} miejsc']);
 
 /** Signs a rented shop shows, per satellite service. */
 const SATELLITE_SIGN: Record<SatelliteService, { sign: string; fg: string; bg: string }> = {
   dropIn: { sign: 'DROP-IN', fg: '#fff6e4', bg: '#2e7d6b' },
   drugChecking: { sign: 'DRUG CHECKING', fg: '#eafffb', bg: '#245c58' },
-  pharmacy: { sign: 'NEEDLE EXCHANGE', fg: '#ffffff', bg: '#2f7a48' },
+  footPatrol: { sign: 'NEEDLE EXCHANGE', fg: '#ffffff', bg: '#2f7a48' },
 };
 
 /** Cards for an ordinary building (who lives there, the neighbourhood round it) and for a police car or ambulance. */
@@ -99,8 +104,9 @@ export class CityCards {
     if (id === world.landmarks.hospital) {
       return {
         title: displayName('building', id, t('Public hospital')),
-        said: t('The city hospital and its A&E. Overdoses nobody reached in time and people harmed by cold or heat end up here; harm reduction staff who reach people first keep beds free.'),
-        facts: [[t('Ambulances and A&E under pressure'), pct(sim.cityStress.medics)]],
+        said: t('The city hospital and its A&E. Overdoses nobody reached in time and people harmed by cold or heat end up here; harm reduction staff who reach people first keep beds free.') + this.questPart('hospital').said,
+        facts: [[t('Ambulances and A&E under pressure'), pct(sim.cityStress.medics)], ...this.questPart('hospital').facts],
+        actions: this.questPart('hospital').actions,
         renamable: true,
       };
     }
@@ -122,19 +128,67 @@ export class CityCards {
         }],
       };
     }
+    if (id === world.fastFood) {
+      return {
+        title: displayName('building', id, t('Fast food')),
+        said: t('A fast food joint, open late: burgers, kebabs and chips. Bright and warm at night, so people coming out of the club and people with nowhere to go end up here.'),
+        facts: [],
+        renamable: true,
+      };
+    }
+    if (world.zabkas.includes(id)) {
+      return {
+        title: displayName('building', id, t('Żabka')),
+        said: t('A Żabka convenience store, open late: snacks, drinks, coffee, and a parcel locker by the door. People out at night drift in and out.'),
+        facts: [],
+        renamable: true,
+      };
+    }
+    if (id === world.pharmacyShop) {
+      return {
+        title: displayName('building', id, t('Pharmacy')),
+        said: t('A community pharmacy, one of the district\'s businesses. It sells syringes and naloxone, at a price few people who inject can pay: your foot patrol at the squat hands them out free.'),
+        facts: [],
+        renamable: true,
+      };
+    }
+    if (id === world.camps.park || id === world.camps.station) {
+      const park = id === world.camps.park;
+      const people = park ? sim.camp.people : sim.camp.stationPeople;
+      const count = plural(people, ['{n} person', '{n} people'], ['{n} osoba', '{n} osoby', '{n} osób']);
+      return {
+        title: park ? t('Camp in the park') : t('Camp by the railway station'),
+        said: `${people ? t('About {people} live here in tents: people with nowhere else to go.', { people: count }) : t('No tents here right now.')} ${park
+          ? t('It grows when the shelter is shut or full and in a crisis; in winter people move to the squat. An open shelter and outreach shrink it.')
+          : t('It grows with the same causes, and in winter too, as the station gives a little shelter. An open shelter and outreach shrink it.')}`,
+        facts: [[t('Police under pressure'), pct(sim.cityStress.police)]],
+        renamable: true,
+      };
+    }
+    if (id === world.landmarks.cityHall) {
+      return {
+        title: displayName('building', id, t('City hall')),
+        said: t('City hall: the mayor and the council. Permits, curfews and local strategy are decided here.') + this.questPart('cityHall').said,
+        facts: this.questPart('cityHall').facts,
+        actions: this.questPart('cityHall').actions,
+        renamable: true,
+      };
+    }
     if (id === world.landmarks.police) {
       return {
         title: displayName('building', id, t('Police station')),
-        said: t('The police station, just past the district. Patrols, stops and raids set out from here; when officers are stretched, the council leans on your funders.'),
-        facts: [[t('Police under pressure'), pct(sim.cityStress.police)]],
+        said: t('The police station, just past the district. Patrols, stops and raids set out from here; when officers are stretched, the council leans on your funders.') + this.questPart('police').said,
+        facts: [[t('Police under pressure'), pct(sim.cityStress.police)], ...this.questPart('police').facts],
+        actions: this.questPart('police').actions,
         renamable: true,
       };
     }
     if (id === world.landmarks.sobering) {
       return {
         title: displayName('building', id, t('Sobering-up centre')),
-        said: t("Izba wytrzeźwień: the city's sobering-up centre. Police bring in people who have had too much, most of them from the club at closing time."),
-        facts: [[t('How full it is'), pct(sim.cityStress.sobering)], [t('Police under pressure'), pct(sim.cityStress.police)]],
+        said: t("Izba wytrzeźwień: the city's sobering-up centre. Police bring in people who have had too much, most of them from the club at closing time.") + this.questPart('sobering').said,
+        facts: [[t('How full it is'), pct(sim.cityStress.sobering)], [t('Police under pressure'), pct(sim.cityStress.police)], ...this.questPart('sobering').facts],
+        actions: this.questPart('sobering').actions,
       };
     }
     const b = cityBuilding(id)!;
@@ -168,12 +222,29 @@ export class CityCards {
     };
   }
 
+  /**
+   * An institution's side quest on its card: how far along, what the last step
+   * taught (with its source), and the next step as a reply.
+   */
+  private questPart(id: InstitutionId): { said: string; facts: [string, string][]; actions: NonNullable<BuildingCard['actions']> } {
+    const q = QUESTS[id];
+    const done = this.sim.quests[id];
+    const last = q.steps[done - 1];
+    const next = q.steps[done];
+    const learnt = last ? ` ${last.lesson} (${last.evidence?.ref ?? ''})` : '';
+    return {
+      said: next ? ` ${q.title}: ${q.goal}${learnt}` : ` ${q.done}${learnt}`,
+      facts: [[t('Allies'), next ? t('{done} of {all} steps', { done, all: q.steps.length }) : t('Yes')]],
+      actions: next ? [{ id: `quest:${id}`, label: next.cost ? t('{step} ({price})', { step: next.label, price: price(next.cost) }) : next.label, short: next.short, enabled: this.sim.org.budget >= next.cost }] : [],
+    };
+  }
+
   /** A police car or ambulance: why it came and what it is doing now; undefined once it has gone. */
   describeVehicle(id: number): BuildingCard | undefined {
     const v = this.world.vehicle(id);
     if (!v) return undefined;
     return {
-      title: v.kind === 'police' ? t('Police car') : t('Ambulance'),
+      title: VEHICLE_TITLE[v.kind],
       said: v.reason,
       facts: [[t('Now'), VEHICLE_STATE[v.state] ?? v.state]],
       renamable: false,

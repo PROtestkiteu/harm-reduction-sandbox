@@ -36,6 +36,8 @@ import { budgetEvent, concessionEvent, pickEvent, type EventWorld, type Spectacl
 import { EVENT_PLACE, type EventPlace } from './config/eventPlaces';
 import { CAMP_AT, EventFx, PARTY_AT } from './world/eventFx';
 import { FxTags } from './ui/fxTags';
+import type { InstitutionId } from './config/institutionQuests';
+import { HostileMarks } from './world/hostileMarks';
 import { RESUME_KEY, watchForUpdates } from './game/updates';
 import { UpdateBar } from './ui/updateBar';
 import { SERVICE_NAMES } from './sim/organisation';
@@ -61,7 +63,6 @@ import { ContextProps } from './world/contextProps';
 import { DISTRICT } from './world/layout';
 import { buildWorld, configureRenderer } from './world/scene';
 import { setPuddleView } from './world/puddles';
-import { canFullscreen, isFullscreen, onFullscreenChange, toggleFullscreen } from './ui/fullscreen';
 import { NeighbourhoodProps } from './world/neighbourhoodProps';
 import { CityProps } from './world/cityProps';
 import { SeasonProps, snowyNight } from './world/seasonProps';
@@ -98,9 +99,10 @@ const world = buildWorld(createRandom(ILLUSTRATIVE.seed));
 const camera = createIsoCamera();
 camera.layers.enable(OVERLAY_LAYER);
 const sim = new Simulation(ILLUSTRATIVE.seed);
-// People's assets load before the crowd is built (the loading screen stays up);
-// if they are slow or missing the crowd uses the simple figures instead.
-await Promise.race([loadPeople(), new Promise((resolve) => setTimeout(resolve, 8000))]);
+// People's assets (about 0.6 MB) load before the crowd is built (the loading screen stays up);
+// if they are slow or missing the crowd uses the simple figures instead. Slow connections and
+// weak phones skip them: the simple figures need no download and fewer bones each frame.
+if (!QUALITY.slowNet && !QUALITY.low) await Promise.race([loadPeople(), new Promise((resolve) => setTimeout(resolve, 8000))]);
 const crowd = new Crowd(sim, world, ILLUSTRATIVE.seed + 1);
 crowd.setCamera(camera);
 const marker = new SelectionMarker();
@@ -124,6 +126,37 @@ const coins = new CoinPops(world.scene);
 // The big events played out on the street: raves, raids, the camp cleared, a bad batch, the press.
 const fx = new EventFx(world.scene, () => reducedMotion.matches);
 const fxTags = new FxTags(hudRoot);
+// What works against the selected place or person, ringed in red with a tag: a TV crew, a raid, police nearby.
+const marks = new HostileMarks(world.scene, () => reducedMotion.matches);
+const threatTags = new FxTags(hudRoot);
+type Threat = { kind: 'threatPress' | 'threatRaid' | 'threatOfficer' | 'threatCar'; x: number; y: number; z: number; r: number };
+let threats: Threat[] = [];
+/** Finds the threats near the selection (refreshed with the HUD, a few times a second). */
+function updateThreats(): void {
+  const sel = interaction.selected;
+  let c: { x: number; z: number } | null = null;
+  if (sel?.kind === 'location') c = world.locations[sel.id].footprint;
+  else if (sel?.kind === 'person') { const p = crowd.person(sel.id); if (p) c = { x: p.root.position.x, z: p.root.position.z }; }
+  const list: Threat[] = [];
+  if (c) {
+    const near = (x: number, z: number) => Math.hypot(x - c!.x, z - c!.z) <= 26;
+    for (const a of fx.active()) if ((a.kind === 'press' || a.kind === 'raid') && near(a.x, a.z)) list.push({ kind: a.kind === 'press' ? 'threatPress' : 'threatRaid', x: a.x, y: 0.6, z: a.z, r: a.kind === 'raid' ? 7 : 4 });
+    for (const o of crowd.officerSpots()) if (near(o.x, o.z)) list.push({ kind: 'threatOfficer', x: o.x, y: 2.2, z: o.z, r: 1.4 });
+    for (const v of world.vehicles()) {
+      const p = v.root.position;
+      if (world.vehicle(v.id)?.kind === 'police' && near(p.x, p.z)) list.push({ kind: 'threatCar', x: p.x, y: 2.4, z: p.z, r: 3 });
+    }
+  }
+  threats = list;
+  marks.set(list);
+  placeThreatTags();
+}
+/** One tag per kind of threat (the nearest stands for the rest): rings mark them all. */
+function placeThreatTags(): void {
+  const seen = new Set<string>();
+  const one = threats.filter((t) => !seen.has(t.kind) && seen.add(t.kind));
+  threatTags.set(one.map((t) => ({ kind: t.kind, theme: null, ...worldToClient(new Vector3(t.x, t.y, t.z), camera, pipeline.frame) })));
+}
 let fxVersion = -1;
 /** Name tags over the events on screen: placed when the view moves or an event starts or ends. */
 function placeFxTags(): void {
@@ -133,6 +166,11 @@ function placeFxTags(): void {
 }
 const anchorOf = (service: ServiceId) => world.locations[service === 'clubHr' ? 'club' : service].labelAnchor;
 const footprintOf = (service: ServiceId) => world.locations[service === 'clubHr' ? 'club' : service].footprint;
+/** Services whose places stand within `r` metres of `at`'s place (itself included). */
+function servicesNear(at: ServiceId, r: number): ServiceId[] {
+  const c = footprintOf(at);
+  return SERVICE_IDS.filter((id) => { const f = footprintOf(id); return Math.hypot(f.x - c.x, f.z - c.z) <= r; });
+}
 /** Where an event plays out, on the ground. */
 function placePoint(place: EventPlace): Vector3 {
   if (place === 'park') return new Vector3(PARTY_AT.x, 0, PARTY_AT.z);
@@ -150,10 +188,10 @@ function showSpectacle(s: Spectacle): void {
   const now = sim.org.now;
   switch (s.kind) {
     case 'rave': fx.setRave(s.theme); focusPlace('park'); break;
-    case 'raid': fx.setRaid(footprintOf(s.at), now + s.hours * 60); break;
+    case 'raid': fx.setRaid(footprintOf(s.at), now + s.hours * 60); sim.deterNear(servicesNear(s.at, 22), 0.5, s.hours * 60); break;
     case 'sweep': fx.setSweep(now + s.hours * 60); focusPlace('camp'); break;
     case 'alert': fx.setAlert(footprintOf(s.at), now + s.hours * 60); break;
-    case 'press': fx.setPress(footprintOf(s.at), now + s.hours * 60); break;
+    case 'press': fx.setPress(footprintOf(s.at), now + s.hours * 60); sim.deterNear(servicesNear(s.at, 22), 0.35, s.hours * 60); break;
     case 'coins': if (!reducedMotion.matches) for (let i = 0; i < s.count; i++) coins.pop(anchorOf(s.at), true); break;
     case 'patrol':
       for (const id of ['dropIn', 'outreach', 'drugChecking'] as const) eventWorld.dispatchTo('police', id, t('Posted near the services by the new government.'));
@@ -161,6 +199,8 @@ function showSpectacle(s: Spectacle): void {
   }
   dirty = true;
 }
+// What happens to people shows where it happens: a skull, handcuffs, a red cross (none with reduced motion).
+crowd.onMark = (at, icon) => { if (!reducedMotion.matches) coins.mark(at, icon); };
 // City cars stop for people crossing in front of them.
 world.setTrafficYield((x, z, dx, dz) => crowd.someoneAhead(x, z, dx, dz));
 sim.on((e) => {
@@ -221,6 +261,7 @@ const hud = new Hud(hudRoot, {
   onMixSetUp: (service, activity) => queueOrg(() => { sim.setUpMix(service, activity); refreshHud(); }),
   onDrive: () => queueOrg(() => { sim.startDonationDrive(); refreshHud(); }),
   onSettings: () => sandbox.setOpen(true),
+  onCamperPath: (path) => { if (sim.setCamperPath(path)) { refreshOrg(); refreshHud(); } },
   onFavour: (id) => queueOrg(() => { sim.askFavour(id); syncContextProps(); refreshHud(); }),
   onAid: (kind) => queueOrg(() => {
     if (kind === 'cold') sim.warmingBus = !sim.warmingBus;
@@ -314,6 +355,14 @@ function queueBuildingAction(action: string): void {
     else if (action === 'pointUp') sim.upgradePoint(building);
     else if (action === 'pointClose') sim.closePoint(building);
     else if (action === 'partner') sim.partnerVenue(world.nightlife.indexOf(building));
+    else if (action.startsWith('quest:')) {
+      const id = action.slice(6) as InstitutionId;
+      const step = sim.questStep(id);
+      // Allies change how the city works with you: police by agreement, a council that backs the services.
+      if (step?.finished && id === 'police') eventWorld.setFactor('policing', 'agreement');
+      if (step?.finished && id === 'cityHall') eventWorld.setFactor('council', 'supportive');
+      refreshOrg();
+    }
     else if (unit >= 0 && action === 'release') sim.releaseUnit(unit);
     else if (unit >= 0 && action.startsWith('rent:')) sim.rentUnit(unit, action.slice(5) as SatelliteService);
     property.sync();
@@ -349,6 +398,7 @@ function refreshHud(): void {
   const exposure = exposureNow(sim.season, sim.clockMinutes, sim.events.isActive('coldNight'));
   world.setAid(sim.warmingBus && exposure === 'cold', sim.coolingPoint && exposure === 'heat');
   world.setCamp(sim.camp.size, sim.camp.station);
+  world.setParkActivities(sim.park.now);
   world.setNightlife(sim.vitality.venues, sim.vitality.partners);
   syncProperty();
   hud.update(buildSnapshot(sim, crowd.population));
@@ -356,6 +406,7 @@ function refreshHud(): void {
   const sel = interaction.selected;
   if (sel?.kind === 'building') hud.showBuilding(cards.describeBuilding(sel.id));
   interaction.refresh();
+  updateThreats();
   sandbox.syncLive('clock', sim.clockMinutes);
   feed.refresh(sim.clockMinutes);
   syncStreet();
@@ -526,13 +577,6 @@ const setDateClock = (v: { date: number; clock: number }) => {
   sandbox.setAll(settings);
 };
 sandbox.addAction(t('How it works'), () => welcome.show());
-// Full screen, where the browser has it for pages (not iPhone Safari: there, Add to Home Screen).
-if (canFullscreen()) {
-  const fsLabel = () => (isFullscreen() ? t('Leave full screen') : t('Full screen')) + '.';
-  const fs = sandbox.addAction(t('Full screen'), () => void toggleFullscreen());
-  fs.textContent = fsLabel();
-  onFullscreenChange(() => { fs.textContent = fsLabel(); });
-}
 sandbox.mount(randomSection(setDateClock));
 sandbox.mount(languageSection((lang) => {
   try { localStorage.setItem(LANG_KEY, lang); } catch { /* storage blocked: the address bar carries it */ }
@@ -585,6 +629,7 @@ function checkBigEvent(): void {
     const ids = ['postedOfficer', 'cleanUp', 'camperOff'] as const;
     const event = concessionEvent(ids[Math.floor(eventRandom() * ids.length)]);
     focusPlace(event.place);
+    event.opening?.(eventWorld);
     eventPopup.show(event, sim.org.budget, (choice) => choice.apply(eventWorld));
     return;
   }
@@ -597,7 +642,7 @@ function checkBigEvent(): void {
   if (sim.org.now < nextBigEvent) return;
   nextBigEvent = sim.org.now + 10 * 60 + eventRandom() * 15 * 60;
   const event = pickEvent(eventWorld);
-  if (event) focusPlace(event.place);
+  if (event) { focusPlace(event.place); event.opening?.(eventWorld); }
   if (event) eventPopup.show(event, sim.org.budget, (choice) => choice.apply(eventWorld));
 }
 
@@ -892,6 +937,7 @@ function applyView(): void {
   }
   hud.placeLabels(points);
   placeFxTags();
+  placeThreatTags();
   hud.setViewChanged(!rig.atDefault);
   interaction.viewChanged();
   dirty = true;
@@ -940,6 +986,7 @@ function frame(now: number): void {
     cityProps.update(realDt * speed);
     fx.update(realDt * speed, sim.org.now, sim.party === 'popUp');
     if (fx.version !== fxVersion) placeFxTags();
+    marks.update(realDt);
     seasonProps.update(realDt * speed);
     dirty = true;
     hudTimer -= realDt;

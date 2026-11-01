@@ -40,6 +40,7 @@ const ORDER = ['org-section', 'group-night', 'group-demand', 'services', 'contex
  * and the simulation picks values up on its next fixed step.
  */
 export class SandboxPanel {
+  private resetRow!: HTMLElement;
   private readonly root: HTMLElement;
   private readonly toggle: HTMLButtonElement;
   private readonly body: HTMLElement;
@@ -78,7 +79,11 @@ export class SandboxPanel {
     close.type = 'button';
     close.setAttribute('aria-label', t('Close sandbox settings'));
     close.addEventListener('click', () => this.setOpen(false, true));
-    head.append(title, reset, close);
+    // Reset sits at the bottom of the panel, well away from the close button.
+    head.append(title, close);
+    const resetRow = el('p', 'sandbox-reset-row');
+    resetRow.append(reset);
+    this.resetRow = resetRow;
     this.note = el('p', 'note sandbox-note', t('Illustrative values, not evidence. Changes apply live.'));
     this.heading = el('p', 'sandbox-page-title');
     this.heading.hidden = true;
@@ -91,7 +96,7 @@ export class SandboxPanel {
     li.append(backBtn);
     this.back.append(li);
     this.back.hidden = true;
-    this.body.append(head, this.note, this.back, this.heading, this.menu);
+    this.body.append(head, this.note, this.back, this.heading, this.menu, resetRow);
 
     const serviceGroups = new Set(['dropIn', 'outreach', 'clubHr']);
     for (const group of PARAM_GROUPS) {
@@ -217,6 +222,8 @@ export class SandboxPanel {
     const isMenu = !id || page?.section === this.menu;
     for (const [pid, p] of this.pages) if (p.section !== this.menu) p.section.hidden = pid !== id;
     this.menu.hidden = !isMenu;
+    // Reset only under the top menu, not inside a topic.
+    this.resetRow.hidden = !!id;
     this.back.hidden = !id;
     this.note.hidden = !!id;
     // The organisation's editable name is its own heading.

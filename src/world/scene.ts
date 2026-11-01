@@ -36,7 +36,7 @@ import { lightPool, setPoolDaylight } from './dressing';
 import { buildInfill } from './infill';
 import { updateNeon, wallClutter } from './grit';
 import { buildStreetscape } from './streetscape';
-import { buildClinic, buildDrugChecking, buildPharmacy, buildShelter } from './places';
+import { buildClinic, buildDrugChecking, buildFootPatrol, buildPharmacyShop, buildShelter } from './places';
 import { glowMat, mat, SNOW } from './materials';
 import { Weather } from './weather';
 import { buildCityBeyond } from './cityBeyond';
@@ -44,9 +44,12 @@ import { setKitSeason, type Kits } from './kits';
 import { buildAmbient, type AmbientKind, type VehicleInfo } from './ambient';
 import { Traffic } from './traffic';
 import { TrafficLights } from './trafficLights';
+import { ParkActivities } from './parkActivities';
+import { buildMurals, type MuralSpot } from './murals';
 import type { Figure } from '../agents/character';
 import { Letting, type UnitLook } from './letting';
-import { allBuildings, cityBuilding, type CityBuilding } from './cityBuildings';
+import { allBuildings, cityBuilding, registerBuilding, type CityBuilding } from './cityBuildings';
+import { t } from '../i18n';
 import { PROPERTY } from '../sim/property';
 import { Expansion, type ExpansionKind, type Facing } from './expansion';
 import { collectSolids, type Solids } from './solids';
@@ -115,7 +118,15 @@ export interface World {
   /** Shows the first `open` new venues' signs (partnered ones with a star). */
   setNightlife(open: number, partnered: ReadonlySet<number>): void;
   /** Building ids of the public hospital and the sobering-up centre. */
-  landmarks: { hospital: number; sobering: number; police: number };
+  landmarks: { hospital: number; sobering: number; police: number; cityHall: number };
+  /** The pharmacy's building id (a business, with its own card). */
+  pharmacyShop: number;
+  /** Żabka convenience stores' building ids. */
+  zabkas: readonly number[];
+  /** The fast food joint's building id, if one stands this launch. */
+  fastFood: number | null;
+  /** The camps' pick ids (building ids on open ground). */
+  camps: { park: number; station: number };
   /** The city building that is a squat this launch, by id. */
   squat: number | null;
   /** Where people stand at the counter of the camper on `spot`. */
@@ -130,6 +141,8 @@ export interface World {
   setFigureFactory(make: (kind: AmbientKind) => Figure): void;
   /** The big park's sellers and patrols follow the street market (0..1) and policing (0 none). */
   setParkLife(market: number, patrol: number): void;
+  /** What goes on in the big park now: joggers (0 to 4), the yoga class, a family picnic. */
+  setParkActivities(v: { joggers: number; yoga: boolean; picnic: boolean }): void;
   /** Where the distance haze starts and is complete, in view depth. */
   setHaze(near: number, far: number): void;
   /** Crane work under way at each place, for the progress bar. */
@@ -138,6 +151,8 @@ export interface World {
   solids: Solids;
 }
 
+/** Pick id of the warming bus, clear of the ambient fleet's ids. */
+const WARMING_BUS_ID = 900;
 const HAZE_DAY = new Color(0xa9b5c0);
 const HAZE_DUSK = new Color(0x6e6a72);
 const HAZE_NIGHT = new Color(0x1c2230);
@@ -219,7 +234,7 @@ const EXPANSION: Record<LocationId, { kind: ExpansionKind; front: Facing; roof?:
   dropIn: { kind: 'building', front: VENUE_FACE.dropIn },
   outreach: { kind: 'sign', front: '+x' },
   club: { kind: 'sign', front: VENUE_FACE.club, roof: HOME_CLUB.height + 0.12 },
-  pharmacy: { kind: 'building', front: LOTS.pharmacy.face },
+  footPatrol: { kind: 'sign', front: LOTS.footPatrol.face },
   drugChecking: { kind: 'building', front: LOTS.drugChecking.face },
   shelter: { kind: 'building', front: LOTS.shelter.face },
   clinic: { kind: 'building', front: LOTS.clinic.face },
@@ -227,8 +242,59 @@ const EXPANSION: Record<LocationId, { kind: ExpansionKind; front: Facing; roof?:
 
 /** Sign colour per place. */
 const EXPANSION_ACCENT: Record<LocationId, number> = {
-  dropIn: 0x2e7d6b, outreach: 0x2e7d6b, club: 0xb04a8a, pharmacy: 0x3aa860, drugChecking: 0x3a6ea8, shelter: 0xc8823a, clinic: 0xc83a3a,
+  dropIn: 0x2e7d6b, outreach: 0x2e7d6b, club: 0xb04a8a, footPatrol: 0x2e7d6b, drugChecking: 0x3a6ea8, shelter: 0xc8823a, clinic: 0xc83a3a,
 };
+
+/**
+ * A Żabka's dressing on an ordinary building: a green fascia round the ground
+ * floor with the frog and the name on every side, a green-lit shopfront, and
+ * a big frog head on the corner. Static; merged with the rest.
+ */
+function zabkaFront(parent: Object3D, b: CityBuilding): void {
+  const g = add(parent, new Group());
+  const w = b.x1 - b.x0;
+  const d = b.z1 - b.z0;
+  const cx = (b.x0 + b.x1) / 2;
+  const cz = (b.z0 + b.z1) / 2;
+  const green = glowMat(0x1d7a3a, 0x2fa850, 0.5);
+  add(g, box(w + 0.3, 0.75, d + 0.3, green, cx, 2.45, cz));
+  add(g, box(w + 0.14, 2.0, d + 0.14, glowMat(0x1e3a2a, 0xc8ffd8, 0.45), cx, 0.35, cz));
+  // The frog and the name on each side of the fascia.
+  for (const [x, z, rot, len] of [[cx, b.z1 + 0.2, 0, w], [cx, b.z0 - 0.2, Math.PI, w], [b.x1 + 0.2, cz, Math.PI / 2, d], [b.x0 - 0.2, cz, -Math.PI / 2, d]] as const) {
+    const sign = signBoard('@ABKA', Math.min(4, len - 0.6), 0.7, '#ffffff', '#1d7a3a', 0.7);
+    add(g, sign.mesh, rot).position.set(x, 2.47, z);
+  }
+  // The frog: a green head on the corner, two big white eyes with black pupils.
+  const head = add(g, new Group());
+  head.position.set(b.x1 + 0.1, 3.3, b.z1 + 0.1);
+  head.rotation.y = Math.PI / 4;
+  add(head, cylinder(0.75, 0.25, green, 16, 0, 0, 0)).rotation.x = Math.PI / 2;
+  for (const ex of [-0.35, 0.35]) {
+    add(head, cylinder(0.22, 0.14, mat(0xffffff), 12, ex, 0.55, 0.05)).rotation.x = Math.PI / 2;
+    add(head, cylinder(0.1, 0.16, mat(0x101010), 10, ex, 0.55, 0.08)).rotation.x = Math.PI / 2;
+  }
+  add(head, box(0.7, 0.06, 0.06, mat(0x0e3a1c), 0, 0.05, 0.14));
+}
+
+/** A fast food joint's dressing: a red fascia with a yellow sign on every side, a warm-lit front, a big burger on the corner. */
+function fastFoodFront(parent: Object3D, b: CityBuilding): void {
+  const g = add(parent, new Group());
+  const w = b.x1 - b.x0;
+  const d = b.z1 - b.z0;
+  const cx = (b.x0 + b.x1) / 2;
+  const cz = (b.z0 + b.z1) / 2;
+  add(g, box(w + 0.3, 0.75, d + 0.3, glowMat(0xb8202a, 0xff3a2a, 0.45), cx, 2.45, cz));
+  add(g, box(w + 0.14, 2.0, d + 0.14, glowMat(0x3a2a1a, 0xffd890, 0.7), cx, 0.35, cz));
+  for (const [x, z, rot, len] of [[cx, b.z1 + 0.2, 0, w], [cx, b.z0 - 0.2, Math.PI, w], [b.x1 + 0.2, cz, Math.PI / 2, d], [b.x0 - 0.2, cz, -Math.PI / 2, d]] as const) {
+    const sign = signBoard('BURGER', Math.min(3.6, len - 0.6), 0.7, '#b8202a', '#ffd23a', 0.7);
+    add(g, sign.mesh, rot).position.set(x, 2.47, z);
+  }
+  // The burger: bun, cheese, patty, lettuce, bun, on a post at the corner.
+  const burger = add(g, new Group());
+  burger.position.set(b.x1 + 0.2, 3.3, b.z1 + 0.2);
+  add(burger, cylinder(0.06, 0.4, mat(0x8a8a8a), 6, 0, -0.4, 0));
+  for (const [r, h, y, c] of [[0.62, 0.22, 0, 0xd89040], [0.66, 0.06, 0.22, 0x5aa83a], [0.6, 0.18, 0.28, 0x5a3220], [0.66, 0.05, 0.46, 0xf2c400], [0.62, 0.32, 0.51, 0xd89040]] as const) add(burger, cylinder(r, h, mat(c), 14, 0, y, 0));
+}
 
 /** Renderer state the world relies on: soft shadows. */
 export function configureRenderer(renderer: WebGLRenderer): void {
@@ -250,6 +316,7 @@ export function buildWorld(random: Random): World {
   const traffic = new Traffic();
   const lights = new TrafficLights(scene, traffic);
   const ambient = buildAmbient(scene, mulberry(31), traffic);
+  const parkActivities = new ParkActivities(scene);
   let detail = 0.2;
   buildStreets(scene, mulberry(29));
   buildBlockGround(scene, mulberry(31));
@@ -261,11 +328,14 @@ export function buildWorld(random: Random): World {
   const club = buildClub(random);
   const outreach = buildCamper();
   scene.add(dropIn.root, club.root, outreach.root);
-  const pharmacy = buildPharmacy(mulberry(41));
+  const footPatrol = buildFootPatrol();
+  // The pharmacy is a business on its own lot: lit, clickable, not a place of yours.
+  const pharmacyShop = buildPharmacyShop(mulberry(41));
+  scene.add(pharmacyShop.root);
   const drugChecking = buildDrugChecking(mulberry(43));
   const shelter = buildShelter(mulberry(47));
   const clinic = buildClinic(mulberry(53));
-  const places = [pharmacy, drugChecking, shelter, clinic];
+  const places = [footPatrol, drugChecking, shelter, clinic];
   for (const p of places) scene.add(p.root);
   const infill = buildInfill(scene, mulberry(59 ^ launch));
   const steam = buildStreetscape(scene, mulberry(61));
@@ -289,7 +359,7 @@ export function buildWorld(random: Random): World {
   let still = false;
   const sun = lighting.sun;
 
-  const locations: Record<LocationId, LocationVisual> = { dropIn, outreach, club, pharmacy, drugChecking, shelter, clinic };
+  const locations: Record<LocationId, LocationVisual> = { dropIn, outreach, club, footPatrol, drugChecking, shelter, clinic };
   // Every static thing in the district merges into one mesh per material: a
   // few hundred draw calls fewer, which phones and VR headsets need. Places
   // stay separate so they can be picked and highlighted.
@@ -333,6 +403,72 @@ export function buildWorld(random: Random): World {
     .map((b) => ({ b, d: Math.hypot((b.x0 + b.x1) / 2 - squatAt.x, (b.z0 + b.z1) / 2 - squatAt.z) }))
     .sort((a, c) => a.d - c.d)[0]?.b;
   const squat = squatBuilding ? squatBuilding.id : null;
+  // Two Żabka convenience stores near the district's edges, far apart: low ordinary buildings dressed in green, the frog on top.
+  const zabkaRoot = add(scene, new Group());
+  const zabkaPool = allBuildings()
+    .filter((b) => !taken.has(b.id) && b.id !== squat)
+    .map((b) => ({ b, roof: roofOf(b), cx: (b.x0 + b.x1) / 2, cz: (b.z0 + b.z1) / 2 }))
+    .filter(({ b, roof, cx, cz }) => roof < b.height + 4 && Math.max(Math.abs(cx), Math.abs(cz)) > 26 && Math.max(Math.abs(cx), Math.abs(cz)) < 46)
+    // The lowest first: a corner shop, not a tower block.
+    .sort((p, q) => p.b.storeys - q.b.storeys);
+  const zabkas: number[] = [];
+  for (const pick of zabkaPool) {
+    if (zabkas.length >= 2) break;
+    const far = zabkas.every((id) => { const o = cityBuilding(id)!; return Math.hypot((o.x0 + o.x1) / 2 - pick.cx, (o.z0 + o.z1) / 2 - pick.cz) > 40; });
+    if (!far) continue;
+    zabkaFront(zabkaRoot, pick.b);
+    zabkas.push(pick.b.id);
+    taken.add(pick.b.id);
+  }
+  // A fast food joint nearer the middle: a low ordinary building, red and yellow, a big burger on the corner.
+  const fastFoodPick = allBuildings()
+    .filter((b) => !taken.has(b.id) && b.id !== squat)
+    .map((b) => ({ b, d: Math.max(Math.abs((b.x0 + b.x1) / 2), Math.abs((b.z0 + b.z1) / 2)) }))
+    .filter(({ d }) => d > 10 && d < 45)
+    .sort((p, q) => p.b.storeys - q.b.storeys || p.d - q.d)[0];
+  const fastFood = fastFoodPick ? fastFoodPick.b.id : null;
+  if (fastFoodPick) {
+    fastFoodFront(zabkaRoot, fastFoodPick.b);
+    taken.add(fastFoodPick.b.id);
+  }
+  mergeStatic(zabkaRoot);
+  // A few low-key psychedelic murals (creatures and phrases) on walls the camera sees, upper floors (shopfronts stay clear).
+  const muralPool = allBuildings()
+    // Upper floors only, so a shop below is fine; not the Żabkas, the fast food joint or the institutions.
+    .filter((b) => !zabkas.includes(b.id) && b.id !== fastFood && !Object.values(beyond.landmarks).includes(b.id) && Math.max(Math.abs((b.x0 + b.x1) / 2), Math.abs((b.z0 + b.z1) / 2)) < 60);
+  // Each mural goes on a real surface, found by a ray: walls at upper-floor height on faces the camera sees,
+  // and one flat shopfront roof (flat where five points on it agree).
+  const muralSpots: MuralSpot[] = [];
+  const ray = new Raycaster();
+  const hitOn = (b: CityBuilding, from: Vector3, dir: Vector3) => {
+    ray.set(from, dir);
+    const h = ray.intersectObjects(meshes, false)[0];
+    return h && h.point.x > b.x0 - 1.5 && h.point.x < b.x1 + 1.5 && h.point.z > b.z0 - 1.5 && h.point.z < b.z1 + 1.5 ? h.point : null;
+  };
+  // Only where the default camera can see it: nothing between the wall and the viewer.
+  const toViewer = new Vector3(Math.SQRT1_2, Math.tan(Math.atan(1 / Math.SQRT2)), Math.SQRT1_2).normalize();
+  const inView = (p: Vector3, face: 'x' | 'z') => {
+    ray.set(p.clone().add(new Vector3(face === 'x' ? 0.3 : 0, 0, face === 'z' ? 0.3 : 0)), toViewer);
+    return !ray.intersectObjects(meshes, false).some((h) => h.distance < 120);
+  };
+  for (const b of muralPool.filter((q) => q.storeys >= 2)) {
+    if (muralSpots.length >= 4) break;
+    if (muralSpots.length && muralSpots.some((m) => Math.hypot(m.x - (b.x0 + b.x1) / 2, m.z - (b.z0 + b.z1) / 2) < 18)) continue;
+    const cx = (b.x0 + b.x1) / 2;
+    const cz = (b.z0 + b.z1) / 2;
+    const onX = b.z1 - b.z0 >= b.x1 - b.x0;
+    const p = onX ? hitOn(b, new Vector3(b.x1 + 8, 5, cz), new Vector3(-1, 0, 0)) : hitOn(b, new Vector3(cx, 5, b.z1 + 8), new Vector3(0, 0, -1));
+    if (p && inView(p, onX ? 'x' : 'z')) muralSpots.push(onX ? { x: p.x + 0.04, y: 5, z: p.z, face: 'x' } : { x: p.x, y: 5, z: p.z + 0.04, face: 'z' });
+  }
+  for (const b of muralPool.filter((q) => q.storeys === 1)) {
+    const cx = (b.x0 + b.x1) / 2;
+    const cz = (b.z0 + b.z1) / 2;
+    const ys = [[0, 0], [-1.5, -1.5], [1.5, -1.5], [-1.5, 1.5], [1.5, 1.5]].map(([dx, dz]) => hitOn(b, new Vector3(cx + dx, 60, cz + dz), new Vector3(0, -1, 0))?.y ?? -1);
+    if (ys[0] > 1 && Math.max(...ys) - Math.min(...ys) < 0.05) { muralSpots.push({ x: cx, y: ys[0] + 0.03, z: cz, face: 'up' }); break; }
+  }
+  const muralRoot = add(scene, new Group());
+  buildMurals(muralRoot, muralSpots, mulberry(79 ^ launch));
+  mergeStatic(muralRoot);
   if (squatBuilding) new Letting(lettingRoot, squatBuilding, roofOf(squatBuilding)).set({ sign: 'SQUAT', fg: '#f4e8d0', bg: '#2a2a2a' });
   // Buildings kept for the venues that open as the district thrives: the next nearest ordinary ones.
   const nightlife = allBuildings()
@@ -350,6 +486,11 @@ export function buildWorld(random: Random): World {
   // The station camp: on the forecourt south of the tracks, just outside the district.
   const stationTents = campTents(mulberry(73), 10, STATION_CAMP.x0 + 4, STATION_CAMP.z0 + 2, 4);
   for (const t of stationTents) scene.add(t);
+  // Both camps can be clicked for a card: their ground, registered as open ground (never let or used as a venue).
+  const camps = {
+    park: registerBuilding(-32.5, -9.5, 53, 65, 1.6, true),
+    station: registerBuilding(STATION_CAMP.x0, STATION_CAMP.x1, STATION_CAMP.z0, STATION_CAMP.z1, 1.6, true),
+  };
   // The warming bus parks on the east street; the water and shade point stands in the pocket park.
   const aid = { bus: dynamic(bus()), water: dynamic(waterPoint()) };
   aid.bus.position.set(AID_BUS.x, 0.02, AID_BUS.z);
@@ -391,8 +532,10 @@ export function buildWorld(random: Random): World {
       bounds: new Box3(new Vector3(-300, -0.5, -300), new Vector3(300, 60, 300)),
     },
     setViewFocus(x, z, radius) {
-      // Shadow texels stay roughly square to world pixels: the frustum only grows when zoomed out.
-      const half = Math.max(26, radius);
+      // Shadow texels stay roughly square to world pixels: the frustum only grows when zoomed out,
+      // in steps a quarter apart, so zooming does not resize the shadow texels every frame (which
+      // made shadows on the lawns shimmer); between steps the snapping below holds them still.
+      const half = 26 * 1.25 ** Math.max(0, Math.ceil(Math.log(radius / 26) / Math.log(1.25)));
       const cam = sun.shadow.camera;
       if (cam.right !== half) {
         cam.left = -half; cam.right = half; cam.top = half; cam.bottom = -half;
@@ -427,8 +570,11 @@ export function buildWorld(random: Random): World {
     setTrafficYield: (ahead) => ambient.setYield(ahead),
     traffic,
     hazeHex: () => `#${(scene.fog as Fog).color.getHexString()}`,
-    vehicles: () => ambient.vehicles(),
-    vehicle: (id) => ambient.vehicle(id),
+    // The warming bus, when out, joins the vehicles that can be clicked.
+    vehicles: () => (aid.bus.visible ? [...ambient.vehicles(), { id: WARMING_BUS_ID, root: aid.bus }] : ambient.vehicles()),
+    vehicle: (id) => (id === WARMING_BUS_ID
+      ? aid.bus.visible ? { kind: 'warmingBus', reason: t('Your warming bus: hot drinks, blankets and a warm seat on cold nights, and a word with your team.'), state: 'Parked' } : undefined
+      : ambient.vehicle(id)),
     dispatch(kind, x, z, reason) {
       return ambient.dispatch(kind, x, z, reason);
     },
@@ -457,6 +603,10 @@ export function buildWorld(random: Random): World {
     },
     squat,
     landmarks: beyond.landmarks,
+    camps,
+    pharmacyShop: pharmacyShop.building,
+    zabkas,
+    fastFood,
     nightlife: nightlife.map((n) => n.b.id),
     setNightlife(open, partnered) {
       nightlife.forEach((n, i) => {
@@ -502,6 +652,10 @@ export function buildWorld(random: Random): World {
     setAid(busOn, waterOn) {
       aid.bus.visible = busOn;
       aid.water.visible = waterOn;
+    },
+    setParkActivities(v) {
+      ambient.setJoggers(v.joggers);
+      parkActivities.set(v);
     },
     setParkLife(market, patrol) {
       ambient.setParkLife(market, patrol);

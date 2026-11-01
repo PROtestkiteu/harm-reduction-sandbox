@@ -28,11 +28,20 @@ import { approach } from '../world/animated';
 /** `dance` is drawn as standing by the simple figures. */
 export type Pose = 'stand' | 'walk' | 'sit' | 'talk' | 'dance';
 
+/**
+ * How a person's body carries what they took, layered over any pose: the slow
+ * forward fold and nodding of an opioid like fentanyl, a drunk sway, tripping
+ * (looking up and around), stimulants (upright, tense, jittery).
+ */
+export type BodyState = 'normal' | 'nod' | 'drunk' | 'trip' | 'wired';
+
 /** What the crowd needs from a person's figure, whichever way it is built. */
 export interface Figure {
   readonly root: Group;
   readonly look: Appearance;
   update(dt: number, pose: Pose, speed: number): void;
+  /** Layers a body state over every pose (a few bone turns a frame; nothing else). */
+  setBodyState(state: BodyState): void;
   dispose(): void;
 }
 
@@ -648,6 +657,11 @@ export class CharacterRig {
     this.mesh.skeleton.dispose();
   }
 
+  private body: BodyState = 'normal';
+  setBodyState(state: BodyState): void {
+    this.body = state;
+  }
+
   /** `speed` in m/s drives stride; poses blend so changes never pop. */
   update(dt: number, pose: Pose, speed: number): void {
     this.idleTime += dt;
@@ -708,5 +722,30 @@ export class CharacterRig {
     // Idle glance: the head turns occasionally.
     const glance = pose === 'walk' ? 0 : Math.sin(this.idleTime * 0.45) * Math.sin(this.idleTime * 0.17) * 0.8;
     bn[HEAD].rotation.y = approach(bn[HEAD].rotation.y, glance, 3, dt);
+    // What they took, layered on.
+    const t = this.idleTime;
+    if (this.body === 'nod') {
+      const fold = pose === 'walk' ? 0.35 : 0.95 + 0.12 * Math.sin(t * 0.4);
+      bn[SPINE].rotation.x += fold;
+      bn[HEAD].rotation.x += 0.5 + 0.25 * Math.max(0, Math.sin(t * 0.7));
+      bn[ARM_L].rotation.x -= 0.4 * this.stride + 0.3;
+      bn[ARM_R].rotation.x -= 0.3;
+    } else if (this.body === 'drunk') {
+      bn[HIPS].rotation.z += Math.sin(t * 1.6) * 0.12;
+      bn[SPINE].rotation.z = Math.sin(t * 1.6 + 0.8) * 0.16;
+      bn[HEAD].rotation.z = Math.sin(t * 1.1) * 0.18;
+    } else if (this.body === 'trip') {
+      bn[HEAD].rotation.x -= 0.45;
+      bn[HEAD].rotation.y = Math.sin(t * 0.5) * 0.9;
+      bn[ARM_L].rotation.z = -0.4 - 0.2 * Math.sin(t * 0.8);
+      bn[ARM_R].rotation.z = 0.4 + 0.2 * Math.sin(t * 0.8 + 1);
+    } else if (this.body === 'wired') {
+      bn[SPINE].rotation.x -= 0.08;
+      bn[HEAD].rotation.y += Math.sin(t * 11) * Math.sin(t * 3.3) * 0.18;
+      bn[ARM_L].rotation.z = -0.25;
+      bn[ARM_R].rotation.z = 0.25;
+      bn[FORE_L].rotation.x -= 0.5;
+      bn[FORE_R].rotation.x -= 0.5;
+    }
   }
 }

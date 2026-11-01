@@ -44,6 +44,29 @@ function along(q: Rect, axis: 'x' | 'z', step: number, random: Random, start = 0
   return out;
 }
 
+/**
+ * A yellow parcel locker (paczkomat): a cabinet of small doors with a screen
+ * and keypad in the middle, long along local x, its doors facing local +z.
+ */
+function parcelLocker(): Group {
+  const g = new Group();
+  const yellow = mat(0xf2c400);
+  const seam = mat(0x8a7000);
+  add(g, box(2.6, 1.9, 0.6, yellow, 0, 0, 0));
+  add(g, box(2.7, 0.08, 0.68, mat(0x2a2a2a), 0, 1.9, 0));
+  // Rows and columns of small doors, drawn as seams on the face.
+  for (const x of [-0.9, -0.45, 0.45, 0.9]) add(g, box(0.02, 1.7, 0.02, seam, x, 0.1, 0.31));
+  for (const y of [0.45, 0.85, 1.25, 1.6]) {
+    add(g, box(0.8, 0.02, 0.02, seam, -0.85, y, 0.31));
+    add(g, box(0.8, 0.02, 0.02, seam, 0.85, y, 0.31));
+  }
+  // The middle column: screen, keypad, a scanner light.
+  add(g, box(0.6, 1.8, 0.04, mat(0x3a3a3a), 0, 0.05, 0.31));
+  add(g, box(0.42, 0.3, 0.02, glowMat(0x10202a, 0x6ad0ff, 0.9), 0, 1.25, 0.34));
+  add(g, box(0.3, 0.24, 0.02, mat(0x1a1a1a), 0, 0.9, 0.34));
+  return g;
+}
+
 export function buildStreetscape(scene: Object3D, random: Random): Steam[] {
   const g = add(scene, new Group());
   const pit = mat(0x2e2a24);
@@ -136,6 +159,27 @@ export function buildStreetscape(scene: Object3D, random: Random): Steam[] {
   for (const [x, z] of [[-30, -16.2], [12, 16.6], [40, 16.6], [-20, -16.2]] as const) {
     const s = z < 0 ? STREETS.north : STREETS.south;
     cableBundle(g, [x, 6.4, s.road.z1 + 0.35], [x + (random() - 0.5) * 6, 7.4, s.road.z0 - 3.5], random, 2);
+  }
+  // Parcel lockers on the building side of the pavements near the district's edges: one per stretch, five at most.
+  let lockers = 0;
+  for (const st of Object.values(STREETS)) {
+    for (const pave of st.pavements) {
+      if (lockers >= 5) break;
+      const roadIsLow = st.along === 'z' ? pave.x0 >= st.road.x1 - 0.01 : pave.z0 >= st.road.z1 - 0.01;
+      // Against the buildings: the pavement's far edge from the road.
+      const back = st.along === 'z' ? (roadIsLow ? pave.x1 - 0.45 : pave.x0 + 0.45) : (roadIsLow ? pave.z1 - 0.45 : pave.z0 + 0.45);
+      const spots = along(pave, st.along, 4, random).filter((v) => Math.abs(v) > 30 && Math.abs(v) < 42);
+      for (const v of spots) {
+        const [x, z] = st.along === 'z' ? [back, v] : [v, back];
+        if (blocked(x, z, 2)) continue;
+        const locker = add(g, parcelLocker());
+        locker.position.set(x, 0.12, z);
+        // Doors towards the road.
+        locker.rotation.y = st.along === 'z' ? (roadIsLow ? -Math.PI / 2 : Math.PI / 2) : (roadIsLow ? Math.PI : 0);
+        lockers++;
+        break;
+      }
+    }
   }
   mergeStatic(g);
 

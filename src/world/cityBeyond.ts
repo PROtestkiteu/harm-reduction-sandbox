@@ -1,4 +1,4 @@
-import { Box3, CircleGeometry, ConeGeometry, CylinderGeometry, TorusGeometry, Group, IcosahedronGeometry, Mesh, PlaneGeometry, Vector3, type Material, MeshLambertMaterial, type Object3D } from 'three';
+import { Box3, CanvasTexture, CircleGeometry, SRGBColorSpace, ConeGeometry, CylinderGeometry, TorusGeometry, Group, IcosahedronGeometry, Mesh, PlaneGeometry, Vector3, type Material, MeshLambertMaterial, type Object3D } from 'three';
 import { fillCityBlock } from './infill';
 import { PALETTE } from '../config/palette';
 import type { Random } from '../sim/random';
@@ -8,7 +8,8 @@ import { registerBuilding } from './cityBuildings';
 import { DISTRICT, POLICE_STATION, ROAD, STATION_CAMP, STREETS, type Rect } from './layout';
 import { glowMat, mat, softMat } from './materials';
 import { dynamic, mergeStatic } from './mergeStatic';
-import { train as trainModel } from './vehicles';
+import { car, train as trainModel } from './vehicles';
+import { acUnit, antenna, drainpipe, roofVent, satelliteDish, windowTrim } from './details';
 import { riverMaterial } from './puddles';
 import { curtainWall } from './curtainWall';
 
@@ -35,7 +36,7 @@ export interface CityBeyond {
   /** Swaps in the kits' trees and buildings once they have loaded, and dresses the park. */
   applyKits(kits: Kits): void;
   /** Building ids of the public hospital and the sobering-up centre, for their cards. */
-  landmarks: { hospital: number; sobering: number; police: number };
+  landmarks: { hospital: number; sobering: number; police: number; cityHall: number };
 }
 
 const EDGE = DISTRICT + 2;
@@ -74,6 +75,11 @@ export function buildCityBeyond(scene: Object3D, random: Random): CityBeyond {
   farTreeGroup = add(scene, dynamic(new Group()));
   const lit = Array.from({ length: 8 }, () => glowMat(0x20242a, PALETTE.warmWindow, 0.7));
   const cool = Array.from({ length: 6 }, () => glowMat(0x1e242c, PALETTE.coolWindow, 0.8));
+  // The far blocks' floor bands, cut into windows by small shared textures: same draw calls as plain bands.
+  const strip = (m: MeshLambertMaterial, tex: CanvasTexture) => Object.assign(m, { map: tex, emissiveMap: tex, alphaTest: 0.5 });
+  const farLit = [0, 1, 2].map(() => strip(glowMat(0x20242a, PALETTE.warmWindow, 0.7), windowStrip(8, random, true)));
+  const farCool = [strip(glowMat(0x1e242c, PALETTE.coolWindow, 0.8), windowStrip(8, random, true))];
+  farWindows = { lit: farLit, cool: farCool, dark: new MeshLambertMaterial({ color: 0x2a3038, map: windowStrip(8, random, false), alphaTest: 0.5 }) };
   const pick = <T,>(items: readonly T[]) => items[Math.floor(random() * items.length)];
 
   // Keeps things off the roads that run on from the district into the city.
@@ -136,7 +142,7 @@ export function buildCityBeyond(scene: Object3D, random: Random): CityBeyond {
   g.traverse((o) => { o.castShadow = false; });
 
   return {
-    windows: [new WindowBank(lit, 0.75, 0.05, random), new WindowBank(cool, 0.9, 0.08, random), new WindowBank(towerGlass, 0.95, 0.75, random)],
+    windows: [new WindowBank(lit, 0.75, 0.05, random), new WindowBank(cool, 0.9, 0.08, random), new WindowBank(towerGlass, 0.95, 0.75, random), new WindowBank([...farLit, ...farCool], 0.8, 0.1, random)],
     update: (dt) => station.update(dt),
     landmarks,
     applyKits(kits) {
@@ -410,12 +416,35 @@ function buildRailway(g: Object3D): { update(dt: number): void } {
 
 /** The public hospital across the river, east of the district; the sobering-up centre by the railway, north. */
 const HOSPITAL = { x0: 88, x1: 124, z0: -30, z1: 2 };
+/** City hall: on the old town's edge nearest the district, facing it across the main street west. */
+const CITY_HALL = { x0: -68, x1: -54, z0: -21, z1: -6 };
 const SOBERING = { x0: 30, x1: 44, z0: -59, z1: -51 };
 
-function buildLandmarks(g: Object3D, lit: MeshLambertMaterial[]): { hospital: number; sobering: number; police: number } {
+function buildLandmarks(g: Object3D, lit: MeshLambertMaterial[]): { hospital: number; sobering: number; police: number; cityHall: number } {
   const white = mat(0xdadcd8);
   const trim = mat(0x8a929a);
   const red = glowMat(0x9a2a2a, 0xff4a3a, 0.6);
+  // Windows one by one, framed, on the faces the camera sees (+z front, +x side); every third or so dark.
+  const unlit = mat(0x23262c);
+  const windows = (x0: number, x1: number, z0: number, z1: number, rows: readonly number[], spacing: number, w: number, h: number, bars: boolean, framed = true) => {
+    let k = 0;
+    const pane = () => (k++ % 3 === 1 ? unlit : lit[k % lit.length]);
+    for (const y of rows) {
+      for (let x = x0 + spacing / 2; x < x1 - 0.5; x += spacing) {
+        add(g, box(w, h, 0.06, pane(), x, y, z1 + 0.02));
+        if (framed) add(g, windowTrim(w, h)).position.set(x, y, z1 + 0.03);
+        else add(g, box(w + 0.3, 0.08, 0.2, trim, x, y - 0.1, z1 + 0.1));
+        if (bars) for (let b = -w / 2 + 0.2; b < w / 2; b += 0.24) add(g, box(0.04, h, 0.04, mat(0x2a2c30), x + b, y, z1 + 0.12));
+      }
+      for (let z = z0 + spacing / 2; z < z1 - 0.5; z += spacing) {
+        add(g, box(0.06, h, w, pane(), x1 + 0.02, y, z));
+        if (framed) add(g, windowTrim(w, h), Math.PI / 2).position.set(x1 + 0.03, y, z);
+        else add(g, box(0.2, 0.08, w + 0.3, trim, x1 + 0.1, y - 0.1, z));
+        if (bars) for (let b = -w / 2 + 0.2; b < w / 2; b += 0.24) add(g, box(0.04, h, 0.04, mat(0x2a2c30), x1 + 0.12, y, z + b));
+      }
+    }
+  };
+
   // Hospital: a long main block, a taller ward wing with a helipad, an A&E canopy facing the river.
   const h = HOSPITAL;
   const cx = (h.x0 + h.x1) / 2;
@@ -425,8 +454,21 @@ function buildLandmarks(g: Object3D, lit: MeshLambertMaterial[]): { hospital: nu
   add(g, box(16, 24, h.z1 - h.z0 - 10, white, h.x0 + 10, 0, h.z0 + (h.z1 - h.z0 - 10) / 2));
   for (const [x, z, w, d, top] of [[cx, h.z1 - 7, h.x1 - h.x0, 14, 12], [h.x0 + 10, h.z0 + (h.z1 - h.z0 - 10) / 2, 16, h.z1 - h.z0 - 10, 24]] as const) {
     add(g, box(w + 0.4, 0.5, d + 0.4, trim, x, top, z));
-    for (let y = 1.4; y < top - 1; y += 3.2) add(g, box(w + 0.06, 1.1, d + 0.06, lit[Math.floor(y) % 2], x, y, z));
+    // A darker plinth, and a band of blue between the storeys.
+    add(g, box(w + 0.1, 0.9, d + 0.1, mat(0x8a929a), x, 0, z));
   }
+  // Windows one by one, without frames (it is far away and has a lot of them): a sill under each.
+  windows(h.x0, h.x1, h.z1 - 14, h.z1, [4.4, 8.0], 2.4, 1.3, 1.6, false, false);
+  windows(h.x0 + 2, h.x0 + 18, h.z0, h.z1 - 10, [13.6, 16.8, 20.0], 2.4, 1.3, 1.6, false, false);
+  // Ground floor of the main block: a glazed front with the entrance and its A&E sign.
+  add(g, box(h.x1 - h.x0 - 6, 2.6, 0.08, glowMat(0x2a3440, PALETTE.warmWindow, 0.7), cx + 2, 0.6, h.z1 + 0.04));
+  add(g, box(3.2, 2.6, 0.1, glowMat(0x2a3440, 0xd8f0ff, 0.9), h.x0 + 6, 0.5, h.z1 + 0.06));
+  add(g, box(5, 0.3, 2.2, trim, h.x0 + 6, 3.0, h.z1 + 1.1));
+  const ae = new MeshLambertMaterial({ map: pixelTextTexture('A&E', '#ffffff', '#b8202a'), emissive: 0xffffff, emissiveIntensity: 0.8, emissiveMap: pixelTextTexture('A&E', '#ffffff', '#b8202a') });
+  add(g, box(2.6, 1.0, 0.1, ae, h.x0 + 6, 3.35, h.z1 + 2.2));
+  // Roof plant on the main block.
+  for (const [x, z] of [[cx + 4, h.z1 - 9], [cx + 9, h.z1 - 5], [cx + 13, h.z1 - 9]] as const) add(g, acUnit()).position.set(x, 12.5, z);
+  add(g, box(4, 1.6, 3, mat(0xb8bcc0), cx - 2, 12.5, h.z1 - 7));
   add(g, cylinder(4, 0.2, mat(0x4a5058), 16, h.x0 + 10, 24.5, h.z0 + 8));
   add(g, box(5, 0.05, 1, mat(0xf0f0f0), h.x0 + 10, 24.72, h.z0 + 8));
   add(g, box(1, 0.05, 5, mat(0xf0f0f0), h.x0 + 10, 24.72, h.z0 + 8));
@@ -435,33 +477,96 @@ function buildLandmarks(g: Object3D, lit: MeshLambertMaterial[]): { hospital: nu
   add(g, box(1.1, 3.4, 0.45, white, h.x0 + 18, 12.6, h.z1 + 0.1));
   add(g, box(3.4, 1.1, 0.45, white, h.x0 + 18, 13.75, h.z1 + 0.1));
   const hospital = registerBuilding(h.x0, h.x1, h.z0, h.z1, 24);
-  // Sobering-up centre: a plain two-storey municipal block with a blue lamp and barred windows.
+  // Sobering-up centre: a two-storey municipal block, barred windows, a canopy over the door, a blue lamp.
   const s = SOBERING;
   const sx = (s.x0 + s.x1) / 2;
   const sz = (s.z0 + s.z1) / 2;
   add(g, box(s.x1 - s.x0 + 3, 0.22, s.z1 - s.z0 + 3, mat(PALETTE.pavement), sx, -0.1, sz));
   add(g, box(s.x1 - s.x0, 6.4, s.z1 - s.z0, mat(0xb8b0a0), sx, 0, sz));
-  add(g, box(s.x1 - s.x0 + 0.3, 0.4, s.z1 - s.z0 + 0.3, trim, sx, 6.4, sz));
-  for (const y of [1.2, 4.2]) add(g, box(s.x1 - s.x0 - 1, 1.1, s.z1 - s.z0 + 0.06, lit[2], sx, y, sz));
-  add(g, box(1.6, 2.4, 0.2, mat(0x3a3a3a), sx, 0, s.z1 + 0.05));
-  add(g, box(0.5, 0.5, 0.5, glowMat(0x2a3a7a, 0x5a8aff, 1.2), sx + 1.4, 2.8, s.z1 + 0.3));
+  add(g, box(s.x1 - s.x0 + 0.1, 0.8, s.z1 - s.z0 + 0.1, mat(0x8a8276), sx, 0, sz));
+  add(g, box(s.x1 - s.x0 + 0.4, 0.45, s.z1 - s.z0 + 0.4, trim, sx, 6.4, sz));
+  windows(s.x0, s.x1, s.z0, s.z1, [1.3, 4.1], 2.3, 1.1, 1.3, true);
+  // The door, a canopy on two posts, the sign and the lamp.
+  add(g, box(1.8, 2.4, 0.2, mat(0x3a3a3a), sx, 0, s.z1 + 0.05));
+  add(g, box(3.2, 0.18, 1.8, trim, sx, 2.7, s.z1 + 0.9));
+  for (const dx of [-1.4, 1.4]) add(g, cylinder(0.06, 2.7, trim, 6, sx + dx, 0, s.z1 + 1.7));
+  const soberSign = new MeshLambertMaterial({ map: pixelTextTexture('SOBERING', '#ffffff', '#2a4a8a'), emissive: 0xffffff, emissiveIntensity: 0.5, emissiveMap: pixelTextTexture('SOBERING', '#ffffff', '#2a4a8a') });
+  add(g, box(3.6, 0.6, 0.08, soberSign, sx, 3.1, s.z1 + 0.06));
+  add(g, box(0.5, 0.5, 0.5, glowMat(0x2a3a7a, 0x5a8aff, 1.2), sx + 2.3, 2.8, s.z1 + 0.3));
+  for (const x of [s.x0 + 0.2, s.x1 - 0.2]) add(g, drainpipe(6.5)).position.set(x, 0, s.z1 + 0.08);
+  for (const [x, z] of [[sx - 3, sz], [sx + 3, sz - 1]] as const) add(g, roofVent()).position.set(x, 6.85, z);
+  add(g, bench()).position.set(sx - 4, 0, s.z1 + 1.2);
   const sobering = registerBuilding(s.x0, s.x1, s.z0, s.z1, 6.4);
-  // Police station: three storeys of grey stone, a blue POLICE sign and lamp over the door, cars in the yard.
+
+  // Police station: three storeys of grey stone on a dark plinth, a blue band, a porch with
+  // steps and the POLICE sign, roof plant and a radio mast, a flag, patrol cars out front.
   const p = POLICE_STATION;
   const px = (p.x0 + p.x1) / 2;
-  const pz = (p.z0 + p.z1) / 2;
-  const front = p.z1;
-  add(g, box(p.x1 - p.x0 + 3, 0.22, p.z1 - p.z0 + 3, mat(PALETTE.pavement), px, -0.1, pz));
-  add(g, box(p.x1 - p.x0, 9.2, p.z1 - p.z0 - 2, mat(0x8a8e92), px, 0, pz - 1));
-  add(g, box(p.x1 - p.x0 + 0.3, 0.5, p.z1 - p.z0 - 1.7, trim, px, 9.2, pz - 1));
-  for (const y of [1.4, 4.4, 7.2]) add(g, box(p.x1 - p.x0 - 1, 1.1, p.z1 - p.z0 - 1.94, lit[(y | 0) % 3], px, y, pz - 1));
-  const blue = glowMat(0x1a2a6a, 0x4a7aff, 1.2);
+  const bz0 = p.z0;
+  const bz1 = p.z1 - 2;
+  const bz = (bz0 + bz1) / 2;
+  const stoneGrey = mat(0x8a8e92);
+  const policeBlue = mat(0x1e3a7a);
+  add(g, box(p.x1 - p.x0 + 3, 0.22, p.z1 - p.z0 + 3, mat(PALETTE.pavement), px, -0.1, (p.z0 + p.z1) / 2));
+  add(g, box(p.x1 - p.x0, 9.2, bz1 - bz0, stoneGrey, px, 0, bz));
+  add(g, box(p.x1 - p.x0 + 0.12, 1.0, bz1 - bz0 + 0.12, mat(0x4a4e54), px, 0, bz));
+  add(g, box(p.x1 - p.x0 + 0.1, 0.4, bz1 - bz0 + 0.1, policeBlue, px, 3.05, bz));
+  add(g, box(p.x1 - p.x0 + 0.4, 0.5, bz1 - bz0 + 0.4, trim, px, 9.2, bz));
+  // A low parapet round the roof.
+  for (const [w, d, x, z] of [[p.x1 - p.x0, 0.2, px, bz0 + 0.1], [p.x1 - p.x0, 0.2, px, bz1 - 0.1], [0.2, bz1 - bz0, p.x0 + 0.1, bz], [0.2, bz1 - bz0, p.x1 - 0.1, bz]] as const) add(g, box(w, 0.6, d, trim, x, 9.7, z));
+  windows(p.x0, p.x1, bz0, bz1, [1.5, 4.2, 6.9], 2.2, 1.0, 1.4, false);
+  // The porch: a box out from the front, glass doors, steps, the sign above, blue lamps either side.
+  add(g, box(4.2, 3.4, 1.4, stoneGrey, px, 0, bz1 + 0.7));
+  add(g, box(4.5, 0.3, 1.7, trim, px, 3.4, bz1 + 0.75));
+  add(g, box(2.2, 2.4, 0.06, glowMat(0x2a3440, PALETTE.warmWindow, 0.7), px, 0.25, bz1 + 1.42));
+  for (const [y, d] of [[0, 2.6], [0.12, 2.2]] as const) add(g, box(3.2, 0.12, 0.6, mat(0xb8b4aa), px, y, bz1 + d));
   const sign = new MeshLambertMaterial({ map: pixelTextTexture('POLICE', '#ffffff', '#1a3a8a'), emissive: 0xffffff, emissiveIntensity: 0.6, emissiveMap: pixelTextTexture('POLICE', '#ffffff', '#1a3a8a') });
-  add(g, box(4.4, 0.9, 0.1, sign, px, 6.0, front - 1.95));
-  add(g, box(2.2, 2.6, 0.2, mat(0x2a2c30), px, 0, front - 1.95));
-  add(g, box(0.45, 0.45, 0.45, blue, px + 1.6, 3.0, front - 1.75));
-  const police = registerBuilding(p.x0, p.x1, p.z0, p.z1 - 2, 9.2);
-  return { hospital, sobering, police };
+  add(g, box(3.6, 0.8, 0.1, sign, px, 2.55, bz1 + 1.45));
+  const blue = glowMat(0x1a2a6a, 0x4a7aff, 1.4);
+  for (const dx of [-2.6, 2.6]) {
+    add(g, cylinder(0.05, 2.4, trim, 6, px + dx, 0, bz1 + 1.5));
+    add(g, box(0.4, 0.4, 0.4, blue, px + dx, 2.4, bz1 + 1.5));
+  }
+  // On the roof: plant, a radio mast and a dish.
+  for (const [x, z] of [[p.x0 + 2.5, bz], [p.x0 + 5, bz - 1.5]] as const) add(g, acUnit()).position.set(x, 9.7, z);
+  add(g, antenna(5)).position.set(p.x1 - 2, 9.7, bz0 + 1.5);
+  add(g, satelliteDish()).position.set(p.x1 - 4, 9.7, bz + 1);
+  add(g, drainpipe(9.4)).position.set(p.x1 - 0.2, 0, bz1 + 0.08);
+  // A flagpole at the corner.
+  add(g, cylinder(0.06, 7, mat(0xd0d0d0), 6, p.x1 + 0.6, 0, p.z1 - 1.4));
+  add(g, box(0.04, 0.9, 1.4, mat(0xe8e4dc), p.x1 + 0.6, 6.0, p.z1 - 0.65));
+  add(g, box(0.045, 0.45, 1.4, mat(0xc0302a), p.x1 + 0.6, 6.0, p.z1 - 0.65));
+  // Two patrol cars parked along the front, either side of the porch, a light bar on each.
+  for (const x of [p.x0 + 2.4, p.x1 - 2.4]) {
+    const c = add(g, car(0xeef0f2, false, 'saloon'), Math.PI / 2);
+    c.position.set(x, 0, p.z1 + 0.3);
+    add(c, box(1.0, 0.14, 0.32, blue, 0, 1.45, 0));
+    add(c, box(0.04, 0.3, 3.2, policeBlue, 0.92, 0.45, 0));
+  }
+  const police = registerBuilding(p.x0, p.x1, bz0, bz1, 9.2);
+
+  // City hall: pale stone, three storeys, a columned portico and steps facing east to the district, a flag.
+  const ch = CITY_HALL;
+  const hx = (ch.x0 + ch.x1) / 2;
+  const hz = (ch.z0 + ch.z1) / 2;
+  const pale = mat(0xd8d0bc);
+  add(g, box(ch.x1 - ch.x0 + 4, 0.22, ch.z1 - ch.z0 + 4, mat(PALETTE.pavement), hx, -0.1, hz));
+  add(g, box(ch.x1 - ch.x0, 11, ch.z1 - ch.z0, pale, hx, 0, hz));
+  add(g, box(ch.x1 - ch.x0 + 0.2, 1.2, ch.z1 - ch.z0 + 0.2, mat(0xa89e88), hx, 0, hz));
+  add(g, box(ch.x1 - ch.x0 + 0.6, 0.7, ch.z1 - ch.z0 + 0.6, trim, hx, 11, hz));
+  windows(ch.x0, ch.x1, ch.z0, ch.z1, [2.2, 5.4, 8.4], 2.4, 1.1, 1.8, false);
+  // Portico on the east face: steps, six columns, a pediment band, the sign.
+  for (const [y, d] of [[0, 3.2], [0.15, 2.6], [0.3, 2.0]] as const) add(g, box(d, 0.15, 8, mat(0xc8c0ac), ch.x1 + d / 2, y, hz));
+  for (let i = 0; i < 6; i++) add(g, cylinder(0.32, 7.2, pale, 10, ch.x1 + 1.8, 0.45, hz - 3.5 + i * 1.4));
+  add(g, box(2.6, 0.9, 8.6, pale, ch.x1 + 1.5, 7.6, hz));
+  const hall = new MeshLambertMaterial({ map: pixelTextTexture('CITY HALL', '#2a2a30', '#e8e0cc'), emissive: 0xffffff, emissiveIntensity: 0.25, emissiveMap: pixelTextTexture('CITY HALL', '#2a2a30', '#e8e0cc') });
+  add(g, box(0.1, 0.6, 4.4, hall, ch.x1 + 2.82, 7.75, hz));
+  add(g, box(0.1, 2.6, 2.2, glowMat(0x2a3440, PALETTE.warmWindow, 0.8), ch.x1 + 0.06, 0.45, hz));
+  add(g, cylinder(0.06, 6, mat(0xd0d0d0), 6, hx, 11.7, hz));
+  add(g, box(0.04, 1.0, 1.6, mat(0xf4f0e8), hx, 16.4, hz + 0.8));
+  add(g, box(0.045, 0.5, 1.6, mat(0xc8202a), hx, 16.4, hz + 0.8));
+  const cityHall = registerBuilding(ch.x0, ch.x1, ch.z0, ch.z1, 11);
+  return { hospital, sobering, police, cityHall };
 }
 
 // ------------------------------------------------------------------ business district
@@ -575,6 +680,7 @@ function buildOldTown(g: Object3D, random: Random, lit: Material[], pick: <T>(it
       if (onRoad(x, z, w, d)) continue;
       if (Math.abs(x - sqx) < 15 && Math.abs(z - sqz) < 13) continue;
       if (Math.abs(x - cx) < 13 && Math.abs(z - cz) < 18) continue;
+      if (x + w / 2 > CITY_HALL.x0 - 1.5 && x - w / 2 < CITY_HALL.x1 + 1.5 && z + d / 2 > CITY_HALL.z0 - 1.5 && z - d / 2 < CITY_HALL.z1 + 1.5) continue;
       const floors = Math.max(2, Math.min(2 + Math.floor(random() * 3), Math.floor((heightCap(x + 2, z) - 3.4) / 2.8) + 1));
       const h = 3.4 + (floors - 1) * 2.8;
       const front = z + d / 2;
@@ -674,6 +780,30 @@ let massCount = 0;
  * box, some floors lit). Seen from afar it reads as a city block; it costs a
  * few dozen triangles.
  */
+/**
+ * A strip of windows for the far blocks' floor bands: `n` windows across, the gaps
+ * see-through (alpha), so the wall shows between them. Lit bands vary each
+ * window's brightness, a few left dark. At a distance the mipmaps blur a band
+ * back into one strip, as the eye would.
+ */
+function windowStrip(n: number, random: Random, lit: boolean): CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = n * 16;
+  c.height = 16;
+  const g = c.getContext('2d')!;
+  for (let i = 0; i < n; i++) {
+    const v = lit ? (random() < 0.3 ? 40 : 150 + Math.floor(random() * 105)) : 200;
+    g.fillStyle = `rgb(${v},${v},${v})`;
+    g.fillRect(i * 16 + 3, 2, 10, 12);
+  }
+  const tex = new CanvasTexture(c);
+  tex.colorSpace = SRGBColorSpace;
+  return tex;
+}
+
+/** The far blocks' window materials: set once per city by buildCityBeyond. */
+let farWindows: { lit: MeshLambertMaterial[]; cool: MeshLambertMaterial[]; dark: Material } | null = null;
+
 function massing(g: Object3D, x: number, z: number, w: number, d: number, floors: number, random: Random, lit: Material[], cool: Material[]): void {
   const k = massCount++;
   const h = floors * 3;
@@ -682,7 +812,11 @@ function massing(g: Object3D, x: number, z: number, w: number, d: number, floors
   if (floors <= 5 && random() < 0.6) add(g, gableRoof(d, w + 0.2, 2.4, mat(MASS_ROOFS[k % MASS_ROOFS.length])), Math.PI / 2).position.set(x, h - 0.1, z);
   for (let f = 0; f < floors; f++) {
     // Two warm and one cool window material for the whole far city: a few draw calls per cell.
-    const m = random() < 0.35 ? (random() < 0.8 ? lit[(k + f) % 2] : cool[0]) : mat(0x26282c);
+    // With window strips the bands read as rows of windows; without them (never here), plain bands.
+    const fw = farWindows;
+    const m = random() < 0.35
+      ? (random() < 0.8 ? (fw ? fw.lit[(k + f) % fw.lit.length] : lit[(k + f) % 2]) : (fw ? fw.cool[0] : cool[0]))
+      : (fw ? fw.dark : mat(0x26282c));
     add(g, box(w + 0.06, 1.0, d + 0.06, m, x, f * 3 + 1.1, z));
   }
 }

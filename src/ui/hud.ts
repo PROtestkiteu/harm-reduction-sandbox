@@ -1,3 +1,4 @@
+import { CAMPER_PATH, CAMPER_PATH_IDS, type CamperPath } from '../config/camperPaths';
 import { ACTIVITY, MIX_MAX, type Activity } from '../config/serviceMix';
 import type { FavourId } from '../config/favours';
 import { ORG, RECRUIT } from '../config/organisation';
@@ -33,6 +34,8 @@ export interface HudCallbacks {
   onMixSetUp(service: ServiceId, activity: Activity): void;
   /** Uses the favour held with city hall. */
   onFavour(id: FavourId): void;
+  /** Specialise the outreach camper (or change its path). */
+  onCamperPath(path: CamperPath): void;
   /** Starts a donation drive. */
   onDrive(): void;
   /** Opens the Settings menu (phones reach it from the replies). */
@@ -42,7 +45,7 @@ export interface HudCallbacks {
 }
 
 /** What can be done at a place, free or paid from the organisation's budget. */
-export type PlaceAction = 'moreStaff' | 'moreWaiting' | 'hire' | 'volunteer' | 'relaunch' | 'camper' | 'move' | 'mix' | 'hustle' | 'invest' | 'donations' | `camper:${number}`;
+export type PlaceAction = 'moreStaff' | 'moreWaiting' | 'hire' | 'volunteer' | 'relaunch' | 'camper' | 'move' | 'path' | 'mix' | 'hustle' | 'invest' | 'donations' | `camper:${number}`;
 
 /** The selected place's levers, for its action replies. */
 /** One activity in a place's budget mix. */
@@ -80,6 +83,8 @@ export interface PlaceLevers {
   mix: { visitCost: number; items: MixItem[] };
   /** Outreach only: extra campers out, the most allowed, and their costs. */
   campers?: { out: number; max: number; cost: number; perHour: number; moving: boolean; spots: { name: string; taken: boolean; here: boolean }[] };
+  /** The camper's specialisation: the current one, if any (outreach only). */
+  path?: { current: CamperPath | null };
 }
 
 export interface LocationSnapshot {
@@ -239,6 +244,7 @@ export class Hud {
   private readonly speedBtn: HTMLButtonElement;
   private readonly money: HTMLElement;
   private readonly unmet: HTMLElement;
+  private readonly crisisLine: HTMLElement;
   private readonly stressRow: HTMLElement;
   private readonly stressFill = {} as Record<'police' | 'medics' | 'sobering' | 'district', HTMLElement>;
   private readonly stressMeters = {} as Record<'police' | 'medics' | 'sobering' | 'district', HTMLElement>;
@@ -270,6 +276,8 @@ export class Hud {
   private readonly topBar: HTMLElement;
   private staffOpen = false;
   private camperOpen = false;
+  private pathOpen = false;
+  private readonly pathOpts: { li: HTMLLIElement; button: HTMLButtonElement; long: HTMLElement; short: HTMLElement; id: CamperPath }[] = [];
   private mixOpen = false;
   /** One row per activity slot: a labelled slider, its share, and a set-up button when it needs one. */
   private readonly mixRows: { li: HTMLLIElement; label: HTMLLabelElement; input: HTMLInputElement; out: HTMLOutputElement; note: HTMLElement; setup: HTMLButtonElement; id: Activity | null; editingUntil: number }[] = [];
@@ -316,15 +324,15 @@ export class Hud {
     // Money on hand, always in view: everything priced is greyed out when it runs short.
     this.money = el('span', 'money');
     this.money.setAttribute('role', 'status');
-    // People turned away show as pressure on the city's services (the meters); a crisis gets a tag under the money.
-    this.unmet = el('span', 'crisis-tag', t('Crisis'));
+    // People turned away show as pressure on the city's services (the meters); a crisis gets its own red
+    // section above tonight's events: what it is, how many were turned away, what it costs.
+    this.unmet = el('section', 'crisis-box');
     this.unmet.setAttribute('role', 'status');
     this.unmet.hidden = true;
-    // Under the money: the crisis tag, only while there is one.
-    const sub = el('div', 'column-sub');
-    sub.append(this.unmet);
+    this.crisisLine = el('span', 'crisis-line');
+    this.unmet.append(el('strong', 'crisis-title', t('Crisis')), this.crisisLine);
     const right = el('div', 'column-right');
-    right.append(this.money, sub);
+    right.append(this.money);
     top.append(time, right);
     // Phones: a handle folds the sheet down to the clock and the Pause bar.
     this.foldBtn = button('sheet-handle');
@@ -448,9 +456,10 @@ export class Hud {
       b.append(long, short);
       b.addEventListener('click', () => {
         const levers = this.mode?.kind === 'location' ? this.lastSnapshot?.locations[this.mode.id].actions : undefined;
-        if (action === 'camper' || action === 'mix') {
-          // Opens a list (spots, or the budget mix sliders) instead of acting at once.
+        if (action === 'camper' || action === 'mix' || action === 'path') {
+          // Opens a list (spots, paths, or the budget mix sliders) instead of acting at once.
           if (action === 'camper') this.camperOpen = !this.camperOpen;
+          else if (action === 'path') this.pathOpen = !this.pathOpen;
           else this.mixOpen = !this.mixOpen;
           if (levers) this.renderActions(levers);
           return;
@@ -491,6 +500,21 @@ export class Hud {
     }
     // Spots sit right under the camper reply.
     this.actionOpts.camper.li.after(...this.spotOpts.map((o) => o.li));
+    // The camper's specialisations, right under 'Specialise'.
+    for (const id of CAMPER_PATH_IDS) {
+      const b = button('opt');
+      const long = el('span', 'long');
+      const short = el('span', 'short', `${CAMPER_PATH[id].short}.`);
+      short.setAttribute('aria-hidden', 'true');
+      b.append(long, short);
+      b.title = CAMPER_PATH[id].does;
+      b.addEventListener('click', () => { cb.onCamperPath(id); this.pathOpen = false; });
+      const li = opt(b);
+      li.classList.add('nested', 'nested-2');
+      li.hidden = true;
+      this.pathOpts.push({ li, button: b, long, short, id });
+    }
+    this.actionOpts.path.li.after(...this.pathOpts.map((o) => o.li));
     // Budget mix: one slider per activity, right under its reply.
     for (let i = 0; i < MIX_SLOTS; i++) {
       const li = el('li', 'mix-row');
@@ -525,13 +549,13 @@ export class Hud {
     }
     this.actionOpts.mix.li.after(...this.mixRows.map((r) => r.li));
 
-    const leave = button('opt');
-    const leaveShort = el('span', 'short', t('Leave.'));
-    leaveShort.setAttribute('aria-hidden', 'true');
-    leave.append(el('span', 'long', t('Leave it.')), leaveShort);
+    // "0. Back." heads the replies whenever something is selected: back to the overview.
+    const leave = button('opt', t('Back.'));
     leave.setAttribute('aria-label', t('Close details (Escape)'));
     leave.addEventListener('click', () => cb.onSelect(null));
     this.leaveOpt = opt(leave);
+    this.leaveOpt.classList.add('zero');
+    this.options.prepend(this.leaveOpt);
     // A pencil beside the name renames whatever is selected: place, building or person.
     this.renameBtn.addEventListener('click', () => this.startRename(cb));
     // Services sit behind one reply so the list stays short; the selected
@@ -590,21 +614,31 @@ export class Hud {
     const back = button('opt', t('Back.'));
     back.addEventListener('click', () => this.setServicesOpen(false));
     this.backOpt = opt(back);
+    this.backOpt.classList.add('zero');
     for (const id of SERVICE_IDS) {
+      // The name picks the place (the camera goes there); only the ON/OFF switch at the end turns it on or off.
       const b = button('opt switch');
-      b.setAttribute('role', 'switch');
-      b.setAttribute('aria-label', SERVICE_TEXT[id].label);
       b.dataset.service = id;
-      const state = el('span', 'state');
       const name = el('span', 'name');
       const short = el('span', 'short', SERVICE_TEXT[id].short);
       short.setAttribute('aria-hidden', 'true');
       name.append(el('span', 'long', SERVICE_TEXT[id].label), short);
-      b.append(name, state);
-      b.addEventListener('click', () => cb.onService(id, b.getAttribute('aria-checked') !== 'true'));
-      this.switches[id] = b;
+      b.append(name);
+      b.addEventListener('click', () => { this.servicesOpen = false; cb.onSelect(id === 'clubHr' ? 'club' : id); });
+      const toggle = button('svc-toggle');
+      toggle.setAttribute('role', 'switch');
+      toggle.setAttribute('aria-label', SERVICE_TEXT[id].label);
+      const state = el('span', 'state');
+      toggle.append(state);
+      toggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        cb.onService(id, toggle.getAttribute('aria-checked') !== 'true');
+      });
+      this.switches[id] = toggle;
       this.switchState[id] = state;
       this.switchOpts[id] = opt(b);
+      this.switchOpts[id].classList.add('svc-row');
+      this.switchOpts[id].append(toggle);
     }
     const reset = button('opt');
     const resetShort = el('span', 'short', t('Overview.'));
@@ -652,7 +686,7 @@ export class Hud {
       meters.append(m);
       this.stressFill[key] = fill;
     }
-    this.column.append(this.foldBtn, top, this.stressRow, this.eventsSlot, this.log, this.options, this.continueBtn);
+    this.column.append(this.foldBtn, top, this.stressRow, this.unmet, this.eventsSlot, this.log, this.options, this.continueBtn);
     // Phones: the clock, money and meters live in a block at the top of the screen; the sheet keeps the rest.
     this.topBar = el('div', 'top-bar');
     const placeIndicators = () => {
@@ -697,10 +731,11 @@ export class Hud {
 
   /** Number keys pick the visible numbered option, as in a conversation. */
   private onKey(e: KeyboardEvent): void {
-    if (e.altKey || e.ctrlKey || e.metaKey || !/^[1-9]$/.test(e.key)) return;
+    if (e.altKey || e.ctrlKey || e.metaKey || !/^[0-9]$/.test(e.key)) return;
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement) return;
     const visible = [...this.options.children].filter((li) => !(li as HTMLElement).hidden);
-    const li = visible[Number(e.key) - 1];
+    // 0 is Back; the numbers count the other replies.
+    const li = e.key === '0' ? visible.find((v) => v.classList.contains('zero')) : visible.filter((v) => !v.classList.contains('zero'))[Number(e.key) - 1];
     const target = li?.querySelector<HTMLButtonElement>('button.opt') ?? null;
     if (!target) return;
     e.preventDefault();
@@ -762,6 +797,7 @@ export class Hud {
     if (this.mode?.kind !== 'location' || this.mode.id !== id) {
       this.staffOpen = false;
       this.camperOpen = false;
+      this.pathOpen = false;
       this.mixOpen = false;
       setAttr(this.staffGroupBtn, 'aria-expanded', 'false');
     }
@@ -971,7 +1007,7 @@ export class Hud {
     if (s.unmet) {
       const { day, crisis } = s.unmet;
       const away = plural(day, ['{n} person turned away in the last 24 hours', '{n} people turned away in the last 24 hours'], ['{n} osoba odesłana w ciągu ostatnich 24 godzin', '{n} osoby odesłane w ciągu ostatnich 24 godzin', '{n} osób odesłanych w ciągu ostatnich 24 godzin']);
-      this.unmet.title = t('{away}: crisis on the street', { away });
+      setText(this.crisisLine, t('{away}. More trouble on the street, warier funders, more harm outdoors until fewer are turned away.', { away }));
       setAttr(this.unmet, 'aria-label', t('{away}, crisis', { away }));
       const state = crisis >= 0.5 ? 'crisis' : 'rising';
       if (this.unmet.hidden !== (crisis <= 0)) this.unmet.hidden = crisis <= 0;
@@ -1026,6 +1062,7 @@ export class Hud {
     setText(this.reviewShort, t('Services ({on}/{all}).', { on, all: SERVICE_IDS.length }));
     for (const id of SERVICE_IDS) {
       setAttr(this.switches[id], 'aria-checked', String(s.enabled[id]));
+      if (this.switchOpts[id].dataset.on !== String(s.enabled[id])) this.switchOpts[id].dataset.on = String(s.enabled[id]);
       setText(this.switchState[id], s.enabled[id] ? t('On') : t('Off'));
     }
     let renamed = false;
@@ -1112,6 +1149,19 @@ export class Hud {
       if (o.button.disabled !== busy) o.button.disabled = busy;
     });
     // Moving the first camper: picked on the map; it closes while it drives, then opens at the new spot.
+    // The camper's specialisation: a reply that opens the three paths.
+    const path = a.path;
+    show('path', !!path && !a.closedDown, path?.current ? t('Specialised: {path}', { path: CAMPER_PATH[path.current].label }) : t('Specialise the camper'), true, t('Pick what the camper is best at; changing later costs again.'));
+    setAttr(this.actionOpts.path.button, 'aria-expanded', String(this.pathOpen));
+    for (const o of this.pathOpts) {
+      const hidden = !path || !this.pathOpen || this.servicesOpen || a.closedDown;
+      if (o.li.hidden !== hidden) o.li.hidden = hidden;
+      if (!path) continue;
+      const now = path.current === o.id;
+      setText(o.long, now ? t('{path} (now)', { path: CAMPER_PATH[o.id].label }) : t('{path} ({price})', { path: CAMPER_PATH[o.id].label, price: price(CAMPER_PATH[o.id].cost) }));
+      const off = now || a.budget < CAMPER_PATH[o.id].cost;
+      if (o.button.disabled !== off) o.button.disabled = off;
+    }
     show('move', !!c && !a.closedDown, c ? (c.moving ? t('Camper on the move') : t('Move the camper')) : '', !!c && !c.moving, t('Pick a free kerb spot on the map; it reopens there once parked.'));
     const inv = a.invest;
     const full = inv.level >= inv.max && inv.progress >= 1;
@@ -1191,12 +1241,13 @@ export class Hud {
     if (m?.kind !== 'location') {
       for (const action of ACTIONS) this.actionOpts[action].li.hidden = true;
       for (const o of this.spotOpts) o.li.hidden = true;
+      for (const o of this.pathOpts) o.li.hidden = true;
       for (const r of this.mixRows) r.li.hidden = true;
       this.staffGroupOpt.hidden = true;
     }
     else this.renderActions(this.lastSnapshot?.locations[m.id].actions);
-    // Leaving is a click elsewhere or Escape.
-    this.leaveOpt.hidden = true;
+    // Back to the overview: also a click elsewhere or Escape.
+    this.leaveOpt.hidden = open || m === null;
     this.renameBtn.hidden = !m || (m.kind === 'building' && !this.renamable);
     // The services review is for when nothing is selected.
     this.reviewOpt.hidden = open || m !== null;
@@ -1264,13 +1315,13 @@ export class Hud {
   }
 }
 
-const ACTIONS: readonly PlaceAction[] = ['moreStaff', 'hire', 'volunteer', 'camper', 'moreWaiting', 'move', 'mix', 'hustle', 'invest', 'donations', 'relaunch'];
+const ACTIONS: readonly PlaceAction[] = ['moreStaff', 'hire', 'volunteer', 'camper', 'moreWaiting', 'move', 'path', 'mix', 'hustle', 'invest', 'donations', 'relaunch'];
 /** Most camper spots the replies offer. */
 const MAX_SPOTS = 6;
 /** The most activities any place offers. */
 const MIX_SLOTS = 5;
 /** Actions nested under the Staffing reply. */
 const STAFF_ACTIONS: readonly PlaceAction[] = ['moreStaff', 'hire', 'volunteer', 'camper'];
-const ACTION_SHORT: Record<PlaceAction, string> = { moreStaff: t('More staff.'), moreWaiting: t('More places.'), hire: t('Hire.'), volunteer: t('Volunteer.'), camper: t('Another camper.'), move: t('Move it.'), mix: t('Budget mix.'), hustle: t('Side income.'), invest: t('Invest.'), donations: t('Donations.'), relaunch: t('Relaunch.') };
+const ACTION_SHORT: Record<PlaceAction, string> = { moreStaff: t('More staff.'), moreWaiting: t('More places.'), hire: t('Hire.'), volunteer: t('Volunteer.'), camper: t('Another camper.'), move: t('Move it.'), path: t('Specialise.'), mix: t('Budget mix.'), hustle: t('Side income.'), invest: t('Invest.'), donations: t('Donations.'), relaunch: t('Relaunch.') };
 /** Costs shown on the replies; the organisation charges the same (config/organisation.ts). */
 const ACTION_COST = { hire: RECRUIT.hirePaid.cost, volunteer: RECRUIT.volunteerDrive.cost, relaunch: ORG.reopen.cost };

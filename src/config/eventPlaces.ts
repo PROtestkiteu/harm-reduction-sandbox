@@ -26,7 +26,7 @@ export const EVENT_PLACE: Record<EventId, EventPlace> = {
   fundingGap: 'dropIn',
   labBacklog: 'drugChecking',
   suppliesConfiscated: 'outreach',
-  shopClosesEarly: 'pharmacy',
+  shopClosesEarly: 'dropIn',
   streetMarketForms: 'busiest',
   equipmentComplaints: 'outreach',
   residentsPetition: 'dropIn',

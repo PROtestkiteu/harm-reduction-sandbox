@@ -32,7 +32,7 @@ export const STRESS = {
     shelter: { police: 0.008, medics: 0.006 },
     dropIn: { medics: 0.01, police: 0.004 },
     outreach: { medics: 0.01, police: 0.004 },
-    pharmacy: { medics: 0.012 },
+    footPatrol: { medics: 0.012 },
     clinic: { medics: 0.012 },
     drugChecking: { medics: 0.01 },
     clubHr: { sobering: 0.012, medics: 0.004 },
@@ -70,12 +70,13 @@ export class CityStress {
     this.clamp();
   }
 
-  tick(dtMinutes: number, camp: number, crisis: number): void {
+  /** `ease` speeds up how fast a service recovers (partnerships with A&E or the izba): 1 is the usual pace. */
+  tick(dtMinutes: number, camp: number, crisis: number, ease: { medics: number; sobering: number } = { medics: 1, sobering: 1 }): void {
     const hours = dtMinutes / 60;
     const keep = Math.exp(-STRESS.easePerHour * hours);
     this.police = this.police * keep + STRESS.camp * camp * hours;
-    this.medics = this.medics * keep + STRESS.crisis * crisis * hours;
-    this.sobering *= keep;
+    this.medics = this.medics * Math.exp(-STRESS.easePerHour * ease.medics * hours) + STRESS.crisis * crisis * hours;
+    this.sobering *= Math.exp(-STRESS.easePerHour * ease.sobering * hours);
     this.clamp();
   }
 

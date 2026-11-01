@@ -29,17 +29,65 @@ function coinTexture(fill: string, rim: string, mark: string): CanvasTexture {
   return tex;
 }
 
+/** What happened to someone, drawn as a badge: a death, an arrest, a trip to hospital. */
+export type MarkIcon = 'skull' | 'cuffs' | 'cross';
+
+function iconTexture(icon: MarkIcon): CanvasTexture {
+  const n = 64;
+  const c = document.createElement('canvas');
+  c.width = c.height = n;
+  const g = c.getContext('2d')!;
+  // A dark round badge with a light rim, so the mark reads on any ground.
+  g.beginPath();
+  g.arc(n / 2, n / 2, n / 2 - 3, 0, Math.PI * 2);
+  g.fillStyle = icon === 'cross' ? '#f4f4f4' : '#1c1c22';
+  g.fill();
+  g.lineWidth = 3;
+  g.strokeStyle = icon === 'cross' ? '#c8202a' : '#e8e4dc';
+  g.stroke();
+  if (icon === 'cross') {
+    g.fillStyle = '#d0222c';
+    g.fillRect(n / 2 - 7, 14, 14, n - 28);
+    g.fillRect(14, n / 2 - 7, n - 28, 14);
+  } else if (icon === 'skull') {
+    g.fillStyle = '#f0ece2';
+    g.beginPath();
+    g.arc(n / 2, n / 2 - 4, 16, 0, Math.PI * 2);
+    g.fill();
+    g.fillRect(n / 2 - 9, n / 2 + 6, 18, 10);
+    g.fillStyle = '#1c1c22';
+    for (const x of [-6, 6]) { g.beginPath(); g.arc(n / 2 + x, n / 2 - 4, 4.5, 0, Math.PI * 2); g.fill(); }
+    for (const x of [-4, 0, 4]) g.fillRect(n / 2 + x - 1, n / 2 + 9, 2, 7);
+  } else {
+    // Handcuffs: two rings joined by a short chain.
+    g.strokeStyle = '#d8dce2';
+    g.lineWidth = 5;
+    for (const x of [-11, 11]) { g.beginPath(); g.arc(n / 2 + x, n / 2 + 3, 9, 0, Math.PI * 2); g.stroke(); }
+    g.lineWidth = 3;
+    g.beginPath();
+    g.moveTo(n / 2 - 4, n / 2 - 6);
+    g.lineTo(n / 2 + 4, n / 2 - 6);
+    g.stroke();
+  }
+  const tex = new CanvasTexture(c);
+  tex.colorSpace = SRGBColorSpace;
+  return tex;
+}
+
 interface Coin { sprite: Sprite; material: SpriteMaterial; age: number; x: number; y: number; z: number }
 
 /**
  * Coins rising over a building where money moves: gold with a plus where
- * it comes in (donations, the club's fee, sold checks), red with a minus
+ * it comes in (donations, the club's fee, paid checking), red with a minus
  * where visits cost it. One pooled sprite each, so a busy night costs
- * nothing extra. Held still when reduced motion is preferred: no coins.
+ * nothing extra. The same pool shows badges where something happens to
+ * someone: a skull, handcuffs, a red cross. Held still when reduced motion is
+ * preferred: no coins or badges.
  */
 export class CoinPops {
   private readonly gain = coinTexture('#f2c040', '#8a5a10', '+');
   private readonly loss = coinTexture('#e06050', '#6a1a12', '−');
+  private readonly icons: Record<MarkIcon, CanvasTexture> = { skull: iconTexture('skull'), cuffs: iconTexture('cuffs'), cross: iconTexture('cross') };
   private readonly coins: Coin[] = [];
   private next = 0;
   /** Metres per screen pixel now: coins keep about the same size on screen at any zoom. */
@@ -67,6 +115,18 @@ export class CoinPops {
     c.y = Math.max(0.8, at.y - 1.2);
     c.z = at.z + (Math.random() - 0.5) * 1.6;
     c.material.map = gain ? this.gain : this.loss;
+    c.sprite.visible = true;
+  }
+
+  /** A badge rising where something happened to someone: `at` is where they are (ground level). */
+  mark(at: { x: number; z: number }, icon: MarkIcon): void {
+    const c = this.coins[this.next];
+    this.next = (this.next + 1) % POOL;
+    c.age = 0;
+    c.x = at.x;
+    c.y = 1.9;
+    c.z = at.z;
+    c.material.map = this.icons[icon];
     c.sprite.visible = true;
   }
 

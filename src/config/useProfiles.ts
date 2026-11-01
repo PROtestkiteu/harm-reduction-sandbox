@@ -126,7 +126,7 @@ export const PROFILES_BY_GOAL: Record<string, readonly UseProfileId[]> = {
   party: ['festivalDoubleDropper', 'festivalDoubleDropper', 'festivalDoubleDropper', 'weekendRaver', 'psychonaut', 'collegeStudent'],
   dropIn: ['streetInjecting', 'streetInjecting', 'mephedroneInjecting', 'spiceSmoker', 'oatClient'],
   outreach: ['streetInjecting', 'streetInjecting', 'spiceSmoker', 'mephedroneInjecting', 'oatClient'],
-  pharmacy: ['mephedroneInjecting', 'streetInjecting', 'oatClient', 'chemsexGuest'],
+  footPatrol: ['mephedroneInjecting', 'streetInjecting', 'oatClient', 'chemsexGuest'],
   drugChecking: ['friendChecker', 'friendChecker', 'psychonaut', 'darknetShopper', 'weekendRaver', 'olderCannabis', 'chemsexGuest'],
   shelter: ['streetInjecting', 'streetInjecting', 'spiceSmoker'],
   clinic: ['oatClient', 'oatClient', 'ketamineRegular', 'chemsexGuest', 'mephedroneInjecting'],

@@ -125,7 +125,8 @@ const NO_EVIDENCE = (what: string): Citation => ({
 const HR = 'HR Drug Checking/';
 
 // Citations reused by several options.
-const C = {
+/** The library's findings these settings rest on, by key; institution side quests cite them too. */
+export const C = {
   davis: { ref: 'Davis 2022', type: 'qualitative', note: 'Victoria BC, 26 interviews: criminalisation produces structural stigma; people fear repercussions and avoid services.', source: `${HR}2022_Davis_Substance Use Stigma and Community Drug Checking p1` },
   wallace: { ref: 'Wallace 2022', type: 'qualitative', note: 'Victoria BC, 26 interviews: criminalisation and market pressures are the most critical factors; services need places without risk of arrest.', source: `${HR}2022_Wallace_Implementing drug checking as an illicit drug market intervention p1` },
   graceScr: { ref: 'Grace 2023', type: 'ScR', note: '29 articles: legality and privacy are two of four primary implementation themes and reduce utilisation.', source: `${HR}2023_Grace_Contextual factors affecting the implementation of drug checking p1, p3` },

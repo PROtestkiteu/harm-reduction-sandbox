@@ -50,11 +50,11 @@ const RELAUNCH: Record<Relaunchable, { offer: string; pending: string }> = {
   outreach: { offer: t('Relaunch the outreach camper ({price}, about {hours} h)'), pending: t('Relaunching the outreach camper: ready {time}') },
   clubHr: { offer: t('Relaunch the club stand ({price}, about {hours} h)'), pending: t('Relaunching the club stand: ready {time}') },
 };
-const SHORT_NAMES: Record<ServiceId, string> = { dropIn: t('drop-in'), outreach: t('camper'), clubHr: t('stand'), pharmacy: t('pharmacy'), drugChecking: t('checking'), shelter: t('shelter'), clinic: t('clinic') };
+const SHORT_NAMES: Record<ServiceId, string> = { dropIn: t('drop-in'), outreach: t('camper'), clubHr: t('stand'), footPatrol: t('patrol'), drugChecking: t('checking'), shelter: t('shelter'), clinic: t('clinic') };
 /** Where a worker is, as in "At the stand · energy 80%". */
-const AT_NAMES: Record<ServiceId, string> = { dropIn: t('at the drop-in'), outreach: t('at the camper'), clubHr: t('at the stand'), pharmacy: t('at the pharmacy'), drugChecking: t('at the checking'), shelter: t('at the shelter'), clinic: t('at the clinic') };
+const AT_NAMES: Record<ServiceId, string> = { dropIn: t('at the drop-in'), outreach: t('at the camper'), clubHr: t('at the stand'), footPatrol: t('at the patrol'), drugChecking: t('at the checking'), shelter: t('at the shelter'), clinic: t('at the clinic') };
 /** Options in a worker's "where they work" picker. */
-const PICK_NAMES: Record<ServiceId, string> = { dropIn: t('Drop-in'), outreach: t('Camper'), clubHr: t('Stand'), pharmacy: t('Pharmacy'), drugChecking: t('Checking'), shelter: t('Shelter'), clinic: t('Clinic') };
+const PICK_NAMES: Record<ServiceId, string> = { dropIn: t('Drop-in'), outreach: t('Camper'), clubHr: t('Stand'), footPatrol: t('Patrol'), drugChecking: t('Checking'), shelter: t('Shelter'), clinic: t('Clinic') };
 
 const money = (v: number) => price(v);
 const signed = (v: number) => `${v >= 0 ? '+' : '−'}${Math.round(Math.abs(v)).toLocaleString(LOCALE)}`;

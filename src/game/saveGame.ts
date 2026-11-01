@@ -3,6 +3,8 @@ import { SERVICE_IDS, type ServiceId } from '../sim/types';
 import { TRAITS, type Assignment, type Member, type TraitId } from '../sim/team';
 import { SATELLITE_SERVICES, type SatelliteService, type UnitState } from '../sim/property';
 import type { NeighbourhoodState } from '../sim/neighbourhood';
+import { CAMPER_PATH_IDS, type CamperPath } from '../config/camperPaths';
+import { QUESTS, type InstitutionId } from '../config/institutionQuests';
 
 /**
  * A saved game: the state that makes a run yours (time, money, staff, team,
@@ -26,6 +28,10 @@ export interface SaveData {
   upgrades: Record<string, { level: number; progress: number }>;
   units: UnitState[];
   campers: number[];
+  /** The outreach camper's specialisation, if any. */
+  camperPath?: CamperPath;
+  /** Steps done in each institution's side quest. */
+  quests?: Partial<Record<InstitutionId, number>>;
   street: Partial<NeighbourhoodState>;
   totals: { helped: number; nights: number };
   /** The leaderboard run this save belongs to, if any. */
@@ -54,6 +60,8 @@ export function captureSave(sim: Simulation, name: string, run?: SaveData['run']
     upgrades: Object.fromEntries(SERVICE_IDS.map((id) => [id, { level: sim.upgrades[id].level, progress: Math.round(sim.upgrades[id].progress * 1000) / 1000 }])),
     units: sim.property.units.map((u) => ({ ...u })),
     campers: [...sim.property.campers],
+    camperPath: sim.camperPath ?? undefined,
+    quests: { ...sim.quests },
     street,
     totals: { ...sim.totals },
     run,
@@ -103,6 +111,8 @@ export function parseSave(raw: unknown): SaveData | null {
       return { kind: 'trading' };
     }),
     campers: [...new Set((Array.isArray(r.campers) ? r.campers : []).map((c) => int(c, 0, 9, -1)).filter((c) => c >= 0))].slice(0, 5),
+    camperPath: (CAMPER_PATH_IDS as readonly unknown[]).includes(r.camperPath) ? r.camperPath as CamperPath : undefined,
+    quests: Object.fromEntries((Object.keys(QUESTS) as InstitutionId[]).map((k) => [k, int((r.quests as Record<string, unknown> | undefined)?.[k], 0, QUESTS[k].steps.length, 0)])),
     street: Object.fromEntries(STREET_KEYS.map((k) => [k, num(street[k], 0, 1, 0.5)])),
     totals: { helped: int(totals.helped, 0, 1e9, 0), nights: int(totals.nights, 0, 1e6, 0) },
     run: run && typeof run.id === 'string' && typeof run.token === 'string' && typeof run.ts === 'number'
@@ -122,6 +132,8 @@ export function applySave(sim: Simulation, s: SaveData): void {
   o.volunteers = s.org.volunteers;
   o.grantIncome = s.org.grantIncome;
   o.broke = o.budget <= 0;
+  sim.camperPath = s.camperPath ?? null;
+  for (const k of Object.keys(QUESTS) as InstitutionId[]) sim.quests[k] = s.quests?.[k] ?? 0;
   o.closedDown.clear();
   for (const id of s.org.closedDown) o.closedDown.add(id);
   // The team: rebuilt from the save, then trimmed or grown to the head counts.

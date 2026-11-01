@@ -20,13 +20,14 @@ import {
   type Object3D,
   type SkinnedMesh,
   type Texture,
+  type Bone,
 } from 'three';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { PALETTE } from '../config/palette';
-import type { Appearance, Pose } from './character';
+import type { Appearance, BodyState, Pose } from './character';
 
 /**
  * People built from sculpted CC0 base characters (Quaternius), dressed in
@@ -640,11 +641,53 @@ export class HumanFigure {
   }
 
   private disposed = false;
+  private body: BodyState = 'normal';
+  private bodyTime = Math.random() * 10;
+  /** The few bones a body state turns, looked up once by name. */
+  private bonesFor: { pelvis?: Bone; spine?: Bone; chest?: Bone; neck?: Bone; head?: Bone; armL?: Bone; armR?: Bone } | null = null;
+
+  setBodyState(state: BodyState): void {
+    this.body = state;
+  }
 
   update(dt: number, pose: Pose, speed: number): void {
     if (this.disposed) return;
     this.play(pose, speed);
     this.mixer.update(dt);
+    if (this.body !== 'normal') this.layerBody(dt, pose);
+  }
+
+  /**
+   * Turns a few bones on top of the clip just played (so it adds to it, every
+   * frame): the fentanyl fold and nod, a drunk sway, tripping, stimulants.
+   * The skeleton bends forward about its bones' local +x, sideways about z.
+   */
+  private layerBody(dt: number, pose: Pose): void {
+    if (!this.bonesFor) {
+      const by = (n: string) => this.mesh.skeleton.bones.find((b) => b.name === n);
+      this.bonesFor = { pelvis: by('pelvis'), spine: by('spine_02'), chest: by('spine_03'), neck: by('neck_01'), head: by('Head'), armL: by('upperarm_l'), armR: by('upperarm_r') };
+    }
+    const b = this.bonesFor;
+    const t = (this.bodyTime += dt);
+    const walking = pose === 'walk';
+    if (this.body === 'nod') {
+      const fold = walking ? 0.45 : 0.95 + 0.1 * Math.sin(t * 0.4);
+      b.spine?.rotateX(fold * 0.6);
+      b.chest?.rotateX(fold * 0.5);
+      b.neck?.rotateX(0.35 + 0.3 * Math.max(0, Math.sin(t * 0.7)));
+    } else if (this.body === 'drunk') {
+      b.pelvis?.rotateZ(Math.sin(t * 1.6) * 0.12);
+      b.spine?.rotateZ(Math.sin(t * 1.6 + 0.8) * 0.14);
+      b.head?.rotateZ(Math.sin(t * 1.1) * 0.16);
+    } else if (this.body === 'trip') {
+      b.neck?.rotateX(-0.4);
+      b.head?.rotateY(Math.sin(t * 0.5) * 0.8);
+      b.armL?.rotateZ(-0.3 - 0.2 * Math.sin(t * 0.8));
+      b.armR?.rotateZ(0.3 + 0.2 * Math.sin(t * 0.8 + 1));
+    } else {
+      b.chest?.rotateX(-0.08);
+      b.head?.rotateY(Math.sin(t * 11) * Math.sin(t * 3.3) * 0.2);
+    }
   }
 
   /** Frees the person's material; the shared geometry and clips stay for others. */

@@ -6,13 +6,14 @@ import { DoorState, WindowBank, approach } from './animated';
 import { add, bench, bin, box, cylinder, planter, signBoard, stanchion, tree } from './kit';
 import { acUnit, antenna, bike, drainpipe, flowerPot, roofVent, windowTrim } from './details';
 import { roofClutter, wallClutter } from './grit';
-import { AE_ALONG, AMBULANCE_BAY, LOTS, type P2, type PlaceLot } from './layout';
+import { AE_ALONG, AMBULANCE_BAY, LOTS, PATROL, PHARMACY_LOT, type P2, type PlaceLot } from './layout';
+import { registerBuilding } from './cityBuildings';
 import { glowMat, mat } from './materials';
 import { dynamic, mergeStatic } from './mergeStatic';
 import type { LocationVisual } from './buildings';
 
 /**
- * The four walk-in places of the wider district. Each is one parametric
+ * The walk-in places of the wider district, the foot patrol's table, and the pharmacy (a business). Each is one parametric
  * civic building (plinth, storeys, lit ground floor, sliding doors, canopy and
  * pixel sign) plus the details that make it recognisable at a glance.
  *
@@ -41,7 +42,7 @@ interface Frame {
   along(p: P2): number;
 }
 
-function frameFor(id: WalkInServiceId, lot: PlaceLot): Frame {
+function frameFor(id: string, lot: PlaceLot): Frame {
   const root = new Group();
   root.name = id;
   const { x0, x1, z0, z1 } = lot.rect;
@@ -168,30 +169,79 @@ function visual(id: WalkInServiceId, f: Frame, lot: PlaceLot, sh: Shell, extra: 
   };
 }
 
-// Community pharmacy with a needle and syringe programme: green cross on a
-// bracket, sharps return bin by the door, a second sign for the programme.
+// The community pharmacy: one of the neighbourhood's businesses, not a service of yours. A
+// green cross on a bracket and a sharps bin by the door; it sells syringes, at a price few
+// people who inject can pay. Lit as any shop in the evening; clickable for its card.
 
-export function buildPharmacy(random: Random): LocationVisual {
-  const lot = LOTS.pharmacy;
+export function buildPharmacyShop(random: Random): { root: Group; building: number } {
+  const lot = PHARMACY_LOT;
   const f = frameFor('pharmacy', lot);
   const sh = shell(f, lot, { wall: 0xc9c2b2, trim: 0x8f877a, accent: 0x3f8a5c, sign: 'PHARMACY', signFg: '#f2fff4', signBg: '#2f6a46', storey: 3.4 }, random);
   const g = f.body;
   const front = f.d / 2;
-  const cross = glowMat(0x1f5a36, 0x5bff8f, 0.3);
+  const cross = glowMat(0x1f5a36, 0x5bff8f, 1.2);
   const bracket = add(g, new Group());
   bracket.position.set(sh.doorX - 3.0, 3.7, front + 0.6);
   add(bracket, box(0.08, 0.08, 0.9, mat(PALETTE.metal), 0, 0.45, -0.3));
   add(bracket, box(0.12, 0.9, 0.3, cross, 0, 0, 0.2));
   add(bracket, box(0.12, 0.3, 0.9, cross, 0, 0.3, 0.2));
   add(g, box(0.5, 0.85, 0.4, mat(0xd8b23a), sh.doorX + 1.7, 0, front + 0.35));
-  add(g, box(0.36, 0.08, 0.1, mat(PALETTE.frame), sh.doorX + 1.7, 0.7, front + 0.56));
-  const nsp = signBoard('NSP + NALOXONE', 3.6, 0.5, '#fff6d8', '#2f3a52', 0.3);
-  add(g, nsp.mesh).position.set(sh.doorX + 4.0, 2.05, front + 0.1);
   add(g, planter(1.6, 0.5)).position.set(sh.doorX - 2.4, 0, front + 0.5);
-  return visual('pharmacy', f, lot, sh, (level) => {
-    cross.emissiveIntensity = 0.2 + 1.4 * level;
-    nsp.material.emissiveIntensity = 0.1 + 0.6 * level;
-  });
+  // A shop in the evening: lit at a steady level, nothing to animate.
+  sh.storefront.emissiveIntensity = 0.9;
+  sh.lobby.emissiveIntensity = 1.0;
+  sh.sign.emissiveIntensity = 0.8;
+  mergeStatic(f.root);
+  const { x0, x1, z0, z1 } = lot.rect;
+  return { root: f.root, building: registerBuilding(x0, x1, z0, z1, lot.height, true) };
+}
+
+// The streetworkers' foot patrol: no building, a folding table on the pavement by the squat with
+// kits, naloxone and a sharps bin, a lantern and a small sign; everything packs away off shift.
+
+export function buildFootPatrol(): LocationVisual {
+  const lot = LOTS.footPatrol;
+  const root = new Group();
+  root.name = 'footPatrol';
+  const kit = add(root, dynamic(new Group()));
+  const at = (q: P2, y = 0) => new Vector3(q.x, 0.12 + y, q.z);
+  const turn = PATROL.facing;
+  const table = add(kit, new Group());
+  table.position.copy(at(PATROL.table));
+  table.rotation.y = turn;
+  add(table, box(1.6, 0.05, 0.7, mat(0xe8e4dc), 0, 0.72, 0));
+  for (const [x, z] of [[-0.7, -0.28], [0.7, -0.28], [-0.7, 0.28], [0.7, 0.28]] as const) add(table, box(0.04, 0.72, 0.04, mat(PALETTE.metal), x, 0, z));
+  // On the table: kit boxes, a naloxone pouch, leaflets; under it, rucksacks.
+  for (const [x, c] of [[-0.45, 0x3a7ac8], [-0.1, 0x3a7ac8], [0.3, 0xc8402a]] as const) add(table, box(0.28, 0.16, 0.22, mat(c), x, 0.77, 0.05));
+  add(table, box(0.3, 0.02, 0.22, mat(0xf0ead0), 0.6, 0.77, 0.1));
+  for (const x of [-0.5, 0.45]) add(table, box(0.34, 0.45, 0.25, mat(0x2a3a2a), x, 0, -0.55));
+  // A yellow sharps bin at the end of the table and a lantern on it.
+  add(table, box(0.32, 0.5, 0.3, mat(0xe8c020), 1.05, 0, 0));
+  const lantern = glowMat(0x6a5a3a, 0xffd890, 1.6);
+  add(table, box(0.14, 0.24, 0.14, lantern, -0.72, 0.77, -0.2));
+  // A small sign on a pole: what the patrol hands out.
+  const sign = signBoard('NEEDLES  NALOXONE', 2.4, 0.42, '#ffffff', '#2e7d6b', 0.5);
+  add(table, cylinder(0.03, 2.1, mat(PALETTE.metal), 5, -0.95, 0, -0.3));
+  add(table, sign.mesh).position.set(-0.95, 2.1, -0.3);
+  kit.visible = false;
+  const { x0, x1, z0, z1 } = lot.rect;
+  let level = 0;
+  let target = 0;
+  return {
+    id: 'footPatrol',
+    root,
+    labelAnchor: at(PATROL.table, 3.2),
+    footprint: { x: (x0 + x1) / 2, z: (z0 + z1) / 2, rx: (x1 - x0) / 2 + 1, rz: (z1 - z0) / 2 + 1 },
+    setServiceLevel: (v) => { target = v; },
+    openDoor: () => {},
+    update(dt) {
+      level = approach(level, target, 1.6, dt);
+      const out = level > 0.15;
+      if (kit.visible !== out) kit.visible = out;
+      lantern.emissiveIntensity = 0.4 + 1.4 * level;
+      sign.material.emissiveIntensity = 0.1 + 0.6 * level;
+    },
+  };
 }
 
 // Drug checking service: calm teal frontage, benches and an info board for

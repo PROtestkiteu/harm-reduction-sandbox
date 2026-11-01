@@ -25,7 +25,7 @@ export interface Trait {
 
 export const TRAITS: Record<TraitId, Trait> = {
   peer: { label: t('Peer worker'), detail: t('Lived experience; people open up to them'), bonus: { dropIn: 0.3, outreach: 0.3, clubHr: 0.2, shelter: 0.2 } },
-  nurse: { label: t('Nurse'), detail: t('Wound care, overdose response, prescriptions'), bonus: { clinic: 0.4, pharmacy: 0.3, dropIn: 0.1 } },
+  nurse: { label: t('Nurse'), detail: t('Wound care, overdose response, prescriptions'), bonus: { clinic: 0.4, footPatrol: 0.3, dropIn: 0.1 } },
   chemist: { label: t('Chemist'), detail: t('Runs the analysis and explains results'), bonus: { drugChecking: 0.5 } },
   social: { label: t('Social worker'), detail: t('Housing, benefits and referrals'), bonus: { shelter: 0.35, dropIn: 0.2 } },
   languages: { label: t('Several languages'), detail: t('Reaches people others cannot'), bonus: {}, everywhere: 0.12 },

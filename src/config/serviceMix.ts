@@ -11,7 +11,7 @@ import { t } from '../i18n';
  * informs people, kits cut injecting harm, naloxone saves overdoses); the
  * sizes are placeholders for play.
  */
-export type Activity = 'checking' | 'needles' | 'naloxone' | 'counselling' | 'basics';
+export type Activity = 'checking' | 'kits' | 'needles' | 'naloxone' | 'counselling' | 'basics';
 
 export interface ActivityInfo {
   label: string;
@@ -28,6 +28,7 @@ export interface ActivityInfo {
 
 export const ACTIVITY: Record<Activity, ActivityInfo> = {
   checking: { label: t('Drug checking'), short: t('Checking'), cost: 1.8, time: 1.6, does: t('More substances checked: people learn what is in them.'), setup: 400 },
+  kits: { label: t('Test strips and reagent kits'), short: t('Test kits'), cost: 0.6, time: 0.5, does: t('People test their own drugs: fentanyl strips and reagents, even where lab checking is not allowed.') },
   needles: { label: t('Clean needles and syringes'), short: t('Needles'), cost: 1.0, time: 0.7, does: t('More people who inject leave with sterile kits.') },
   naloxone: { label: t('Naloxone and first aid'), short: t('Naloxone'), cost: 1.2, time: 0.9, does: t('Staff reach more overdoses in time.') },
   counselling: { label: t('Counselling and referrals'), short: t('Counselling'), cost: 0.7, time: 2.0, does: t('A better name with funders and neighbours; long talks.') },
@@ -37,10 +38,11 @@ export const ACTIVITY: Record<Activity, ActivityInfo> = {
 /** What each place can offer, in menu order. */
 export const SERVICE_ACTIVITIES: Record<ServiceId, readonly Activity[]> = {
   dropIn: ['counselling', 'needles', 'naloxone', 'basics', 'checking'],
-  outreach: ['needles', 'naloxone', 'checking', 'counselling', 'basics'],
-  clubHr: ['checking', 'naloxone', 'counselling', 'basics'],
-  pharmacy: ['needles', 'naloxone', 'counselling'],
-  drugChecking: ['checking', 'counselling'],
+  outreach: ['needles', 'naloxone', 'checking', 'kits', 'counselling', 'basics'],
+  clubHr: ['checking', 'kits', 'naloxone', 'counselling', 'basics'],
+  footPatrol: ['needles', 'naloxone', 'counselling'],
+  // Where lab checking is not allowed, a checking service still hands out test kits and advice.
+  drugChecking: ['checking', 'kits', 'counselling'],
   shelter: ['basics', 'counselling', 'naloxone'],
   clinic: ['counselling', 'naloxone', 'needles'],
 };

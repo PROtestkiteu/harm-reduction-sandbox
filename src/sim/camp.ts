@@ -47,6 +47,8 @@ export interface CampInput {
   crisis: number;
   /** How crowded the shelter is: its queue over its waiting places, 0 to 1. */
   shelterCrowded: number;
+  /** Extra shrinking per clock hour from the camper's housing referrals (0 without). */
+  referrals?: number;
 }
 
 export class Camp {
@@ -61,7 +63,7 @@ export class Camp {
     const hours = dtMinutes / 60;
     const warm = inp.season !== 'winter';
     const grow = (inp.shelterOpen ? 0 : CAMP.shelterShut) * (warm ? 1 : 0.4) + (warm ? CAMP.crowded * inp.shelterCrowded : 0) + CAMP.crisis * inp.crisis;
-    const shrink = (inp.shelterOpen ? CAMP.shelterOpen : 0) + (inp.outreachOpen ? CAMP.outreachOpen : 0);
+    const shrink = (inp.shelterOpen ? CAMP.shelterOpen : 0) + (inp.outreachOpen ? CAMP.outreachOpen : 0) + (inp.referrals ?? 0);
     // In winter the squat fills, partly from the camp; in the warm months it empties slowly.
     const moving = warm ? 0 : Math.min(this.size, CAMP.toSquat * hours);
     this.size = Math.min(1, Math.max(0, this.size + (grow - shrink) * hours - moving));
@@ -78,6 +80,11 @@ export class Camp {
   /** People living in the camp, for the cards (about 2 per tent, up to 14 tents). */
   get people(): number {
     return Math.round(this.size * 14) * 2;
+  }
+
+  /** People in tents by the railway station (about 2 per tent, up to 10 tents). */
+  get stationPeople(): number {
+    return Math.round(this.station * 10) * 2;
   }
 
   /** People living in the squat now (up to about 30). */

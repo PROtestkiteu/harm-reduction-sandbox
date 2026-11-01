@@ -354,7 +354,8 @@ export function emergencyVehicle(kind: 'police' | 'ambulance'): EmergencyVehicle
   const g = car(ambulance ? 0xe8e4dc : 0x1e2a4a, true, ambulance ? 'van' : 'saloon');
   g.rotation.z = 0;
   const p = PROFILES[ambulance ? 'van' : 'saloon'];
-  const roof = roofAt(p, 0) + 0.02;
+  // The roof's highest point under the bar (it crowns in the middle): the bar sits on top of it, not in it.
+  const roof = Math.max(roofAt(p, 0), roofAt(p, -0.2), roofAt(p, -0.4)) + 0.04;
   // Livery: a band along each side (yellow-green and red for the ambulance, white and blue for police).
   const band = vehicleMat(ambulance ? 0x9ac83a : 0xe8e8e4, 1);
   const band2 = vehicleMat(ambulance ? 0xc83a32 : 0x2a5ab8, 1);
@@ -365,9 +366,11 @@ export function emergencyVehicle(kind: 'police' | 'ambulance'): EmergencyVehicle
   // The light bar: two lamps that alternate when flashing.
   const left = glowMat(0x1e2a6a, 0x3a6aff, 0);
   const right = glowMat(ambulance ? 0x6a1e1e : 0x1e2a6a, ambulance ? 0xff3a2a : 0x3a6aff, 0);
-  g.add(box(1.1, 0.12, 0.3, vehicleMat(0x2a2a2e, 1), 0, roof, -0.2));
-  g.add(box(0.5, 0.14, 0.28, left, -0.28, roof + 0.02, -0.2));
-  g.add(box(0.5, 0.14, 0.28, right, 0.28, roof + 0.02, -0.2));
+  // A thin base plate on the roof, the two lamps on top of it, a dark divider between them.
+  g.add(box(1.16, 0.05, 0.32, vehicleMat(0x2a2a2e, 1), 0, roof, -0.2));
+  g.add(box(0.5, 0.15, 0.28, left, -0.29, roof + 0.05, -0.2));
+  g.add(box(0.5, 0.15, 0.28, right, 0.29, roof + 0.05, -0.2));
+  g.add(box(0.08, 0.15, 0.28, vehicleMat(0x2a2a2e, 1), 0, roof + 0.05, -0.2));
   let t = 0;
   const v: EmergencyVehicle = {
     group: g,

@@ -133,7 +133,10 @@ const SITES = {
   east: { front: p(20.8, 34), face: '+x', along: 18, depth: 16.8 },
 } as const satisfies Record<string, { front: P2; face: '+x' | '+z'; along: number; depth: number }>;
 type SiteId = keyof typeof SITES;
-type Venue = 'club' | 'dropIn' | WalkInServiceId;
+/** Walk-in services with a building of their own (the foot patrol works from a table at the squat). */
+type SitedWalkIn = Exclude<WalkInServiceId, 'footPatrol'>;
+/** What takes a site: the club, the drop-in, the sited walk-ins, and the pharmacy (a business, not yours). */
+type Venue = 'club' | 'dropIn' | 'pharmacy' | SitedWalkIn;
 const VENUES: Venue[] = ['club', 'dropIn', 'pharmacy', 'drugChecking', 'shelter', 'clinic'];
 
 /** Each design's own front middle, facing and size, as built. */
@@ -175,8 +178,8 @@ function rectOn(site: SiteId, along: number, depth: number): Rect {
     : r(front.x - along / 2, front.x + along / 2, front.z - depth, front.z);
 }
 
-const HEIGHT: Record<WalkInServiceId, number> = { pharmacy: 7.2, drugChecking: 6.4, shelter: 9.6, clinic: 10.8 };
-function lotFor(id: WalkInServiceId): PlaceLot {
+const HEIGHT: Record<SitedWalkIn | 'pharmacy', number> = { pharmacy: 7.2, drugChecking: 6.4, shelter: 9.6, clinic: 10.8 };
+function lotFor(id: SitedWalkIn | 'pharmacy'): PlaceLot {
   const site = SITE_OF[id];
   const f = siteFrame(site);
   const along = Math.min(SITES[site].along, 13);
@@ -193,18 +196,17 @@ function lotFor(id: WalkInServiceId): PlaceLot {
   };
 }
 
-export const LOTS: Record<WalkInServiceId, PlaceLot> = {
-  pharmacy: lotFor('pharmacy'),
-  drugChecking: lotFor('drugChecking'),
-  shelter: lotFor('shelter'),
-  clinic: lotFor('clinic'),
-};
+/** The community pharmacy: one of the neighbourhood's businesses (it sells syringes; few people who inject can pay). */
+export const PHARMACY_LOT: PlaceLot = lotFor('pharmacy');
+/** The walk-ins with buildings of their own. */
+const SITED_LOTS: Record<SitedWalkIn, PlaceLot> = { drugChecking: lotFor('drugChecking'), shelter: lotFor('shelter'), clinic: lotFor('clinic') };
 
 /** The ground every venue covers this launch: other buildings keep clear of it. */
 export const VENUE_RECTS: readonly Rect[] = [
   rectOn(SITE_OF.club, DESIGN.club.along, DESIGN.club.depth),
   rectOn(SITE_OF.dropIn, DESIGN.dropIn.along, DESIGN.dropIn.depth),
-  ...Object.values(LOTS).map((l) => l.rect),
+  PHARMACY_LOT.rect,
+  ...Object.values(SITED_LOTS).map((l) => l.rect),
 ];
 
 /** Which way the club's and the drop-in's fronts face this launch. */
@@ -239,6 +241,40 @@ export const SQUAT_SPOT = (CAMPER_AT + 1 + Math.floor(Math.random() * (CAMPER_SI
  */
 export const CAMPER_SPOTS: readonly { name: string; x: number; z: number; rot: number }[] = CAMPER_SITES.map((spot, i) =>
   i === SQUAT_SPOT ? { ...spot, name: t('By the squat, {street}', { street: spot.name.split(',')[0] }) } : spot);
+
+/**
+ * The streetworkers' foot patrol works the pavement by the squat: a folding
+ * table seven metres along from where a camper would park (so one can stand
+ * there too), staff on the building side, people served on the kerb side,
+ * a short queue along the pavement. Coordinates in the camper's own design frame.
+ */
+const SQUAT_FRAME: Frame = { ...CAMPER_SITES[SQUAT_SPOT], home: p(HOME_CAMPER.x, (HOME_CAMPER.z0 + HOME_CAMPER.z1) / 2) };
+const patrol = (q: P2) => toWorld(SQUAT_FRAME, q);
+const PZ = HOME_CAMPER.z1 + 4;
+export const PATROL = {
+  frame: SQUAT_FRAME,
+  table: patrol(p(1.2, PZ)),
+  staff: [patrol(p(2.0, PZ - 0.5)), patrol(p(2.0, PZ + 0.5)), patrol(p(2.1, PZ + 1.4))],
+  served: [patrol(p(0.45, PZ - 0.5)), patrol(p(0.45, PZ + 0.5)), patrol(p(0.45, PZ + 1.4))],
+  /** Which way the served face (towards the table and the staff). */
+  facing: SQUAT_FRAME.rot + Math.PI / 2,
+} as const;
+
+function patrolLot(): PlaceLot {
+  const c = [p(0.2, PZ - 1.2), p(2.4, PZ + 2)].map(patrol);
+  return {
+    rect: r(Math.min(c[0].x, c[1].x), Math.max(c[0].x, c[1].x), Math.min(c[0].z, c[1].z), Math.max(c[0].z, c[1].z)),
+    face: SQUAT_FRAME.rot === 0 ? '+x' : '+z',
+    height: 2,
+    door: PATROL.served[0],
+    inside: PATROL.served[0],
+    queueHead: patrol(p(0.45, PZ - 1.6)),
+    queueDir: turn(SQUAT_FRAME, p(0, -1)),
+  };
+}
+
+export const LOTS: Record<WalkInServiceId, PlaceLot> = { footPatrol: patrolLot(), ...SITED_LOTS };
+
 let camperAt = CAMPER_AT;
 /** The kerb spot the first camper stands at now. */
 export const camperSpot = (): number => camperAt;
@@ -449,7 +485,7 @@ export const SERVICE_NODES: Record<'dropIn' | 'outreach' | 'clubHr' | 'club' | W
   outreach: nearestNodeTo(SPOTS.camperCounters[0]),
   clubHr: SITE_OF.club === 'centreWest' ? 'terrace' : nodeFor('club'),
   club: nodeFor('club'),
-  pharmacy: nodeFor('pharmacy'),
+  footPatrol: nearestNodeTo(PATROL.table),
   drugChecking: nodeFor('drugChecking'),
   shelter: nodeFor('shelter'),
   clinic: nodeFor('clinic'),

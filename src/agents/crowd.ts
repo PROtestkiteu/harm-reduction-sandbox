@@ -16,6 +16,7 @@ import {
   ROAD,
   SERVICE_NODES,
   LOTS,
+  PATROL,
   SPOTS,
   STAND_QUEUE_DIR,
   VENUE_FRAME,
@@ -32,7 +33,7 @@ import type { CityHappening, PasserbyKind } from '../sim/cityLife';
 import { approach } from '../world/animated';
 import { speedForGap, type TrafficCar } from '../world/traffic';
 import { PALETTE } from '../config/palette';
-import { CharacterRig, randomAppearance, type Appearance, type Archetype, type Figure, type Pose } from './character';
+import { CharacterRig, randomAppearance, type Appearance, type Archetype, type BodyState, type Figure, type Pose } from './character';
 import { HumanFigure, peopleLibrary } from './humanFigure';
 import { Dog } from './dog';
 import type { PatrolStyle } from '../config/contextFactors';
@@ -74,7 +75,7 @@ export type Mode =
   | 'leaving';
 
 /** Who someone is in the scene, in neutral terms. */
-export type PersonRole = 'staff' | 'visitor' | 'clubgoer' | 'passerby' | 'police' | 'resident' | 'seller' | 'sleeper' | 'cleaner';
+export type PersonRole = 'staff' | 'visitor' | 'clubgoer' | 'passerby' | 'police' | 'resident' | 'seller' | 'sleeper' | 'cleaner' | 'bouncer';
 /** Roles placed by context or the street, not by a visit: they are not stopped, robbed or drawn into encounters. */
 const SPECIAL_ROLES: ReadonlySet<PersonRole> = new Set(['police', 'resident', 'seller', 'sleeper', 'cleaner']);
 /** Where someone is heading or what they are there for. */
@@ -154,6 +155,8 @@ interface Agent {
   /** Pending consequence of unmet need, carried out when the person next leaves. */
   aftermath?: { hiddenUse: boolean; adverse: boolean; acute: AcuteOutcome | null };
   intoxicated?: boolean;
+  /** How their body carries what they took; worked out once, the first time they are drawn. */
+  body?: BodyState;
   /** Sitting on the ground (hidden spot) or lying in the recovery position (adverse placeholder). */
   ground?: 'sit' | 'lying';
 }
@@ -283,6 +286,7 @@ export class Crowd {
         const what = e.harm.kind === 'cold' ? t('Someone sleeping rough was found too cold to wake.') : t('Someone collapsed in the heat, badly dehydrated, with no shade or water.');
         const call = e.harm.reached ? t('Outreach staff reached them and called it in.') : t('A passer-by called it in.');
         this.world.dispatch('ambulance', spot.x, spot.z, [what, call, e.harm.died ? t('They did not survive.') : ''].filter(Boolean).join(' '));
+        this.onMark?.(spot, e.harm.died ? 'skull' : 'cross');
         return;
       }
     }
@@ -367,7 +371,7 @@ export class Crowd {
       const service: ServiceId = intent === 'dropIn' || intent === 'outreach' ? intent : 'clubHr';
       return this.approachThenTurnBack(a, service);
     }
-    if (intent === 'dropIn' || intent === 'outreach' || intent === 'pharmacy' || intent === 'drugChecking' || intent === 'shelter' || intent === 'clinic') {
+    if (intent === 'dropIn' || intent === 'outreach' || intent === 'footPatrol' || intent === 'drugChecking' || intent === 'shelter' || intent === 'clinic') {
       const sat = this.pickSatellite(intent);
       if (sat) return this.goToSatellite(a, sat);
     }
@@ -382,7 +386,7 @@ export class Crowd {
         if (wantsStand) this.walk(a, routeTo(a.pos, SERVICE_NODES.clubHr, a.offset), () => this.arriveAtStand(a));
         else this.goToClubQueue(a);
         break;
-      case 'pharmacy':
+      case 'footPatrol':
       case 'drugChecking':
       case 'shelter':
       case 'clinic': {
@@ -629,10 +633,28 @@ export class Crowd {
     a.mode = 'walking';
     a.service = id;
     a.pose = 'stand';
+    // The foot patrol is a table on the pavement: people are served standing at it, in view.
+    if (id === 'footPatrol') {
+      const slot = this.freeCounter(a, 'footPatrol', PATROL.served.length);
+      a.staffPost = slot;
+      this.walk(a, [PATROL.served[slot]], () => {
+        a.mode = 'served';
+        a.pose = 'talk';
+        a.faceHeading = PATROL.facing;
+      });
+      return;
+    }
     this.walk(a, [LOTS[id].door, LOTS[id].inside], () => this.hide(a));
   }
 
   private exitWalkIn(a: Agent, id: WalkInServiceId): void {
+    if (id === 'footPatrol') {
+      a.mode = 'walking';
+      a.goal = 'exit';
+      a.staffPost = undefined;
+      this.walk(a, [NODES[SERVICE_NODES.footPatrol]], () => this.leaveAnywhere(a));
+      return;
+    }
     this.show(a, LOTS[id].inside);
     a.mode = 'walking';
     a.goal = 'exit';
@@ -669,8 +691,8 @@ export class Crowd {
       return;
     }
     if (isWalkIn(service)) {
-      // Someone admitted may still be walking in: let them reach the inside first.
-      if (a.mode === 'inside') this.exitWalkIn(a, service);
+      // Someone admitted may still be walking in: let them reach the inside (or the table) first.
+      if (a.mode === 'inside' || (service === 'footPatrol' && a.mode === 'served')) this.exitWalkIn(a, service);
       else a.onArrive = () => this.exitWalkIn(a, service);
       return;
     }
@@ -692,7 +714,7 @@ export class Crowd {
       dropIn: ['eN2', 'xN2'],
       outreach: ['eS2', 'xS2'],
       clubHr: ['wS2', 'sW'],
-      pharmacy: ['wN2', 'nW'],
+      footPatrol: ['eN2', 'wS2'],
       drugChecking: ['eN2', 'nE'],
       shelter: ['wS2', 'sW'],
       clinic: ['xS2', 'sE'],
@@ -707,7 +729,10 @@ export class Crowd {
       a.mode = 'post';
       this.sim.staffArrived(service);
     };
-    if (isWalkIn(service)) {
+    if (service === 'footPatrol') {
+      // On foot to the squat, then behind the table, facing the pavement.
+      this.walk(a, [...routeTo(from, SERVICE_NODES.footPatrol, a.offset), PATROL.staff[Math.min(post, PATROL.staff.length - 1)]], () => { a.faceHeading = PATROL.facing + Math.PI; arrive(); });
+    } else if (isWalkIn(service)) {
       const lot = LOTS[service];
       this.walk(a, [...routeTo(from, SERVICE_NODES[service], a.offset), lot.door, lot.inside], () => { this.hide(a); arrive(); });
     } else if (service === 'dropIn') {
@@ -875,7 +900,83 @@ export class Crowd {
    * leaves their post, stays with them, and returns; otherwise they lie alone
    * for longer. Counted by the simulation either way.
    */
+  /** The club's door staff, while it is open. */
+  private readonly bouncers: Agent[] = [];
+  /** Seconds until a drunk club leaver next bothers someone. */
+  private harassIn = 40;
+
+  /** Two bouncers at the club door while the club is open; they go home when it shuts. */
+  private syncBouncers(): void {
+    const open = this.sim.clubOpen;
+    if (!open) {
+      for (const b of this.bouncers.splice(0)) this.leave(b, pick(this.random, ENTRY_NODES));
+      return;
+    }
+    while (this.bouncers.length < 2 && this.agents.size < MAX_PEOPLE) {
+      const i = this.bouncers.length;
+      const door = SPOTS.clubDoor;
+      const spot = { x: door.x + (i ? 0.9 : -0.9) * Math.cos(VENUE_ROT.club), z: door.z - (i ? 0.9 : -0.9) * Math.sin(VENUE_ROT.club) };
+      const b = this.createAgent(spot, 'bouncer', { style: 'technoBlack' });
+      b.mode = 'post';
+      b.pose = 'stand';
+      b.faceHeading = VENUE_ROT.club + Math.PI / 2;
+      this.bouncers.push(b);
+    }
+  }
+
+  /**
+   * Now and then, while the club is open, a drunk club leaver bothers someone
+   * nearby: both stop, the other person is upset, a bouncer turns to look.
+   */
+  private maybeHarass(dt: number): void {
+    if (!this.sim.clubOpen || (this.harassIn -= dt) > 0) return;
+    this.harassIn = 60 + this.random() * 90;
+    for (const d of this.agents.values()) {
+      // Drunk, or wired on stimulants and on edge.
+      if (!(d.intoxicated || d.body === 'wired') || !d.visible || d.mode !== 'walking') continue;
+      let target: Agent | undefined;
+      let best = 6;
+      for (const o of this.agents.values()) {
+        if (o === d || !o.visible || o.role === 'police' || o.role === 'bouncer' || o.rig.look.staff || (o.mode !== 'walking' && o.mode !== 'leaving')) continue;
+        const k = dist(o.pos, d.pos);
+        if (k < best) { best = k; target = o; }
+      }
+      if (!target) continue;
+      const other = target;
+      this.holdFor(d, 5, headingTo(d.pos, other.pos));
+      this.holdFor(other, 4, headingTo(other.pos, d.pos), () => this.setMood(other, 'adverse', 8));
+      const watcher = this.bouncers[0];
+      if (watcher) watcher.faceHeading = headingTo(watcher.pos, d.pos);
+      this.sim.recordHarassment();
+      return;
+    }
+  }
+
+  /**
+   * How someone's body shows what they took, decided once: visibly drunk club
+   * leavers sway; half of the people using opioids fold forward and nod (and
+   * walk slower); most on stimulants are tense and quick; a third on MDMA trip,
+   * looking up and around. Everyone else walks as usual.
+   */
+  private settleBody(a: Agent): void {
+    const use = a.visitor !== undefined ? this.sim.substanceOf(a.visitor) : undefined;
+    const roll = (a.id * 2654435761 % 1000) / 1000;
+    const body: BodyState = a.intoxicated ? 'drunk'
+      : use === 'opioid' && roll < 0.5 ? 'nod'
+        : (use === 'stimulant' || use === 'cocaine') && roll < 0.65 ? 'wired'
+          : use === 'mdma' && roll < 0.35 ? 'trip'
+            : 'normal';
+    a.body = body;
+    if (body === 'nod') a.speed *= 0.6;
+    else if (body === 'wired') a.speed *= 1.35;
+    a.rig.setBodyState(body);
+  }
+
+  /** Shows what happened to someone where it happened (a badge rising): set by the game. */
+  onMark: ((at: P2, icon: 'skull' | 'cuffs' | 'cross') => void) | null = null;
+
   private collapse(a: Agent, acute: AcuteOutcome, then: () => void): void {
+    this.onMark?.(a.pos, 'cross');
     // An overdose or collapse: an ambulance is called to the nearest road.
     this.world.dispatch('ambulance', a.pos.x, a.pos.z, acute.helpedBy
       ? t('Someone collapsed in the street, an overdose or a bad reaction. Staff from a service reached them and called it in.')
@@ -1056,6 +1157,11 @@ export class Crowd {
     while (this.sleepers.length < n.roughSleepers) this.sleepers.push(this.spawnStreetFigure('sleeper', SLEEP_SPOTS[this.sleepers.length]));
   }
 
+  /** Where the police officers on foot stand now (visible ones). */
+  officerSpots(): P2[] {
+    return this.officers.filter((o) => o.visible).map((o) => ({ x: o.pos.x, z: o.pos.z }));
+  }
+
   /** Someone visible within 6 m ahead of a car at (x, z) heading (dx, dz), and within 1.6 m of its path. */
   someoneAhead(x: number, z: number, dx: number, dz: number): boolean {
     for (const a of this.agents.values()) {
@@ -1169,6 +1275,7 @@ export class Crowd {
         this.officers.splice(this.officers.indexOf(o), 1);
         const exit = pick(this.random, ENTRY_NODES);
         person.aftermath = undefined;
+        this.onMark?.(person.pos, 'cuffs');
         this.holdFor(person, 4, headingTo(person.pos, o.pos), () => { this.setMood(person, 'unmet', Infinity); this.leave(person, exit); });
         this.holdFor(o, 4.6, headingTo(o.pos, person.pos), () => this.leave(o, exit));
       } else {
@@ -1221,6 +1328,8 @@ export class Crowd {
   }
 
   private spawnBus(): void {
+    // One night bus on the street at a time: the next waits for this one to be gone.
+    if (this.cars.some((c) => c.stopAt !== undefined)) return;
     const last = this.cars[this.cars.length - 1];
     if (last && last.z < -CAR_RUN + 8 + last.half) return;
     const group = bus();
@@ -1364,6 +1473,8 @@ export class Crowd {
     for (const o of this.officers) if (o.visible && o.mode !== 'leaving') this.ringAt.push(o.pos);
     this.rings.update(this.ringAt, deterrenceRadius(this.sim.context.deterrence));
     this.streetEncounters(dt);
+    this.syncBouncers();
+    this.maybeHarass(dt);
     for (const s of this.staffQueue) s.delay -= dt;
     for (let i = this.staffQueue.length - 1; i >= 0; i--) {
       const s = this.staffQueue[i];
@@ -1472,6 +1583,7 @@ export class Crowd {
     }
     if (a.faceHeading !== undefined && !a.route.length) a.heading = turn(a.heading, a.faceHeading, 5, dt);
     const moving = a.route.length > 0;
+    if (a.body === undefined) this.settleBody(a);
     a.rig.update(dt, moving ? 'walk' : a.dancing ? 'dance' : a.pose === 'walk' ? 'stand' : a.pose, a.speed);
     a.dog?.update(dt, moving, false);
   }
@@ -1652,7 +1764,7 @@ const STYLE_MIX: Partial<Record<Intent, Mix>> = {
   shelter: [['unhoused', 8], ['everyday', 1.5], ['older', 1], ['worker', 0.5]],
   dropIn: [['unhoused', 3], ['everyday', 3], ['older', 1], ['worker', 1], ['student', 1], ['raver', 0.6], ['punk', 0.8]],
   outreach: [['unhoused', 4], ['everyday', 2], ['raver', 1], ['punk', 1], ['worker', 1], ['older', 0.6]],
-  pharmacy: MIXED,
+  footPatrol: MIXED,
   clinic: MIXED,
   passerby: [['tourist', 2], ['office', 2], ['worker', 2], ['student', 2], ['older', 1.5], ['everyday', 3], ['raver', 0.8], ['unhoused', 0.8], ['punk', 0.6], ['goth', 0.4], ['hiphop', 0.8], ['metal', 0.4], ['technoBlack', 0.5]],
 };

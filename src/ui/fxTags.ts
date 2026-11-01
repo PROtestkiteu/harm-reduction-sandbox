@@ -1,14 +1,18 @@
 import type { RaveTheme } from '../world/eventFx';
 import { t } from '../i18n';
 
-export type FxKind = 'rave' | 'raid' | 'sweep' | 'alert' | 'press';
+export type FxKind = 'rave' | 'raid' | 'sweep' | 'alert' | 'press' | 'threatPress' | 'threatRaid' | 'threatOfficer' | 'threatCar';
 
 const TEXT = (kind: FxKind, theme: RaveTheme | null): string =>
   kind === 'rave' ? (theme === 'wixapol' ? t('Wixapol: flash rave') : theme === 'hazel' ? t('DJ Hazel in memoriam') : t('Pop-up party'))
     : kind === 'raid' ? t('Police raid')
       : kind === 'sweep' ? t('Camp being cleared')
         : kind === 'alert' ? t('Bad batch: warning out')
-          : t('Press at the door');
+          : kind === 'press' ? t('Press at the door')
+            : kind === 'threatPress' ? t('TV crew: visitors stay away')
+              : kind === 'threatRaid' ? t('Raid: visitors stay away')
+                : kind === 'threatOfficer' ? t('Police: people turn back')
+                  : t('Police car: people turn back');
 
 /**
  * Name tags over the big events on the street ("Police raid", "Wixapol"),

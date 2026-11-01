@@ -15,10 +15,10 @@ import { t } from '../i18n';
  */
 
 /** Services that can open a satellite in a rented shop unit. */
-export const SATELLITE_SERVICES = ['dropIn', 'drugChecking', 'pharmacy'] as const;
+export const SATELLITE_SERVICES = ['dropIn', 'drugChecking', 'footPatrol'] as const;
 export type SatelliteService = (typeof SATELLITE_SERVICES)[number];
 /** What a satellite is called on the street and in notices. */
-export const SATELLITE_NAME: Record<SatelliteService, string> = { dropIn: t('drop-in'), drugChecking: t('drug checking point'), pharmacy: t('needle exchange') };
+export const SATELLITE_NAME: Record<SatelliteService, string> = { dropIn: t('drop-in'), drugChecking: t('drug checking point'), footPatrol: t('needle exchange') };
 
 export const PROPERTY = {
   /** Shop units the model tracks around the services. */

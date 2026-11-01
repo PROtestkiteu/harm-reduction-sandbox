@@ -1,9 +1,9 @@
 /** Walk-in services in the new district blocks: people queue at a door, go inside, come out served. */
-export type WalkInServiceId = 'pharmacy' | 'drugChecking' | 'shelter' | 'clinic';
+export type WalkInServiceId = 'footPatrol' | 'drugChecking' | 'shelter' | 'clinic';
 export type ServiceId = 'dropIn' | 'outreach' | 'clubHr' | WalkInServiceId;
 export type LocationId = 'dropIn' | 'outreach' | 'club' | WalkInServiceId;
 
-export const WALK_IN_SERVICE_IDS: readonly WalkInServiceId[] = ['pharmacy', 'drugChecking', 'shelter', 'clinic'];
+export const WALK_IN_SERVICE_IDS: readonly WalkInServiceId[] = ['footPatrol', 'drugChecking', 'shelter', 'clinic'];
 export const SERVICE_IDS: readonly ServiceId[] = ['dropIn', 'outreach', 'clubHr', ...WALK_IN_SERVICE_IDS];
 export const LOCATION_IDS: readonly LocationId[] = ['dropIn', 'outreach', 'club', ...WALK_IN_SERVICE_IDS];
 

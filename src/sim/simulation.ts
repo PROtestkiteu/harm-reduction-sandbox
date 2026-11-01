@@ -4,6 +4,9 @@ import { CRISIS } from '../config/crisis';
 import { HUSTLE } from '../config/hustles';
 import { CONCESSIONS, FAVOUR, FAVOURS, type ConcessionId, type FavourId } from '../config/favours';
 import { CAMP, Camp } from './camp';
+import { ParkLife } from './parkLife';
+import { QUESTS, type InstitutionId } from '../config/institutionQuests';
+import { CAMPER_PATH, CAMPER_PATH_EFFECT, type CamperPath } from '../config/camperPaths';
 import { CityStress, STRESS } from './cityStress';
 import { VENUE_KINDS, VITALITY, Vitality, type VenueKind } from './vitality';
 import { ACTIVITY, type Activity } from '../config/serviceMix';
@@ -31,7 +34,7 @@ export const INVEST = {
   wearPerVisit: 0.003,
 };
 
-const SERVICE_LABEL: Record<ServiceId, string> = { dropIn: t('Drop-in centre'), outreach: t('Outreach camper'), clubHr: t('Club stand'), pharmacy: t('Pharmacy'), drugChecking: t('Drug checking'), shelter: t('Shelter'), clinic: t('Clinic') };
+const SERVICE_LABEL: Record<ServiceId, string> = { dropIn: t('Drop-in centre'), outreach: t('Outreach camper'), clubHr: t('Club stand'), footPatrol: t('Foot patrol'), drugChecking: t('Drug checking'), shelter: t('Shelter'), clinic: t('Clinic') };
 import { Property, PROPERTY, SATELLITE_NAME, type SatelliteService } from './property';
 import { SEASON_PROFILES } from '../config/seasons';
 import type { Season } from './calendar';
@@ -144,6 +147,8 @@ export interface CheckingCounts {
   resultsReceived: number;
   unexpected: number;
   changedPlans: number;
+  /** Fentanyl strips and reagent kits handed out: people test their own (no lab result, no early warning). */
+  selfTests: number;
 }
 
 export class ServiceModel {
@@ -226,7 +231,7 @@ export class Simulation {
     passerby: ILLUSTRATIVE.passersbyPerMinute,
     car: ILLUSTRATIVE.carsPerMinute,
     leaver: ILLUSTRATIVE.club.leaversPerMinute,
-    pharmacy: ILLUSTRATIVE.services.pharmacy.demandPerMinute,
+    footPatrol: ILLUSTRATIVE.services.footPatrol.demandPerMinute,
     drugChecking: ILLUSTRATIVE.services.drugChecking.demandPerMinute,
     shelter: ILLUSTRATIVE.services.shelter.demandPerMinute,
     clinic: ILLUSTRATIVE.services.clinic.demandPerMinute,
@@ -307,6 +312,14 @@ export class Simulation {
 
   /** A camper (the first or an extra one) stands by the squat: its residents come to the counter. */
   squatCovered = false;
+  /** Joggers, the yoga class, a family picnic: what goes on in the big park, and what spoils it. */
+  readonly park = new ParkLife();
+  /** Steps done in each institution's side quest. */
+  readonly quests: Record<InstitutionId, number> = { police: 0, cityHall: 0, hospital: 0, sobering: 0 };
+  /** What the outreach camper specialises in, if anything. */
+  camperPath: CamperPath | null = null;
+  /** Per service: extra turning back from something on the street nearby, and until when. */
+  private readonly localDeterrence = new Map<ServiceId, { extra: number; until: number }>();
   /** The outreach camper is driving to a new spot: closed until then (in `org.now` minutes). */
   private movingUntil: number | null = null;
   private movingWasOn = true;
@@ -322,7 +335,7 @@ export class Simulation {
   private readonly wavesTonight = new Set<string>();
   /** Paid staff assigned across services (they draw wages). */
   private paidOnShift = 0;
-  readonly checking: CheckingCounts = { samples: 0, resultsReceived: 0, unexpected: 0, changedPlans: 0 };
+  readonly checking: CheckingCounts = { samples: 0, resultsReceived: 0, unexpected: 0, changedPlans: 0, selfTests: 0 };
   /** Possession stops that took place in the scene, and how many ended in arrest. */
   policeStops = 0;
   arrests = 0;
@@ -349,7 +362,7 @@ export class Simulation {
       dropIn: new ServiceModel('dropIn', p.dropIn),
       outreach: new ServiceModel('outreach', p.outreach),
       clubHr: new ServiceModel('clubHr', p.clubHr),
-      pharmacy: new ServiceModel('pharmacy', p.pharmacy),
+      footPatrol: new ServiceModel('footPatrol', p.footPatrol),
       drugChecking: new ServiceModel('drugChecking', p.drugChecking),
       shelter: new ServiceModel('shelter', p.shelter),
       clinic: new ServiceModel('clinic', p.clinic),
@@ -370,7 +383,7 @@ export class Simulation {
       passerby: this.random() * 3,
       car: 3 + this.random() * 6,
       leaver: 5 + this.random() * 10,
-      pharmacy: this.random() * 6,
+      footPatrol: this.random() * 6,
       drugChecking: this.random() * 6,
       shelter: this.random() * 6,
       clinic: this.random() * 6,
@@ -428,13 +441,13 @@ export class Simulation {
           this.applyContext();
           break;
         case 'dropIn.staff': case 'outreach.staff': case 'clubHr.staff':
-        case 'pharmacy.staff': case 'drugChecking.staff': case 'shelter.staff': case 'clinic.staff':
+        case 'footPatrol.staff': case 'drugChecking.staff': case 'shelter.staff': case 'clinic.staff':
           this.setStaff(serviceOf(key), value); break;
         case 'dropIn.waiting': case 'outreach.waiting': case 'clubHr.waiting':
-        case 'pharmacy.waiting': case 'drugChecking.waiting': case 'shelter.waiting': case 'clinic.waiting':
+        case 'footPatrol.waiting': case 'drugChecking.waiting': case 'shelter.waiting': case 'clinic.waiting':
           this.services[serviceOf(key)].params.waitingSlots = value; break;
         case 'dropIn.patience': case 'outreach.patience': case 'clubHr.patience':
-        case 'pharmacy.patience': case 'drugChecking.patience': case 'shelter.patience': case 'clinic.patience':
+        case 'footPatrol.patience': case 'drugChecking.patience': case 'shelter.patience': case 'clinic.patience':
           this.services[serviceOf(key)].params.patienceSeconds = value; break;
         default: { const unhandled: never = key; throw new Error(`Unhandled sandbox setting ${String(unhandled)}`); }
       }
@@ -458,6 +471,11 @@ export class Simulation {
     if (id === 'club' && this.clockMinutes >= CLUB_CLOSES && this.clockMinutes < CLUB_OPENS) return 0;
     // Party arrivals follow whichever party is on (illustrative per minute).
     if (id === 'party') return this.mods.party === 'festival' ? 14 : this.mods.party === 'popUp' ? 6 : 0;
+    if (id === 'outreach' && this.camperPath === 'nightlife') return this.baseRate(id) * CAMPER_PATH_EFFECT.nightlifeDemand;
+    return this.baseRate(id);
+  }
+
+  private baseRate(id: RateId): number {
     // Events boost the original flows; walk-in services keep their own rate.
     const boost = id in this.mods.demand ? this.mods.demand[id as keyof typeof this.mods.demand] : 1;
     // The street feeds back: a good name pulls people from elsewhere; an unsafe-feeling street has fewer passers-by.
@@ -981,7 +999,7 @@ export class Simulation {
       publicAlerts: this.context.publicAlerts,
       checksDone: this.checking.samples,
       criminalPossession: this.policy.criminalPossession,
-      reputation: (this.org.now < this.mediaHit.until ? this.mediaHit.factor : 1) * this.mixAverage('counselling', 0.9, 0.1) * (1 - CRISIS.grantCut * this.crisis) * (1 - STRESS.policeGrantCut * this.cityStress.police),
+      reputation: (this.camperPath === 'social' ? CAMPER_PATH_EFFECT.socialReputation : 1) * (this.org.now < this.mediaHit.until ? this.mediaHit.factor : 1) * this.mixAverage('counselling', 0.9, 0.1) * (1 - CRISIS.grantCut * this.crisis) * (1 - STRESS.policeGrantCut * this.cityStress.police),
     };
   }
 
@@ -989,6 +1007,67 @@ export class Simulation {
   readonly mediaHit = { factor: 1, until: 0 };
 
   /** A media storm: funders hesitate for `nights` nights, and answering it costs the team time and energy. */
+  /**
+   * Takes the next step of an institution's side quest: pays for it and
+   * returns what it taught, or null if it cannot be paid (or is all done).
+   * `finished` is true on the last step.
+   */
+  questStep(id: InstitutionId): { lesson: string; finished: boolean } | null {
+    const q = QUESTS[id];
+    const done = this.quests[id];
+    const step = q.steps[done];
+    if (!step || !this.org.spend(step.cost, false)) return null;
+    this.quests[id] = done + 1;
+    const finished = done + 1 === q.steps.length;
+    this.org.notice(this.clockMinutes, finished ? `${step.lesson} ${q.done}` : step.lesson);
+    return { lesson: step.lesson, finished };
+  }
+
+  /** Whether an institution's side quest is complete. */
+  allied(id: InstitutionId): boolean {
+    return this.quests[id] >= QUESTS[id].steps.length;
+  }
+
+  /** What a visitor uses, for how they look on the street (read only). */
+  substanceOf(visitor: VisitorId): Substance | undefined {
+    return this.profiles.get(visitor)?.substance;
+  }
+
+  /** Whether the club is open now (its door staff are out). */
+  get clubOpen(): boolean {
+    return !(this.clockMinutes >= CLUB_CLOSES && this.clockMinutes < CLUB_OPENS);
+  }
+
+  /** A drunk club leaver bothered someone in the street: the street feels a little less safe. */
+  recordHarassment(): void {
+    const st = this.neighbourhood.state;
+    st.safety = Math.max(0, st.safety - 0.004);
+  }
+
+  /** Specialises the camper (or changes its path): pays for the kit and training. False if it cannot pay. */
+  setCamperPath(path: CamperPath): boolean {
+    if (this.camperPath === path) return false;
+    if (!this.org.spend(CAMPER_PATH[path].cost, false)) return false;
+    this.camperPath = path;
+    return true;
+  }
+
+  /**
+   * Something on the street near these services (a TV crew at the door, a raid)
+   * makes more of the people heading there turn back, by `extra`, for `minutes`.
+   */
+  deterNear(services: readonly ServiceId[], extra: number, minutes: number): void {
+    for (const id of services) this.localDeterrence.set(id, { extra, until: this.org.now + minutes });
+  }
+
+  /** Extra turning back at `id` from something nearby, now. */
+  private localDeter(id: ServiceId): number {
+    const d = this.localDeterrence.get(id);
+    if (!d) return 0;
+    if (this.org.now >= d.until) { this.localDeterrence.delete(id); return 0; }
+    return d.extra;
+  }
+
   mediaAttack(factor: number, nights: number, energy: number): void {
     this.mediaHit.factor = factor;
     this.mediaHit.until = this.org.now + nights * 24 * 60;
@@ -1115,8 +1194,7 @@ export class Simulation {
     if (this.org.closedDown.has(id)) return 'closedDown';
     if (this.mods.outOfService.has(id)) return 'outOfService';
     if ((id === 'outreach' && !c.outreachPermitted) || (id === 'clubHr' && !c.standPermitted)) return 'notPermitted';
-    // The dedicated drug checking service can only operate where checking is legal.
-    if (id === 'drugChecking' && !c.checkingAllowed) return 'notPermitted';
+    // Where lab checking is not allowed the checking service stays open: test kits and advice (its mix locks checking).
     // Closing time means closed overnight, until the morning.
     if (c.closesAt !== null && this.clockMinutes >= c.closesAt && this.clockMinutes < MORNING) return 'hours';
     // The club stand works the club's hours.
@@ -1268,8 +1346,17 @@ export class Simulation {
       outreachOpen: this.services.outreach.status === 'open',
       crisis: this.crisis,
       shelterCrowded: Math.min(1, this.services.shelter.queue.length / Math.max(1, this.services.shelter.params.waitingSlots)),
+      referrals: this.camperPath === 'social' && this.services.outreach.status === 'open' ? CAMPER_PATH_EFFECT.socialCampShrink : 0,
     });
-    this.cityStress.tick(dt * this.minuteRate, this.camp.outdoors, this.crisis);
+    // Partnerships with A&E and the izba: they recover from a busy night sooner.
+    this.cityStress.tick(dt * this.minuteRate, this.camp.outdoors, this.crisis, { medics: this.allied('hospital') ? 1.35 : 1, sobering: this.allied('sobering') ? 1.35 : 1 });
+    const park = this.park.tick({ clock: this.clockMinutes, season: this.season, camp: this.camp.size, market: this.neighbourhood.state.streetMarket }, this.calendar.dayOfYear);
+    for (const n of park.notices) this.org.notice(this.clockMinutes, n);
+    if (park.reputation) {
+      const st = this.neighbourhood.state;
+      st.reputation = Math.max(0, st.reputation - park.reputation);
+      st.safety = Math.max(0, st.safety - park.safety);
+    }
     this.cityStress.sobering = Math.max(0, this.cityStress.sobering - this.vitality.partners.size * VITALITY.partnerEasesSobering * (dt * this.minuteRate) / 60);
     const s = this.cityStress;
     const venueChange = this.vitality.tick(dt * this.minuteRate, { crisis: this.crisis, unmet24: this.unmet24, stress: (s.police + s.medics + s.sobering) / 3 });
@@ -1333,7 +1420,8 @@ export class Simulation {
     const t = this.timers;
     const spawn = (intent: Intent, wantsStand = false) => {
       const seeksService = intent === 'dropIn' || intent === 'outreach' || wantsStand || (WALK_IN_SERVICE_IDS as readonly string[]).includes(intent);
-      const turnsBack = seeksService && this.random() < this.context.deterrence;
+      const local = seeksService ? this.localDeter(intent === 'party' || intent === 'club' || intent === 'passerby' ? 'clubHr' : wantsStand ? 'clubHr' : (intent as ServiceId)) : 0;
+      const turnsBack = seeksService && this.random() < 1 - (1 - this.context.deterrence) * (1 - local);
       const visitor = this.nextVisitor++;
       const mix = intent === 'club' || intent === 'party' ? PROFILE_MIX.club : intent === 'passerby' ? PROFILE_MIX.passerby : PROFILE_MIX.service;
       this.profiles.set(visitor, this.drawProfile(mix));
@@ -1377,11 +1465,16 @@ export class Simulation {
         // The place's budget mix scales how often checking happens there (and lets places check that otherwise would not).
         const checkMix = this.mix.relative(s.id, 'checking', c.checkingAllowed);
         const checks = s.id === 'drugChecking' || c.checkingSites.includes(s.id) || (checkMix ?? 0) > 0;
-        if (c.checkingAllowed && checks && this.random() < Math.min(1, ILLUSTRATIVE.checkingShare[s.id] * this.mods.checkingBoost * (checkMix ?? 1))) this.recordCheck(s.id, visitor);
+        const night = s.id === 'outreach' && this.camperPath === 'nightlife';
+        if (c.checkingAllowed && checks && this.random() < Math.min(1, ILLUSTRATIVE.checkingShare[s.id] * this.mods.checkingBoost * (checkMix ?? 1) * (night ? CAMPER_PATH_EFFECT.nightlifeChecking : 1))) this.recordCheck(s.id, visitor);
+        // Test strips and reagent kits: legal or not, people can test their own.
+        const kitsMix = this.mix.relative(s.id, 'kits', c.checkingAllowed);
+        if (kitsMix && this.random() < Math.min(1, 0.5 * kitsMix * (night ? CAMPER_PATH_EFFECT.nightlifeKits : 1)) && this.org.spend(ORG.costs.sterileKit)) this.selfTest(visitor);
         if (s.id !== 'clubHr' && this.profiles.get(visitor)?.injects) {
           // Kits cost money; with none in stock, no money, or kits not in this place's mix, the person leaves without them.
           const kitMix = this.mix.relative(s.id, 'needles', c.checkingAllowed);
-          if (this.mods.kitsOut || (kitMix !== null && this.random() >= kitMix) || !this.org.spend(ORG.costs.sterileKit)) this.unsafeInjecting();
+          const kitCost = ORG.costs.sterileKit * (s.id === 'outreach' && this.camperPath === 'health' ? CAMPER_PATH_EFFECT.healthKitCost : 1);
+          if (this.mods.kitsOut || (kitMix !== null && this.random() >= kitMix) || !this.org.spend(kitCost)) this.unsafeInjecting();
           else {
             this.health.sterileKits++;
             this.neighbourhood.note('kits');
@@ -1423,13 +1516,21 @@ export class Simulation {
    * substance always shows it: the event counts as detected, and with public
    * alerts on, an alert names it and lowers risk for everyone affected.
    */
+  /** Someone takes a test kit: no lab result or early warning, but a strip or a reagent can still change their plans. */
+  private selfTest(visitor: VisitorId): void {
+    this.checking.selfTests++;
+    const substance = this.profiles.get(visitor)?.substance ?? 'none';
+    const event = this.events.supplyEventFor(substance);
+    if (event && this.random() < CHECKING.changePlans.value * 0.6) this.checking.changedPlans++;
+  }
+
   private recordCheck(service: ServiceId, visitor: VisitorId): void {
     const c = this.checking;
     if (!this.org.spend(this.context.turnaround === 'lab' ? ORG.costs.labCheck : ORG.costs.onsiteCheck)) return;
     c.samples++;
     if (this.context.turnaround === 'lab' && this.random() >= CHECKING.labCollected.value * this.mods.labCollected) return;
     c.resultsReceived++;
-    // Sold checks: the client pays, but results seldom reach the early warning and there is less advice.
+    // Charged-for checking: the client pays, but results seldom reach the early warning and there is less advice.
     const sold = this.commercialChecking && service === 'drugChecking';
     if (sold) { this.org.budget += HUSTLE.checkFee; this.flow('drugChecking', HUSTLE.checkFee); }
     const substance = this.profiles.get(visitor)?.substance ?? 'none';
@@ -1484,7 +1585,8 @@ export class Simulation {
     const profile = this.profiles.get(visitor);
     if (s.id !== 'clubHr' && profile?.injects) this.unsafeInjecting();
     // Using alone in a hidden spot during a supply event: outreach may find the person in time.
-    const acute = hiddenUse ? this.acuteFor(profile, true, 'outreach', ACUTE.reachedByStaff.hidden) : null;
+    const reach = ACUTE.reachedByStaff.hidden + (this.camperPath === 'health' ? CAMPER_PATH_EFFECT.healthReach : 0);
+    const acute = hiddenUse ? this.acuteFor(profile, true, 'outreach', reach) : null;
     if (notify) this.emit({ type: 'leftUnserved', service: s.id, visitor });
     this.emit({ type: 'aftermath', service: s.id, visitor, hiddenUse, adverse, acute });
   }

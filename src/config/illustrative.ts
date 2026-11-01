@@ -61,14 +61,15 @@ export const ILLUSTRATIVE = {
       serviceSeconds: [5, 9],
       patienceSeconds: 20,
     },
-    pharmacy: {
-      name: 'Pharmacy needle and syringe programme',
-      demandPerMinute: 1.6,
+    footPatrol: {
+      // Streetworkers on foot at the squat: kits, naloxone and a quick word, at a folding table.
+      name: 'Streetworker foot patrol',
+      demandPerMinute: 1.3,
       staff: 2,
       capacityPerStaff: 1,
-      waitingSlots: 4,
-      serviceSeconds: [20, 40],
-      patienceSeconds: 50,
+      waitingSlots: 3,
+      serviceSeconds: [15, 30],
+      patienceSeconds: 40,
     },
     drugChecking: {
       name: 'Drug checking service',
@@ -114,7 +115,7 @@ export const ILLUSTRATIVE = {
   /** People walking through to somewhere else. */
   passersbyPerMinute: 2.4,
   /** Share of people served at a checking site who bring a sample. The stand exists for it; elsewhere it is one service among several. */
-  checkingShare: { dropIn: 0.35, outreach: 0.35, clubHr: 1, drugChecking: 1, pharmacy: 0.2, shelter: 0.2, clinic: 0.2 } satisfies Record<ServiceId, number>,
+  checkingShare: { dropIn: 0.35, outreach: 0.35, clubHr: 1, drugChecking: 1, footPatrol: 0.2, shelter: 0.2, clinic: 0.2 } satisfies Record<ServiceId, number>,
   /**
    * How people fare, for what the crowd shows. All illustrative. Sources give
    * direction and context only: Wallace 2022 (people seek places without arrest

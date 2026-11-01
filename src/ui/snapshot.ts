@@ -77,13 +77,15 @@ function serviceSnapshot(id: LocationId, s: ServiceModel, sim?: Simulation): Loc
           label: sim.clubContract ? t('Club pays +{price}/h', { price: price(HUSTLE.clubFeePerHour) }) : t('Ask the club to pay'),
           hint: sim.clubContract ? t('The club pays while the stand is open. Click to end the deal.') : t('The club pays {price} an hour while the stand is open, if it agrees.', { price: price(HUSTLE.clubFeePerHour) }),
         }
-        : s.id === 'drugChecking'
+        // Charging only makes sense where there are lab checks to charge for.
+        : s.id === 'drugChecking' && sim.context.checkingAllowed
           ? {
             on: sim.commercialChecking,
-            label: sim.commercialChecking ? t('Checks sold {price}: make free', { price: price(HUSTLE.checkFee) }) : t('Sell checks {price}', { price: price(HUSTLE.checkFee) }),
-            hint: t('Paid checks: a little money, but fewer people come and fewer results reach the early warning.'),
+            label: sim.commercialChecking ? t('Checking charged {price}: make it free', { price: price(HUSTLE.checkFee) }) : t('Charge {price} for checking', { price: price(HUSTLE.checkFee) }),
+            hint: t('Charging for drug checking: a little money, but fewer people come and fewer results reach the early warning.'),
           }
           : undefined,
+      path: s.id === 'outreach' ? { current: sim.camperPath } : undefined,
       campers: s.id === 'outreach' ? {
         out: sim.property.extraCampers,
         max: PROPERTY.maxExtraCampers,

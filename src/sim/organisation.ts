@@ -3,7 +3,7 @@ import type { Random } from './random';
 import type { ServiceId } from './types';
 import { plural, t } from '../i18n';
 
-export const SERVICE_NAMES: Record<ServiceId, string> = { dropIn: t('drop-in centre'), outreach: t('outreach camper'), clubHr: t('club stand'), pharmacy: t('pharmacy and needle exchange'), drugChecking: t('drug checking service'), shelter: t('shelter and day centre'), clinic: t('clinic and A&E') };
+export const SERVICE_NAMES: Record<ServiceId, string> = { dropIn: t('drop-in centre'), outreach: t('outreach camper'), clubHr: t('club stand'), footPatrol: t('streetworker foot patrol'), drugChecking: t('drug checking service'), shelter: t('shelter and day centre'), clinic: t('clinic and A&E') };
 
 export interface Recruitment {
   id: RecruitId;

@@ -26,6 +26,8 @@ export interface Ambient {
    * more sellers; more policing, more officers on the park round.
    */
   setParkLife(market: number, patrol: number): void;
+  /** How many joggers run the park's round (0 to 4): fewer when the park feels unsafe. */
+  setJoggers(n: number): void;
   /** Where the camera looks and how many metres a screen pixel covers, for level of detail. */
   setView(x: number, z: number, radius: number, metresPerPixel: number): void;
   /** Makes a sculpted figure for a person of this kind, once the people's assets are loaded. */
@@ -46,13 +48,13 @@ export interface Ambient {
 }
 
 export interface VehicleInfo {
-  kind: 'ambulance' | 'police';
+  kind: 'ambulance' | 'police' | 'bus' | 'warmingBus';
   /** Why it is out: the call it answers, or its patrol. */
   reason: string;
-  state: 'On the way' | 'At the scene' | 'Leaving' | 'On patrol';
+  state: 'On the way' | 'At the scene' | 'Leaving' | 'On patrol' | 'On its route' | 'Held up' | 'Parked';
 }
 
-export type AmbientKind = 'stroller' | 'seller' | 'buyer' | 'police' | 'drunk';
+export type AmbientKind = 'stroller' | 'seller' | 'buyer' | 'police' | 'drunk' | 'jogger';
 
 /** Most sculpted figures at once; people in view past this are left out rather than drawn as sticks. */
 const POOL = QUALITY.figures;
@@ -94,16 +96,20 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic):
   // Everything here moves: kept out of the static merge.
   const g = dynamic(new Group());
   scene.add(g);
-  // Cars, and a few city buses among them.
+  // Cars, and a city bus among them (its index kept, so it can be clicked).
+  const busDrivers: number[] = [];
   for (let i = 0; i < 22; i++) {
     const run = runs[Math.floor(random() * runs.length)];
-    const group = i % 7 === 6 ? bus() : car(CAR_COLOURS[Math.floor(random() * CAR_COLOURS.length)], true);
+    // One city bus among the cars: more bunch up at the lights on one street.
+    const isBus = i === 11;
+    const group = isBus ? bus() : car(CAR_COLOURS[Math.floor(random() * CAR_COLOURS.length)], true);
     group.traverse((o) => { o.castShadow = false; });
     const dir = new Vector3().subVectors(run.to, run.from);
     group.rotation.y = Math.atan2(dir.x, dir.z);
     g.add(group);
     const speed = 8 + random() * 7;
-    drivers.push({ group, run, t: random(), speed, v: speed, length: dir.length(), car: traffic.add(i % 7 === 6 ? 5.2 : 2.2) });
+    if (isBus) busDrivers.push(drivers.length);
+    drivers.push({ group, run, t: random(), speed, v: speed, length: dir.length(), car: traffic.add(isBus ? 5.2 : 2.2) });
   }
 
   // Walkers: where people stroll outside the district.
@@ -123,8 +129,10 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic):
   const POLICE = 4;
   const ROUND = [new Vector3(-42, 0, 53), new Vector3(46, 0, 53), new Vector3(46, 0, 115), new Vector3(-42, 0, 115)];
   const DRUNKS = 8;
-  const count = strollers + SELLERS.length + BUYERS + DRUNKS + POLICE;
+  const JOGGERS = 4;
+  const count = strollers + SELLERS.length + BUYERS + DRUNKS + JOGGERS + POLICE;
   const drunkBase = strollers + SELLERS.length + BUYERS;
+  const joggerBase = drunkBase + DRUNKS;
   for (let i = 0; i < strollers; i++) {
     const run = paths[i % paths.length];
     walkers.push({ run, t: random(), speed: 1.1 + random() * 0.5, length: run.from.distanceTo(run.to), phase: random() * 6.28, height: 0.9 + random() * 0.2 });
@@ -154,6 +162,10 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic):
   // People who have had too much, round the liquor store and the casino.
   let hangouts: Vector3[] = [];
   const drunks = Array.from({ length: DRUNKS }, (_, i) => ({ home: i, pos: new Vector3(), target: new Vector3(), wait: random() * 4, shown: 0 }));
+  // Joggers run the park's round, a little inside the officers' path, spread out along it.
+  const LOOP = ROUND.map((p) => new Vector3(p.x * 0.9, 0, 84 + (p.z - 84) * 0.85));
+  const joggers = Array.from({ length: JOGGERS }, (_, i) => ({ leg: i % 4, pos: LOOP[i % 4].clone(), shown: 0 }));
+  let joggersOut = 2;
   // Overdoses in the park: someone goes down near a seller; an ambulance comes.
   let parkOverdoseIn = 60 + random() * 120;
   let market = 0;
@@ -202,7 +214,7 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic):
   // Where each person is this frame; drawn afterwards at the level of detail the camera needs.
   const people = Array.from({ length: count }, (_, i) => ({
     x: 0, z: 0, heading: 0, moving: false, shown: 0, bob: 0,
-    kind: (i < strollers ? 'stroller' : i < strollers + SELLERS.length ? 'seller' : i < drunkBase ? 'buyer' : i < count - POLICE ? 'drunk' : 'police') as AmbientKind,
+    kind: (i < strollers ? 'stroller' : i < strollers + SELLERS.length ? 'seller' : i < drunkBase ? 'buyer' : i < joggerBase ? 'drunk' : i < count - POLICE ? 'jogger' : 'police') as AmbientKind,
     lying: false,
   }));
   const place = (i: number, pos: Vector3, shown: number, bob: number) => {
@@ -289,7 +301,7 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic):
           fig.root.position.set(p.x, p.lying ? 0.18 : -0.04, p.z);
           fig.root.rotation.set(p.lying ? -Math.PI / 2 : 0, p.heading, 0, 'YXZ');
           fig.root.scale.setScalar(Math.max(0.001, p.shown) * fig.root.userData.baseScale);
-          fig.update(dt, p.moving && !p.lying ? 'walk' : 'stand', p.kind === 'drunk' ? 0.7 : 1.2);
+          fig.update(dt, p.moving && !p.lying ? 'walk' : 'stand', p.kind === 'drunk' ? 0.7 : p.kind === 'jogger' ? 2.4 : 1.2);
         }
       } else if (fig) fig.root.visible = false;
     }
@@ -422,6 +434,11 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic):
         place(drunkBase + i, at.set(d.pos.x + sway * 0.3, 0, d.pos.z), d.shown, Math.abs(Math.sin(walkClock * 3 + i)) * 0.05);
         people[drunkBase + i].heading += sway * 0.4;
       });
+      joggers.forEach((j, i) => {
+        j.shown = Math.min(1, Math.max(0, j.shown + (i < joggersOut ? dt : -dt) * 0.8));
+        if (step(j.pos, LOOP[(j.leg + 1) % LOOP.length], 2.8, dt)) j.leg = (j.leg + 1) % LOOP.length;
+        place(joggerBase + i, j.pos, j.shown, Math.abs(Math.sin(walkClock * 11 + i)) * 0.07);
+      });
       // Now and then someone in the park overdoses near a seller; the ambulance is called.
       parkOverdoseIn -= dt * (0.4 + market);
       if (parkOverdoseIn <= 0) {
@@ -482,6 +499,7 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic):
       const out: { id: number; root: Object3D }[] = [];
       fleet.forEach((f, i) => { if (f.busy && f.v.group.visible) out.push({ id: i, root: f.v.group }); });
       patrols.forEach((p, i) => { if (p.visible) out.push({ id: fleet.length + i, root: p }); });
+      busDrivers.forEach((d, i) => { if (drivers[d].group.visible) out.push({ id: fleet.length + patrols.length + i, root: drivers[d].group }); });
       return out;
     },
     vehicle(id) {
@@ -489,6 +507,12 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic):
       if (f) {
         if (!f.busy) return undefined;
         return { kind: f.kind, reason: f.reason, state: f.hold > 0 ? 'At the scene' : f.v.flashing ? 'On the way' : 'Leaving' };
+      }
+      const b = busDrivers[id - fleet.length - patrols.length];
+      if (b !== undefined) {
+        const d = drivers[b];
+        if (!d.group.visible) return undefined;
+        return { kind: 'bus', reason: t('A city bus on its route across town, through the district.'), state: d.v < 1 ? 'Held up' : 'On its route' };
       }
       if (!patrols[id - fleet.length]) return undefined;
       return {
@@ -507,6 +531,9 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic):
     },
     setFigureFactory(make) {
       makeFigure = make;
+    },
+    setJoggers(n) {
+      joggersOut = Math.max(0, Math.min(JOGGERS, Math.round(n)));
     },
     setParkLife(level, patrol) {
       market = level;

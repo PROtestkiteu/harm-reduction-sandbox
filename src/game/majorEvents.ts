@@ -22,6 +22,8 @@ export interface MajorEvent {
   title: string;
   /** Where it plays out, brought into view when it pops up. */
   place?: EventPlace;
+  /** What is already happening on the street as it pops up, before any choice. */
+  opening?: (w: EventWorld) => void;
   lines: string[];
   /** Whether it can happen now (for example, relief only after a crackdown). */
   eligible(w: EventWorld): boolean;
@@ -87,6 +89,7 @@ export const MAJOR_EVENTS: readonly MajorEvent[] = [
   {
     id: 'mediaAttack',
     place: 'dropIn',
+    opening: (w) => w.show({ kind: 'press', at: 'dropIn', hours: 1 }),
     title: t('A politician attacks the project in the media'),
     lines: [
       t('A conservative politician calls your drop-in "a drug den" on television and in the papers.'),
@@ -119,6 +122,7 @@ export const MAJOR_EVENTS: readonly MajorEvent[] = [
   {
     id: 'campSweep',
     place: 'camp',
+    opening: (w) => w.show({ kind: 'sweep', hours: 1 }),
     title: t('The council orders the park camp cleared'),
     lines: [
       t('Neighbours complained about the tents in the park. Council workers and police are due in the morning to clear them.'),
@@ -149,6 +153,7 @@ export const MAJOR_EVENTS: readonly MajorEvent[] = [
   {
     id: 'badBatch',
     place: 'drugChecking',
+    opening: (w) => w.show({ kind: 'alert', at: 'drugChecking', hours: 1 }),
     title: t('A bad batch is going round'),
     lines: [
       t('Several people have collapsed after using the same supply. Something much stronger than usual is in it.'),
@@ -245,6 +250,7 @@ export const MAJOR_EVENTS: readonly MajorEvent[] = [
   {
     id: 'raid',
     place: 'busiest',
+    opening: (w) => w.show({ kind: 'raid', at: w.sim.busiest.service, hours: 1 }),
     title: t('Police raid'),
     lines: [
       t('Too many people gathered in one place: police cars swarm the area, and officers stop and arrest people who use drugs.'),

@@ -28,7 +28,7 @@ export const ORG = {
    * What every person served costs on top (coffee, supplies, a bed, a dressing).
    * Drug checking is charged per check instead. Demand is never profit here.
    */
-  visitCost: { dropIn: 0.6, outreach: 0.5, clubHr: 0.4, pharmacy: 0.4, drugChecking: 0, shelter: 1.2, clinic: 1.5 } as Record<string, number>,
+  visitCost: { dropIn: 0.6, outreach: 0.5, clubHr: 0.4, footPatrol: 0.35, drugChecking: 0, shelter: 1.2, clinic: 1.5 } as Record<string, number>,
   /** After running out, paid staff come back only once the budget recovers to this (no flapping at zero). */
   recoverAt: 300,
   /**
