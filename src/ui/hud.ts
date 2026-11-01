@@ -156,7 +156,7 @@ export class Hud {
     for (const id of LOCATION_IDS) this.trends[id] = new MetricTrend();
 
     this.header = el('header', 'hud-header');
-    this.header.append(el('h1', undefined, 'Harm reduction sandbox'), el('p', 'subtitle', 'A city neighbourhood, day and night. Every number is illustrative.'));
+    this.header.append(el('h1', undefined, 'Harm reduction sandbox'), el('p', 'subtitle', "Help your neighbourhood stay alive - don't go out of business!"));
 
     this.column = el('aside', 'column');
     this.column.setAttribute('aria-label', 'Details and controls');
