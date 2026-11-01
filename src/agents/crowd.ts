@@ -1502,6 +1502,8 @@ export class Crowd {
     const doorClub = SPOTS.clubDoor;
     for (const a of this.agents.values()) {
       this.step(a, dt);
+      // Walked off the edge during this step: removed (glow released); placing them now would bring the glow back for good.
+      if (!this.agents.has(a.id)) continue;
       if (!a.visible) { this.icons.release(a.id); continue; }
       if (dist(a.pos, doorDrop) < 1.3 && a.route.length) this.world.locations.dropIn.openDoor();
       if (dist(a.pos, doorClub) < 1.2 && a.route.length) this.world.locations.club.openDoor();

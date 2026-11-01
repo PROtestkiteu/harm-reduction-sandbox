@@ -5,7 +5,7 @@ import { WindowBank } from './animated';
 import { acUnit, antenna, drainpipe, roofVent, waterTank, windowTrim } from './details';
 import { awning, balcony, graffiti, laundryLine, lightPool, poster, rubbish, shopSign, shutters } from './dressing';
 import { askew, bladeSign, boardedWindow, neonSign, roofClutter, scaffolding, wallClutter } from './grit';
-import { add, box, gableRoof, mansard, tree } from './kit';
+import { add, bench, box, gableRoof, mansard, tree } from './kit';
 import { BLOCKS, HALF, VENUE_RECTS, type Rect } from './layout';
 import { glowMat, mat } from './materials';
 import { mergeStatic } from './mergeStatic';
@@ -217,7 +217,37 @@ function building(g: Object3D, q: Rect, h: number, wall: number, windows: MeshLa
 }
 
 /** Fills one block. Returns the window bank that animates its lights. */
-function fillBlock(scene: Object3D, block: Rect, windows: MeshLambertMaterial[], random: Random): void {
+/**
+ * A small pocket park on one lot: a lawn crossed by gravel paths, trees, benches facing the
+ * middle and a low railing round it. The city's own little green, where a building would be.
+ */
+function pocketPark(g: Object3D, q: Rect, random: Random): void {
+  const cx = (q.x0 + q.x1) / 2;
+  const cz = (q.z0 + q.z1) / 2;
+  const w = q.x1 - q.x0;
+  const d = q.z1 - q.z0;
+  add(g, box(w, 0.13, d, mat(PALETTE.grass), cx, 0, cz));
+  const gravel = mat(PALETTE.gravel);
+  add(g, box(w, 0.135, 1.3, gravel, cx, 0, cz));
+  add(g, box(1.3, 0.135, d, gravel, cx, 0, cz));
+  // A tree in each quarter, set in from the corners.
+  for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) {
+    if (random() < 0.2) continue;
+    add(g, tree((Math.floor(random() * 3)) as 0 | 1 | 2, 0.85 + random() * 0.35)).position.set(cx + sx * w * 0.27, 0.13, cz + sz * d * 0.27);
+  }
+  // Benches either side of the paths' crossing, facing it.
+  add(g, bench(), Math.PI / 2).position.set(cx - 1.6, 0.13, cz + 1.4);
+  add(g, bench(), -Math.PI / 2).position.set(cx + 1.6, 0.13, cz - 1.4);
+  // A low railing on the long sides, open where the paths come in.
+  const rail = mat(PALETTE.metal);
+  const half = w / 2 - 0.8;
+  for (const z of [q.z0 + 0.1, q.z1 - 0.1]) {
+    add(g, box(half, 0.5, 0.05, rail, q.x0 + half / 2, 0.13, z));
+    add(g, box(half, 0.5, 0.05, rail, q.x1 - half / 2, 0.13, z));
+  }
+}
+
+function fillBlock(scene: Object3D, block: Rect, windows: MeshLambertMaterial[], random: Random, park = false): void {
   const g = add(scene, new Group());
   const centre: Rect = { x0: -HALF, x1: HALF, z0: -HALF, z1: HALF };
   // Lot widths differ per block and per launch, so the same block is cut into
@@ -229,6 +259,9 @@ function fillBlock(scene: Object3D, block: Rect, windows: MeshLambertMaterial[],
   const nz = span(block.z0, block.z1, lotZ);
   const cw = (block.x1 - block.x0 - ALLEY * (nx + 1)) / nx;
   const cd = (block.z1 - block.z0 - ALLEY * (nz + 1)) / nz;
+  // In a block chosen for a pocket park, one of its lots (if it is big enough) becomes the park.
+  let parkLot = park ? Math.floor(random() * nx * nz) : -1;
+  let lot = -1;
   for (let i = 0; i < nx; i++) {
     for (let j = 0; j < nz; j++) {
       const q: Rect = {
@@ -250,8 +283,13 @@ function fillBlock(scene: Object3D, block: Rect, windows: MeshLambertMaterial[],
         ].filter((p) => p.x1 - p.x0 >= 4.5 && p.z1 - p.z0 >= 4.5);
         r = parts.sort((a, b) => (b.x1 - b.x0) * (b.z1 - b.z0) - (a.x1 - a.x0) * (a.z1 - a.z0))[0] ?? null;
       }
-      if (!r) continue;
+      lot++;
+      if (!r) { if (lot === parkLot) parkLot++; continue; }
       q.x0 = r.x0; q.x1 = r.x1; q.z0 = r.z0; q.z1 = r.z1;
+      if (lot === parkLot) {
+        if (q.x1 - q.x0 >= 7 && q.z1 - q.z0 >= 7) { pocketPark(g, q, random); continue; }
+        parkLot++;
+      }
       if (random() < 0.07) {
         // Now and then a yard with a tree instead of a building.
         add(g, box(q.x1 - q.x0, 0.13, q.z1 - q.z0, mat(PALETTE.grassDark), (q.x0 + q.x1) / 2, 0, (q.z0 + q.z1) / 2));
@@ -332,6 +370,11 @@ export function fillCityBlock(scene: Object3D, block: Rect, windows: MeshLambert
  */
 export function buildInfill(scene: Object3D, random: Random): WindowBank[] {
   const windows = Array.from({ length: 12 }, (_, i) => glowMat(PALETTE.glassDark, i % 5 === 4 ? PALETTE.coolWindow : PALETTE.warmWindow, 0.2));
-  for (const block of Object.values(BLOCKS)) fillBlock(scene, block, windows, random);
+  // One or two more pocket parks besides the centre one, in different blocks each launch.
+  const names = Object.keys(BLOCKS).filter((n) => n !== 'cm');
+  const parks = new Set<string>();
+  const want = random() < 0.5 ? 1 : 2;
+  while (parks.size < want) parks.add(names[Math.floor(random() * names.length)]);
+  for (const [name, block] of Object.entries(BLOCKS)) fillBlock(scene, block, windows, random, parks.has(name));
   return [new WindowBank(windows, 1.0, 0.05, random)];
 }
