@@ -8,7 +8,7 @@ import { lightPool } from './dressing';
 import { addPuddle, nearestLamp, type LampHead } from './puddles';
 import { QUALITY } from '../render/quality';
 import { groundLitter } from './grit';
-import { BLOCKS, DISTRICT, HALF, MAIN_CROSSINGS, ROAD, STREETS, type Rect } from './layout';
+import { BLOCKS, DISTRICT, GROW, HALF, INNER, MAIN_CROSSINGS, ROAD, STREETS, type Rect } from './layout';
 import { glowMat, mat } from './materials';
 import { mergeStatic } from './mergeStatic';
 
@@ -100,6 +100,13 @@ export function buildStreets(scene: Object3D, random: Random): void {
   for (const s of [STREETS.north, STREETS.south]) {
     for (const x of [-7.25, 1.75, 22.75]) zebra(g, 'z', s.road.z0, s.road.z1, x);
   }
+  // And across the ring road wherever a street's pavement meets it.
+  for (const s of [STREETS.ringNorth, STREETS.ringSouth]) {
+    for (const x of [-7.25, 1.75, 22.75, 30.75]) zebra(g, 'z', s.road.z0, s.road.z1, x);
+  }
+  for (const s of [STREETS.ringWest, STREETS.ringEast]) {
+    for (const z of [-22.75, -15.75, 15.75, 22.75]) zebra(g, 'x', s.road.x0, s.road.x1, z);
+  }
 
   // Road furniture along the new streets.
   for (let i = 0; i < 14; i++) {
@@ -115,14 +122,24 @@ export function buildStreets(scene: Object3D, random: Random): void {
   // source of their own: every extra light would cost every pixel of the scene.
   // [x, z, arm direction, rotation]: arms reach over the road.
   const lamps: [number, number, number, number][] = [];
-  for (let v = -40; v <= 40; v += 13) {
+  // Out through the outer ring too, never standing on the ring road.
+  const offRing = (v: number) => Math.abs(v) < INNER - 1 || Math.abs(v) > INNER + 11;
+  for (let v = -(DISTRICT - 5); v <= DISTRICT - 5; v += 13) {
+    if (!offRing(v)) continue;
     if (Math.abs(v) >= HALF + 2) lamps.push([-8.2, v, 1, 0], [2.2, v, -1, 0]);
     lamps.push([21.8, v, 1, 0], [31.7, v, -1, 0]);
   }
-  for (let v = -40; v <= 40; v += 14) {
-    if (v > -10 && v < 4) continue;
+  for (let v = -(DISTRICT - 5); v <= DISTRICT - 5; v += 14) {
+    if ((v > -10 && v < 4) || !offRing(v)) continue;
     // Rotated a quarter turn, the arm's local +x points to world -z.
     lamps.push([v, -23.7, -1, Math.PI / 2], [v, 23.7, 1, Math.PI / 2]);
+  }
+  // The ring road, lit from its outer pavement; clear of the streets that cross it.
+  const ringLamp = INNER + 9.7;
+  const clear = (v: number) => Object.values(STREETS).every((q) => q.along === 'z' ? v < q.road.x0 - 2.5 || v > q.road.x1 + 2.5 : v < q.road.z0 - 2.5 || v > q.road.z1 + 2.5);
+  for (let v = -(INNER + 5); v <= INNER + 5; v += 14) {
+    if (clear(v)) lamps.push([v, -ringLamp, -1, Math.PI / 2], [v, ringLamp, 1, Math.PI / 2]);
+    if (clear(v)) lamps.push([-ringLamp, v, 1, 0], [ringLamp, v, -1, 0]);
   }
   const heads: LampHead[] = [];
   for (const [x, z, dir, rot] of lamps) {
@@ -191,27 +208,27 @@ export function buildOutskirts(scene: Object3D, random: Random): WindowBank {
   // base -0.10; the city beyond -0.08 to -0.035 (see cityBeyond.ts); outskirts
   // roads -0.005; the district from 0.01 up.
   // City surface, not open ground: what shows between blocks reads as streets and yards.
-  add(g, box(1200, 0.4, 1200, mat(0x36373a), 0, -0.5, 0));
+  add(g, box(1200, 0.4, 1200, mat(0x5c5a55), 0, -0.5, 0));
   // Streets carry on into the outskirts as dark roads.
-  add(g, box(ROAD.x1 - ROAD.x0, 0.02, 320, mat(0x2e2f31), (ROAD.x0 + ROAD.x1) / 2, -0.025, 0));
-  for (const s of [STREETS.north, STREETS.south]) add(g, box(320, 0.02, s.road.z1 - s.road.z0, mat(0x2e2f31), 0, -0.025, (s.road.z0 + s.road.z1) / 2));
-  add(g, box(STREETS.east.road.x1 - STREETS.east.road.x0, 0.02, 320, mat(0x2e2f31), (STREETS.east.road.x0 + STREETS.east.road.x1) / 2, -0.025, 0));
+  add(g, box(ROAD.x1 - ROAD.x0, 0.02, 320 + 2 * GROW, mat(0x2e2f31), (ROAD.x0 + ROAD.x1) / 2, -0.025, 0));
+  for (const s of [STREETS.north, STREETS.south]) add(g, box(320 + 2 * GROW, 0.02, s.road.z1 - s.road.z0, mat(0x2e2f31), 0, -0.025, (s.road.z0 + s.road.z1) / 2));
+  add(g, box(STREETS.east.road.x1 - STREETS.east.road.x0, 0.02, 320 + 2 * GROW, mat(0x2e2f31), (STREETS.east.road.x0 + STREETS.east.road.x1) / 2, -0.025, 0));
   // Out of the district the roads keep their pavements (a kerb above the road)
   // and dashed centre lines, so they read as streets, not empty bands.
   const pave = mat(PALETTE.pavement);
   const line = mat(0xd8d0b8);
-  const outside = (a: number, b: number) => [[-160, -DISTRICT - 2], [DISTRICT + 2, 160]].map(([lo, hi]) => [Math.max(lo, a), Math.min(hi, b)]).filter(([lo, hi]) => hi > lo);
+  const outside = (a: number, b: number) => [[-160 - GROW, -DISTRICT - 2], [DISTRICT + 2, 160 + GROW]].map(([lo, hi]) => [Math.max(lo, a), Math.min(hi, b)]).filter(([lo, hi]) => hi > lo);
   for (const r of [ROAD, STREETS.east.road]) {
     const x0 = r.x0;
     const x1 = r.x1;
-    for (const [z0, z1] of outside(-160, 160)) {
+    for (const [z0, z1] of outside(-160 - GROW, 160 + GROW)) {
       add(g, box(2.5, 0.16, z1 - z0, pave, x0 - 1.25, -0.1, (z0 + z1) / 2));
       add(g, box(2.5, 0.16, z1 - z0, pave, x1 + 1.25, -0.1, (z0 + z1) / 2));
       for (let z = z0 + 2; z < z1 - 2; z += 6) add(g, box(0.14, 0.004, 2.6, line, (x0 + x1) / 2, -0.007, z));
     }
   }
   for (const r of [STREETS.north.road, STREETS.south.road]) {
-    for (const [x0, x1] of outside(-160, 160)) {
+    for (const [x0, x1] of outside(-160 - GROW, 160 + GROW)) {
       add(g, box(x1 - x0, 0.16, 2.5, pave, (x0 + x1) / 2, -0.1, r.z0 - 1.25));
       add(g, box(x1 - x0, 0.16, 2.5, pave, (x0 + x1) / 2, -0.1, r.z1 + 1.25));
       for (let x = x0 + 2; x < x1 - 2; x += 6) add(g, box(2.6, 0.004, 0.14, line, x, -0.007, (r.z0 + r.z1) / 2));

@@ -18,6 +18,8 @@ const uniforms = UniformsUtils.merge([
     uLamp: { value: new Color(0, 0, 0) },
     uTime: { value: 0 },
     uWet: { value: 0.7 },
+    /** Daylight dries the puddles down: 0 at night, 1 in full day. */
+    uDry: { value: 0 },
   },
 ]);
 
@@ -54,16 +56,18 @@ const material = new ShaderMaterial({
     uniform vec3 uLamp;
     uniform float uTime;
     uniform float uWet;
+    uniform float uDry;
     varying vec2 vLocal;
     varying vec3 vWorld;
     varying vec4 vPuddle;
     void main() {
-      // A ragged edge, different for each puddle.
+      // A ragged edge, different for each puddle; by day each dries down to a third or two thirds of its size.
       float s = vPuddle.w * 6.2832;
       float a = atan(vLocal.y, vLocal.x);
-      float edge = 0.86 + 0.08 * sin(a * 3.0 + s) + 0.05 * sin(a * 5.0 + s * 1.7);
+      float size = mix(1.0, 0.3 + 0.4 * vPuddle.w, uDry);
+      float edge = (0.86 + 0.08 * sin(a * 3.0 + s) + 0.05 * sin(a * 5.0 + s * 1.7)) * size;
       float r = length(vLocal);
-      float mask = 1.0 - smoothstep(edge - 0.14, edge, r);
+      float mask = 1.0 - smoothstep(edge - 0.14 * size, edge, r);
       if (mask <= 0.0) discard;
       // Faint ripples: two slow crossing waves.
       float rip = sin(dot(vWorld.xz, vec2(5.3, 3.7)) + uTime * 1.3) * sin(dot(vWorld.xz, vec2(-2.9, 6.1)) - uTime * 0.9);
@@ -135,6 +139,17 @@ export function riverMaterial(lampX: number, z0: number, step: number, height: n
       uniform float uLampH;
       varying vec2 vUv;
       varying vec3 vWorld;
+      // A sin-free hash: stays random at large world coordinates on phone GPUs.
+      float hash(vec2 q) {
+        vec3 h = fract(vec3(q.xyx) * 0.1031);
+        h += dot(h, h.yzx + 33.33);
+        return fract((h.x + h.y) * h.z);
+      }
+      float vnoise(vec2 q) {
+        vec2 i = floor(q), u = fract(q);
+        u = u * u * (3.0 - 2.0 * u);
+        return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
+      }
       void main() {
         vec2 p = vWorld.xz;
         float t = uTime;
@@ -149,9 +164,14 @@ export function riverMaterial(lampX: number, z0: number, step: number, height: n
         vec3 deep = mix(vec3(0.006, 0.016, 0.022), vec3(0.012, 0.03, 0.036), smoothstep(0.0, 0.25, 0.5 - edge));
         vec3 shallow = vec3(0.022, 0.042, 0.046);
         vec3 col = mix(shallow, deep, smoothstep(0.0, 0.18, edge));
-        // The sky in the surface, more of it where the ripples tilt towards the viewer.
-        float sheen = 0.35 + 0.25 * (1.0 - clamp(-uView.y, 0.0, 1.0)) + 0.12 * w;
-        col = mix(col, mix(uSky, uRim, 0.5 + 0.25 * w) * 0.6, clamp(sheen, 0.0, 0.8) * 0.4);
+        // Ripples for the sky's image: smooth random noise, stretched along the flow and drifting
+        // downstream, so a bright day sky shows no repeating pattern. Two octaves, cheap on phones.
+        vec2 r = vec2(p.x * 1.6, p.y * 0.55 - t * 0.35);
+        float f = vnoise(r) * 0.65 + vnoise(r * 2.3 + vec2(5.2, -t * 0.4)) * 0.35;
+        f = f * 2.0 - 1.0;
+        // The sky in the surface, more of it at a glancing angle and where the ripples tilt towards the viewer.
+        float sheen = 0.35 + 0.25 * (1.0 - clamp(-uView.y, 0.0, 1.0)) + 0.08 * f;
+        col = mix(col, mix(uSky, uRim, 0.5 + 0.3 * f) * 0.6, clamp(sheen, 0.0, 0.8) * 0.4);
         // Lamp images: follow the view ray down to the lamps' depth, then find the nearest lamp in the row.
         float h = uLampH - vWorld.y;
         vec2 q = p + uView.xz * (h / max(-uView.y, 0.2));
@@ -221,6 +241,7 @@ export function setPuddleLight(night: number, day: number): void {
   (u.uRim.value as Color).copy(RIM_DUSK).lerp(RIM_NIGHT, night).lerp(RIM_DAY, day);
   (u.uLamp.value as Color).copy(LAMP).multiplyScalar(1.5 * (1 - day) * (0.4 + 0.6 * night));
   u.uWet.value = 0.55 + 0.2 * night;
+  u.uDry.value = day;
 }
 
 /** The camera's forward direction, so the lamp images move as the view turns. */

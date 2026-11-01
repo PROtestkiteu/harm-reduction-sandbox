@@ -580,7 +580,7 @@ export class Hud {
     // A donation drive, offered when nothing is selected.
     this.driveBtn = button('opt');
     this.driveLong = el('span', 'long');
-    const driveShort = el('span', 'short', t('Drive.'));
+    const driveShort = el('span', 'short', t('Fundraise.'));
     driveShort.setAttribute('aria-hidden', 'true');
     this.driveBtn.append(this.driveLong, driveShort);
     this.driveBtn.addEventListener('click', () => cb.onDrive());

@@ -39,16 +39,27 @@ export const PROPERTY = {
   /** Below this trade level shops start to close; above `reopenAbove` new ones open. */
   closeBelow: 0.7,
   reopenAbove: 0.8,
+  /**
+   * Squats: a unit left empty this many clock minutes may be squatted, more readily the more
+   * people need a roof (the housing pressure, 0 to 1, per clock hour); at most `maxSquats` at
+   * once. A new business taking a squatted unit moves the people out.
+   */
+  squatAfter: 360,
+  squatRate: 0.35,
+  maxSquats: 3,
 } as const;
 
 export type UnitState =
   | { kind: 'trading' }
   | { kind: 'vacant'; since: number }
+  | { kind: 'squatted'; since: number }
   | { kind: 'rented'; service: SatelliteService };
 
 export type PropertyEvent =
   | { kind: 'closed'; unit: number }
   | { kind: 'reopened'; unit: number }
+  | { kind: 'squatted'; unit: number }
+  | { kind: 'evicted'; unit: number }
   | { kind: 'lost'; unit: number; service: SatelliteService }
   | { kind: 'pointLost'; building: number; service: SatelliteService };
 
@@ -109,6 +120,11 @@ export class Property {
     return this.units.filter((u) => u.kind === 'vacant').length;
   }
 
+  /** Units people have moved into, by index. */
+  get squats(): number[] {
+    return this.units.flatMap((u, i) => (u.kind === 'squatted' ? [i] : []));
+  }
+
   rent(unit: number, service: SatelliteService): boolean {
     if (this.units[unit]?.kind !== 'vacant') return false;
     this.units[unit] = { kind: 'rented', service };
@@ -123,9 +139,9 @@ export class Property {
   /**
    * Advances by `dtMinutes`. `trade` is the neighbourhood's shop trade
    * (0..1). `paid` false means rent could not be paid this step: the newest
-   * rental is given up.
+   * rental is given up. `housing` is how many people need a roof (0..1).
    */
-  tick(dtMinutes: number, now: number, trade: number, paid: boolean): PropertyEvent[] {
+  tick(dtMinutes: number, now: number, trade: number, paid: boolean, housing = 0): PropertyEvent[] {
     const hours = dtMinutes / 60;
     if (hours <= 0) return [];
     const out: PropertyEvent[] = [];
@@ -147,6 +163,8 @@ export class Property {
     // each vacant one finds a new tenant once trade is good again.
     const closeRate = Math.max(0, PROPERTY.closeBelow - trade) * 0.6;
     const reopenRate = Math.max(0, trade - PROPERTY.reopenAbove) * 0.8;
+    const squatRate = PROPERTY.squatRate * Math.min(1, Math.max(0, housing));
+    let squats = this.squats.length;
     this.units.forEach((u, i) => {
       if (u.kind === 'trading' && this.random() < closeRate * hours) {
         this.units[i] = { kind: 'vacant', since: now };
@@ -154,6 +172,15 @@ export class Property {
       } else if (u.kind === 'vacant' && now - u.since > 120 && this.random() < reopenRate * hours) {
         this.units[i] = { kind: 'trading' };
         out.push({ kind: 'reopened', unit: i });
+      } else if (u.kind === 'vacant' && now - u.since > PROPERTY.squatAfter && squats < PROPERTY.maxSquats && this.random() < squatRate * hours) {
+        this.units[i] = { kind: 'squatted', since: now };
+        squats++;
+        out.push({ kind: 'squatted', unit: i });
+      } else if (u.kind === 'squatted' && this.random() < reopenRate * 0.5 * hours) {
+        // A new business takes the unit; the people living there move on.
+        this.units[i] = { kind: 'trading' };
+        squats--;
+        out.push({ kind: 'evicted', unit: i });
       }
     });
     return out;

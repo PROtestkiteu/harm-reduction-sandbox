@@ -4,7 +4,10 @@
  * ahead. "Ahead" means in its own lane (a slower car in front) or across
  * its path (a car in a crossing). When two cars meet at a crossing and each
  * has the other in its path, the one nearer the crossing goes first and the
- * other waits; ties go by id, so they never both stop.
+ * other waits; ties go by id, so they never both stop. Three or more cars
+ * can still wait on each other in a ring at a junction, so once two crossing
+ * car has stood still a moment, a lower id passes it: a strict order has no
+ * rings, so the lowest car in any gridlock always moves off.
  *
  * About forty vehicles at most, so a plain pairwise check (a few hundred
  * multiplies a frame) needs no spatial index.
@@ -20,6 +23,8 @@ export interface TrafficCar {
   half: number;
   /** On the road this frame (parked off screen or waiting to set out: false). */
   active: boolean;
+  /** Seconds it has stood still in traffic; reported by its driver with `stood`. */
+  waited: number;
 }
 
 /** Half a lane: cars this far apart side by side pass each other. */
@@ -28,6 +33,8 @@ const HALF_LANE = 1.05;
 const HALF_WIDTH = 0.95;
 /** How far ahead anyone looks, in metres. */
 const LOOK = 30;
+/** Seconds a crossing car must have stood still before a lower id may pass it (the gridlock rule). */
+const STUCK = 1.5;
 
 export type Light = 'green' | 'amber' | 'red';
 
@@ -48,7 +55,7 @@ export class Traffic {
   }
 
   add(half: number): TrafficCar {
-    const c: TrafficCar = { id: this.next++, x: 0, z: 0, dx: 0, dz: 1, half, active: false };
+    const c: TrafficCar = { id: this.next++, x: 0, z: 0, dx: 0, dz: 1, half, active: false, waited: 0 };
     this.cars.push(c);
     return c;
   }
@@ -65,9 +72,12 @@ export class Traffic {
       if (o === c || !o.active) continue;
       const g = this.blocks(c, o);
       if (g === null) continue;
-      // Both in each other's way (a crossing): the one nearer it goes on.
-      const back = this.blocks(o, c);
-      if (back !== null && Math.abs(c.dx * o.dx + c.dz * o.dz) < 0.7) {
+      const crossing = Math.abs(c.dx * o.dx + c.dz * o.dz) < 0.7;
+      if (crossing && o.waited > STUCK && c.id < o.id) {
+        // A crossing car stuck there gives way to the lower id, moving or not: it goes on.
+        continue;
+      } else if (crossing && this.blocks(o, c) !== null) {
+        // Both in each other's way: the one nearer the crossing goes on.
         const mine = this.toCrossing(c, o);
         const theirs = this.toCrossing(o, c);
         if (mine < theirs || (mine === theirs && c.id < o.id)) continue;
@@ -89,6 +99,19 @@ export class Traffic {
       gap = Math.min(gap, toLine - 0.6);
     }
     return gap;
+  }
+
+  /** No other car in `c`'s lane (going its way) from `back` metres behind it to `ahead` metres in front. */
+  laneClear(c: TrafficCar, back: number, ahead: number): boolean {
+    for (const o of this.cars) {
+      if (o === c || !o.active || o.dx * c.dx + o.dz * c.dz < 0.7) continue;
+      const rx = o.x - c.x;
+      const rz = o.z - c.z;
+      const along = rx * c.dx + rz * c.dz;
+      if (along < -back || along > ahead) continue;
+      if (Math.abs(rx * c.dz - rz * c.dx) < HALF_LANE + HALF_WIDTH) return false;
+    }
+    return true;
   }
 
   /** Free road from `c`'s front to `o` if `o` is in `c`'s way, else null. */
@@ -113,6 +136,11 @@ export class Traffic {
   private toCrossing(c: TrafficCar, o: TrafficCar): number {
     return Math.abs((c.x - o.x) * o.dz - (c.z - o.z) * o.dx);
   }
+}
+
+/** Counts how long a car has stood still (speed in m/s), for the right of way at crossings. */
+export function stood(c: TrafficCar, speed: number, dt: number): void {
+  c.waited = speed < 0.2 ? c.waited + dt : 0;
 }
 
 /** The speed to aim for with `gap` metres of free road ahead: stop 1.5 m short, ease off over the last 12. */

@@ -2,10 +2,12 @@ import { Vector3 } from 'three';
 import { DEFAULT_VIEW, ELEVATION_LIMITS, isDefaultView, type ViewAngles } from './camera';
 
 /** Zoom 1 shows the original street; below 1 shows more of the district. */
-export const MIN_ZOOM = 0.5;
+export const MIN_ZOOM = 0.35;
+/** The furthest a phone zooms out: about the inner blocks. */
+export const PHONE_MIN_ZOOM = 0.71;
 export const MAX_ZOOM = 3.2;
-/** Zoom steps for the wheel and keys, so each press lands on a familiar scale. */
-export const ZOOM_STEPS = [0.5, 0.71, 1, 1.41, 2, 2.6, 3.2] as const;
+/** Zoom steps for the wheel and keys, so each press lands on a familiar scale; the widest shows the outer ring. */
+export const ZOOM_STEPS = [0.35, 0.5, 0.71, 1, 1.41, 2, 2.6, 3.2] as const;
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
@@ -24,6 +26,7 @@ export class CameraRig {
   readonly view: ViewAngles = { ...DEFAULT_VIEW };
   /** Current focus point and zoom, fed to `frameCamera`. */
   readonly focus = new Vector3();
+  private minZoom = MIN_ZOOM;
   zoom = 1;
   private readonly targetFocus = new Vector3();
   private targetZoom = 1;
@@ -105,16 +108,25 @@ export class CameraRig {
   zoomStep(direction: 1 | -1): void {
     this.locked = false;
     const z = this.targetZoom;
-    const next = direction > 0 ? ZOOM_STEPS.find((s) => s > z * 1.01) ?? MAX_ZOOM : [...ZOOM_STEPS].reverse().find((s) => s < z / 1.01) ?? MIN_ZOOM;
+    const next = direction > 0 ? ZOOM_STEPS.find((s) => s > z * 1.01) ?? MAX_ZOOM : [...ZOOM_STEPS].reverse().find((s) => s < z / 1.01 && s >= this.minZoom) ?? this.minZoom;
     this.target(this.targetFocus.x, this.targetFocus.y, this.targetFocus.z, next);
   }
 
   /** Continuous zoom by a factor, for pinches; snaps to a step when the pinch ends. */
   zoomBy(factor: number, immediate: boolean): void {
     this.locked = false;
-    const z = clamp(this.targetZoom * factor, MIN_ZOOM, MAX_ZOOM);
+    const z = clamp(this.targetZoom * factor, this.minZoom, MAX_ZOOM);
     if (immediate) this.zoom = z;
     this.target(this.targetFocus.x, this.targetFocus.y, this.targetFocus.z, z);
+  }
+
+  /**
+   * How far out the view may go. Phones stop closer in: the whole city on a small screen is
+   * a clutter of tiny buildings (and more to draw than a weak phone wants).
+   */
+  setMinZoom(z: number): void {
+    this.minZoom = Math.max(MIN_ZOOM, z);
+    if (this.targetZoom < this.minZoom) this.target(this.targetFocus.x, this.targetFocus.y, this.targetFocus.z, this.minZoom);
   }
 
   /** Mark the framing stale, for example after a resize. */
@@ -123,7 +135,7 @@ export class CameraRig {
   }
 
   private target(x: number, y: number, z: number, zoom: number): void {
-    const zz = clamp(zoom, MIN_ZOOM, MAX_ZOOM);
+    const zz = clamp(zoom, this.minZoom, MAX_ZOOM);
     if (this.targetFocus.x === x && this.targetFocus.y === y && this.targetFocus.z === z && zz === this.targetZoom) return;
     this.targetFocus.set(x, y, z);
     this.targetZoom = zz;

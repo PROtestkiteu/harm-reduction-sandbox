@@ -1,7 +1,8 @@
 import type { WalkInServiceId } from '../sim/types';
 import { t } from '../i18n';
 /**
- * District layout in metres: a 3x3-block neighbourhood about 90 m across.
+ * District layout in metres: a 3x3-block neighbourhood about 90 m across,
+ * inside a ring road with an outer ring of blocks, 140 m across in all.
  * The camera looks from +x/+z, so every facade that carries activity faces +x
  * or +z.
  *
@@ -20,10 +21,16 @@ const p = (x: number, z: number): P2 => ({ x, z });
 
 /** The original street's half size; the camera's scale reference. */
 export const HALF = 15;
-/** District half size: the built area runs from -DISTRICT to DISTRICT. */
-export const DISTRICT = 45;
+/** The inner 3x3 blocks' half size; the ring road runs just outside it. */
+export const INNER = 45;
+/** District half size: the built area, outer ring included, runs from -DISTRICT to DISTRICT. */
+export const DISTRICT = 70;
+/** How far the outer ring pushed everything outside the district further out. */
+export const GROW = DISTRICT - INNER;
 /** Where walkers and cars appear and vanish, just past the district edge. */
-export const EDGE = 46.5;
+export const EDGE = DISTRICT + 1.5;
+/** The ring road round the inner blocks: pavement, road, pavement, from INNER out. */
+const RING = { pave0: INNER, road0: INNER + 2.5, road1: INNER + 7.5, pave1: INNER + 10 };
 
 export interface Rect { x0: number; x1: number; z0: number; z1: number }
 const r = (x0: number, x1: number, z0: number, z1: number): Rect => ({ x0, x1, z0, z1 });
@@ -43,6 +50,11 @@ export const STREETS = {
   north: { road: r(-DISTRICT, DISTRICT, -21.5, -16.5), pavements: [r(-DISTRICT, DISTRICT, -24, -21.5), r(-DISTRICT, DISTRICT, -16.5, -15)], along: 'x' },
   south: { road: r(-DISTRICT, DISTRICT, 16.5, 21.5), pavements: [r(-DISTRICT, DISTRICT, 15, 16.5), r(-DISTRICT, DISTRICT, 21.5, 24)], along: 'x' },
   east: { road: r(24, 29.5, -DISTRICT, DISTRICT), pavements: [r(21.5, 24, -DISTRICT, DISTRICT), r(29.5, 32, -DISTRICT, DISTRICT)], along: 'z' },
+  // The ring road round the inner blocks, each side running on to the district edge (so the outer ring is a grid).
+  ringNorth: { road: r(-DISTRICT, DISTRICT, -RING.road1, -RING.road0), pavements: [r(-DISTRICT, DISTRICT, -RING.pave1, -RING.road1), r(-RING.road0, RING.road0, -RING.road0, -RING.pave0)], along: 'x' },
+  ringSouth: { road: r(-DISTRICT, DISTRICT, RING.road0, RING.road1), pavements: [r(-RING.road0, RING.road0, RING.pave0, RING.road0), r(-DISTRICT, DISTRICT, RING.road1, RING.pave1)], along: 'x' },
+  ringWest: { road: r(-RING.road1, -RING.road0, -DISTRICT, DISTRICT), pavements: [r(-RING.pave1, -RING.road1, -DISTRICT, DISTRICT), r(-RING.road0, -RING.pave0, -INNER, INNER)], along: 'z' },
+  ringEast: { road: r(RING.road0, RING.road1, -DISTRICT, DISTRICT), pavements: [r(RING.pave0, RING.road0, -INNER, INNER), r(RING.road1, RING.pave1, -DISTRICT, DISTRICT)], along: 'z' },
 } as const satisfies Record<string, { road: Rect; pavements: Rect[]; along: 'x' | 'z' }>;
 
 /** Zebra crossings on the main street, where cars give way (z ranges). */
@@ -52,23 +64,42 @@ export const MAIN_CROSSINGS: readonly { z0: number; z1: number }[] = [
   { z0: 21.75, z1: 23.75 },
 ];
 
+/** The outer ring's blocks: between the ring road and the district edge, cut by the streets running through. */
+function outerBlocks(): Record<string, Rect> {
+  const out: Record<string, Rect> = {};
+  // Across the north and south bands: corner, the inner columns (as far as the ring), corner.
+  const xs: [number, number][] = [[-DISTRICT, -RING.pave1], [-INNER, PAVE_W.x0], [PAVE_E.x1, 21.5], [32, INNER], [RING.pave1, DISTRICT]];
+  // Down the west and east bands, between the corners: the inner rows.
+  const zs: [number, number][] = [[-INNER, -24], [-15, 15], [24, INNER]];
+  xs.forEach(([x0, x1], i) => {
+    out[`on${i}`] = r(x0, x1, -DISTRICT, -RING.pave1);
+    out[`os${i}`] = r(x0, x1, RING.pave1, DISTRICT);
+  });
+  zs.forEach(([z0, z1], i) => {
+    out[`ow${i}`] = r(-DISTRICT, -RING.pave1, z0, z1);
+    out[`oe${i}`] = r(RING.pave1, DISTRICT, z0, z1);
+  });
+  return out;
+}
+
 /** Blocks between the streets, as ground rects. The centre block is the original street. */
-export const BLOCKS = {
-  nw: r(-DISTRICT, PAVE_W.x0, -DISTRICT, -24),
-  nm: r(PAVE_E.x1, 21.5, -DISTRICT, -24),
-  ne: r(32, DISTRICT, -DISTRICT, -24),
-  cw: r(-DISTRICT, -HALF, -15, 15),
+export const BLOCKS: Readonly<Record<string, Rect>> = {
+  nw: r(-INNER, PAVE_W.x0, -INNER, -24),
+  nm: r(PAVE_E.x1, 21.5, -INNER, -24),
+  ne: r(32, INNER, -INNER, -24),
+  cw: r(-INNER, -HALF, -15, 15),
   cm: r(HALF, 21.5, -15, 15),
-  ce: r(32, DISTRICT, -15, 15),
-  sw: r(-DISTRICT, PAVE_W.x0, 24, DISTRICT),
-  sm: r(PAVE_E.x1, 21.5, 24, DISTRICT),
-  se: r(32, DISTRICT, 24, DISTRICT),
-} as const satisfies Record<string, Rect>;
+  ce: r(32, INNER, -15, 15),
+  sw: r(-INNER, PAVE_W.x0, 24, INNER),
+  sm: r(PAVE_E.x1, 21.5, 24, INNER),
+  se: r(32, INNER, 24, INNER),
+  ...outerBlocks(),
+};
 
 /** Just outside the district, north: the forecourt by the railway station where a second camp gathers. */
-export const STATION_CAMP: Rect = r(-46, -14, -59, -51);
+export const STATION_CAMP: Rect = r(-46, -14, -59 - GROW, -51 - GROW);
 /** The police station, just past the district's north edge between the main and east roads. */
-export const POLICE_STATION: Rect = r(6, 20, -59.5, -51);
+export const POLICE_STATION: Rect = r(6, 20, -59.5 - GROW, -51 - GROW);
 
 export const PAVEMENT_TOP = 0.12;
 export const ROAD_TOP = 0.02;

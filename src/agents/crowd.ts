@@ -31,7 +31,7 @@ import {
 import { bus, car, CAR_COLOURS, rollWheels } from '../world/vehicles';
 import type { CityHappening, PasserbyKind } from '../sim/cityLife';
 import { approach } from '../world/animated';
-import { speedForGap, type TrafficCar } from '../world/traffic';
+import { speedForGap, stood, type TrafficCar } from '../world/traffic';
 import { PALETTE } from '../config/palette';
 import { CharacterRig, randomAppearance, type Appearance, type Archetype, type BodyState, type Figure, type Pose } from './character';
 import { HumanFigure, peopleLibrary } from './humanFigure';
@@ -205,7 +205,8 @@ export class Crowd {
   private readonly rings: PoliceRings;
   private readonly ringAt: P2[] = [];
   private squatTimer = 10;
-  private squatDoorAt: P2 | null | undefined;
+  /** Buildings people live in without a tenancy: the derelict one and squatted shops. */
+  private squats: readonly number[] = [];
   private readonly residents: Agent[] = [];
   private restingPlaced = false;
   private readonly sellers: Agent[] = [];
@@ -295,6 +296,11 @@ export class Crowd {
   private satellites: readonly Satellite[] = [];
 
   /** Rented shops and extra campers now working; visitors split between them and the main site. */
+  /** Where the squats are now; people moving in pick one of them. */
+  setSquats(buildings: readonly number[]): void {
+    this.squats = buildings;
+  }
+
   setSatellites(list: readonly Satellite[]): void {
     this.satellites = list;
   }
@@ -1187,17 +1193,16 @@ export class Crowd {
     this.walk(a, [...routeTo(a.pos, nearestNode(door), a.offset), door], () => this.remove(a));
   }
 
-  /** The squat's door: on the wall nearest the pavement it faces. */
+  /** A squat's door (one of them, at random): on the wall nearest the pavement it faces. */
   private squatDoor(): P2 | null {
-    if (this.squatDoorAt !== undefined) return this.squatDoorAt;
-    const b = this.world.squat === null ? undefined : cityBuilding(this.world.squat);
-    if (!b) return (this.squatDoorAt = null);
+    const b = this.squats.length ? cityBuilding(pick(this.random, this.squats)) : undefined;
+    if (!b) return null;
     const cx = (b.x0 + b.x1) / 2;
     const cz = (b.z0 + b.z1) / 2;
     const node = NODES[nearestNode({ x: cx, z: cz })];
     const wall = { x: Math.min(b.x1, Math.max(b.x0, node.x)), z: Math.min(b.z1, Math.max(b.z0, node.z)) };
     const away = Math.hypot(node.x - wall.x, node.z - wall.z) || 1;
-    return (this.squatDoorAt = { x: wall.x + ((node.x - wall.x) / away) * 0.6, z: wall.z + ((node.z - wall.z) / away) * 0.6 });
+    return { x: wall.x + ((node.x - wall.x) / away) * 0.6, z: wall.z + ((node.z - wall.z) / away) * 0.6 };
   }
 
   private spawnStreetFigure(role: 'seller' | 'sleeper', spot: { node: NodeId; at: P2; face: number }): Agent {
@@ -1439,9 +1444,10 @@ export class Crowd {
           target = 0;
         } else target = Math.min(target, toStop * 1.2);
       }
-      // Anyone on the road just ahead (at a zebra or not): stop short of them.
+      // Anyone in the lane just ahead (at a zebra or not): stop short of them. Someone in the
+      // parking lane (by the camper, say) is beside the car, not in its way.
       for (const a of this.agents.values()) {
-        if (!a.visible || a.pos.x < ROAD.x0 - 0.2 || a.pos.x > ROAD.x1 + 0.2) continue;
+        if (!a.visible || Math.abs(a.pos.x - ROAD.laneX) > 1.6) continue;
         const gap = a.pos.z - front;
         if (gap > -0.5 && gap < 7) target = Math.min(target, Math.max(0, (gap - 1.5) * 1.2));
       }
@@ -1452,6 +1458,7 @@ export class Crowd {
       const gap = this.world.traffic.gapAhead(c.rec);
       target = Math.min(target, speedForGap(c.cruise, gap));
       c.speed = gap < 1.2 ? 0 : approach(c.speed, target, 3, dt);
+      stood(c.rec, c.speed, dt);
       c.z += c.speed * dt;
       rollWheels(c.group, c.speed * dt);
       c.group.position.z = c.z;

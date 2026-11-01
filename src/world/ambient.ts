@@ -1,11 +1,11 @@
 import { QUALITY } from '../render/quality';
 import { CapsuleGeometry, Color, Group, InstancedMesh, Matrix4, MeshLambertMaterial, Quaternion, SphereGeometry, Vector3, type Object3D } from 'three';
 import type { Random } from '../sim/random';
-import { ROAD, STREETS } from './layout';
+import { GROW, ROAD, STREETS } from './layout';
 import { bus, car, CAR_COLOURS, emergencyVehicle, rollWheels, type EmergencyVehicle } from './vehicles';
 import { dynamic } from './mergeStatic';
 import { approach } from './animated';
-import { speedForGap, type Traffic, type TrafficCar } from './traffic';
+import { speedForGap, stood, type Traffic, type TrafficCar } from './traffic';
 import type { Figure } from '../agents/character';
 import { t } from '../i18n';
 
@@ -73,9 +73,11 @@ interface Driver {
 }
 interface Walker { run: Run; t: number; speed: number; length: number; phase: number; height: number }
 
-const FAR = 250;
-/** Bridges lift the road over the river (x 56 to 76): deck top at 0.37. */
-const RIVER = { x0: 55, x1: 77 };
+const FAR = 250 + GROW;
+/** Bridges lift the road over the river (x 56 to 76, pushed out by the outer ring): deck top at 0.37. */
+const RIVER = { x0: 55 + GROW, x1: 77 + GROW };
+/** The big park, south of the district: its lawn's edges and its long path. */
+const PARK = { x0: -44 - GROW, x1: 48 + GROW, z0: 52 + GROW, z1: 117 + GROW, path: 76 + GROW };
 
 export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic): Ambient {
   const runs: Run[] = [];
@@ -115,19 +117,19 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic):
   // Walkers: where people stroll outside the district.
   const paths: Run[] = [];
   const path = (a: [number, number], b: [number, number]) => paths.push({ from: new Vector3(a[0], 0, a[1]), to: new Vector3(b[0], 0, b[1]) });
-  path([52, -150], [52, 150]); path([53.5, 150], [53.5, -150]); // the promenade
-  path([-45, 76], [48, 76]); path([48, 77.2], [-45, 77.2]); // the park's long path
-  path([12, 50], [12, 118]); path([13.2, 118], [13.2, 50]); // and its cross path
-  path([-60, 4], [-120, 4]); path([-120, 2], [-60, 2]); // through the old town and its square
-  path([-48, -68.6], [-8, -68.6]); path([-8, -69.4], [-48, -69.4]); // the station platform
-  path([-56, -40], [-56, 40]); path([-130, -20], [-60, -20]);
+  path([52 + GROW, -150], [52 + GROW, 150]); path([53.5 + GROW, 150], [53.5 + GROW, -150]); // the promenade
+  path([PARK.x0 - 1, PARK.path], [PARK.x1, PARK.path]); path([PARK.x1, PARK.path + 1.2], [PARK.x0 - 1, PARK.path + 1.2]); // the park's long path
+  path([12, PARK.z0 - 2], [12, PARK.z1 + 1]); path([13.2, PARK.z1 + 1], [13.2, PARK.z0 - 2]); // and its cross path
+  path([-60 - GROW, 4], [-120 - GROW, 4]); path([-120 - GROW, 2], [-60 - GROW, 2]); // through the old town and its square
+  path([-48, -68.6 - GROW], [-8, -68.6 - GROW]); path([-8, -69.4 - GROW], [-48, -69.4 - GROW]); // the station platform
+  path([-56 - GROW, -40], [-56 - GROW, 40]); path([-130 - GROW, -20], [-60 - GROW, -20]);
   const walkers: Walker[] = [];
   const strollers = 48;
   // The park's own life after the strollers: sellers, buyers and police.
-  const SELLERS = [new Vector3(-30, 0, 60), new Vector3(32, 0, 108), new Vector3(-12, 0, 104), new Vector3(40, 0, 60)];
+  const SELLERS = [new Vector3(-30, 0, 60 + GROW), new Vector3(32, 0, 108 + GROW), new Vector3(-12, 0, 104 + GROW), new Vector3(40, 0, 60 + GROW)];
   const BUYERS = 6;
   const POLICE = 4;
-  const ROUND = [new Vector3(-42, 0, 53), new Vector3(46, 0, 53), new Vector3(46, 0, 115), new Vector3(-42, 0, 115)];
+  const ROUND = [new Vector3(PARK.x0 + 2, 0, PARK.z0 + 1), new Vector3(PARK.x1 - 2, 0, PARK.z0 + 1), new Vector3(PARK.x1 - 2, 0, PARK.z1 - 2), new Vector3(PARK.x0 + 2, 0, PARK.z1 - 2)];
   const DRUNKS = 8;
   const JOGGERS = 4;
   const count = strollers + SELLERS.length + BUYERS + DRUNKS + JOGGERS + POLICE;
@@ -163,21 +165,23 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic):
   let hangouts: Vector3[] = [];
   const drunks = Array.from({ length: DRUNKS }, (_, i) => ({ home: i, pos: new Vector3(), target: new Vector3(), wait: random() * 4, shown: 0 }));
   // Joggers run the park's round, a little inside the officers' path, spread out along it.
-  const LOOP = ROUND.map((p) => new Vector3(p.x * 0.9, 0, 84 + (p.z - 84) * 0.85));
+  const mid = (PARK.z0 + PARK.z1) / 2;
+  const LOOP = ROUND.map((p) => new Vector3(p.x * 0.9, 0, mid + (p.z - mid) * 0.85));
   const joggers = Array.from({ length: JOGGERS }, (_, i) => ({ leg: i % 4, pos: LOOP[i % 4].clone(), shown: 0 }));
   let joggersOut = 2;
   // Overdoses in the park: someone goes down near a seller; an ambulance comes.
   let parkOverdoseIn = 60 + random() * 120;
   let market = 0;
   // Emergency vehicles: a small pool, sent where needed.
-  const fleet: { v: EmergencyVehicle; kind: 'ambulance' | 'police'; path: Vector3[]; leg: number; hold: number; busy: boolean; reason: string; car: TrafficCar; speed: number }[] = [];
+  // `kerb`: where it pulls over at the scene, out of the lane, so traffic flows past while it stands there.
+  const fleet: { v: EmergencyVehicle; kind: 'ambulance' | 'police'; path: Vector3[]; kerb: Vector3; leg: number; hold: number; busy: boolean; reason: string; car: TrafficCar; speed: number }[] = [];
   // Enough police cars for a raid to swarm a place.
   for (const kind of ['ambulance', 'ambulance', 'police', 'police', 'police', 'police'] as const) {
     const v = emergencyVehicle(kind);
     v.group.visible = false;
     v.group.traverse((o) => { o.castShadow = false; });
     g.add(v.group);
-    fleet.push({ v, kind, path: [], leg: 0, hold: 0, busy: false, reason: '', car: traffic.add(kind === 'ambulance' ? 2.8 : 2.3), speed: 0 });
+    fleet.push({ v, kind, path: [], kerb: new Vector3(), leg: 0, hold: 0, busy: false, reason: '', car: traffic.add(kind === 'ambulance' ? 2.8 : 2.3), speed: 0 });
   }
   // Two police cars on routine patrol among the traffic.
   const patrols: Group[] = [];
@@ -192,18 +196,25 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic):
     patrols.push(v.group);
     drivers.push({ group: v.group, run, t: random(), speed: 8, v: 8, length: dir.length(), car: traffic.add(2.3) });
   }
-  /** A route in from the city's edge to the road nearest (x, z), to stop there. */
-  const routeTo = (x: number, z: number): Vector3[] => {
+  /**
+   * A route in from the city's edge to the road nearest (x, z), to stop there, and where to pull
+   * over: up on the kerb, out of the moving lane (the other side of each street is lined with
+   * parked cars).
+   */
+  const routeTo = (x: number, z: number): { path: Vector3[]; kerb: Vector3 } => {
     // Along the main street's inner lane (cars use it) or a cross street, whichever is nearer.
     const toMain = Math.abs(x - ROAD.laneX);
-    const crossZ = [STREETS.north.road, STREETS.south.road].map((r) => (r.z0 + r.z1) / 2);
-    const nearest = crossZ.reduce((a, b) => (Math.abs(z - a) < Math.abs(z - b) ? a : b));
+    const cross = [STREETS.north.road, STREETS.south.road];
+    const road = cross.reduce((a, b) => (Math.abs(z - (a.z0 + a.z1) / 2) < Math.abs(z - (b.z0 + b.z1) / 2) ? a : b));
+    const nearest = (road.z0 + road.z1) / 2;
     if (toMain <= Math.abs(z - nearest)) {
       const from = z < 0 ? -FAR : FAR;
-      return [new Vector3(ROAD.laneX, 0, from), new Vector3(ROAD.laneX, 0, Math.max(-FAR, Math.min(FAR, z)))];
+      const stop = Math.max(-FAR, Math.min(FAR, z));
+      return { path: [new Vector3(ROAD.laneX, 0, from), new Vector3(ROAD.laneX, 0, stop)], kerb: new Vector3(ROAD.x0 - 0.5, 0, stop) };
     }
     const from = x < 0 ? -FAR : FAR;
-    return [new Vector3(from, 0, nearest - 1.2), new Vector3(Math.max(-FAR, Math.min(FAR, x)), 0, nearest - 1.2)];
+    const stop = Math.max(-FAR, Math.min(FAR, x));
+    return { path: [new Vector3(from, 0, nearest - 1.2), new Vector3(stop, 0, nearest - 1.2)], kerb: new Vector3(stop, 0, road.z1 + 1.0) };
   };
   const step = (pos: Vector3, to: Vector3, speed: number, dt: number) => {
     const d = pos.distanceTo(to);
@@ -252,7 +263,9 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic):
     const f = fleet.find((v) => v.kind === kind && !v.busy);
     if (!f) return false;
     f.reason = reason;
-    f.path = routeTo(x, z);
+    const route = routeTo(x, z);
+    f.path = route.path;
+    f.kerb.copy(route.kerb);
     f.leg = 0;
     f.busy = true;
     f.hold = 0;
@@ -342,6 +355,7 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic):
         let target = speedForGap(d.speed, gap);
         if (yieldTo && d.t > 0 && yieldTo(at.x, at.z, hx, hz)) target = 0;
         d.v = gap < 1.2 ? 0 : approach(d.v, target, target < d.v ? 12 : 4, dt);
+        stood(d.car, d.v, dt);
         d.t += (dt * d.v) / d.length;
         rollWheels(d.group, d.v * dt);
         if (d.t >= 1) {
@@ -459,12 +473,18 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic):
         if (!f.busy) continue;
         const pos = f.v.group.position;
         if (f.hold > 0) {
+          // Pulled over at the scene, out of everyone's way: off the traffic register until it leaves.
+          f.car.active = false;
+          step(pos, f.kerb, 3, dt);
           f.hold -= dt;
           if (f.hold <= 0) {
-            // On through and out the far side.
+            // Back into its lane only once it is clear behind and ahead, then on through and out the far side.
             const last = f.path[f.path.length - 1];
-            const out = f.path[0].clone().sub(last).multiplyScalar(-1).add(last);
-            f.path = [last.clone(), out];
+            const fwd = last.clone().sub(f.path[0]).normalize();
+            Object.assign(f.car, { x: last.x, z: last.z, dx: fwd.x, dz: fwd.z });
+            if (!traffic.laneClear(f.car, 14, 8)) { f.hold = 0.5; continue; }
+            const out = last.clone().addScaledVector(fwd, last.distanceTo(f.path[0]));
+            f.path = [pos.clone(), last.clone().addScaledVector(fwd, 6), out];
             f.leg = 0;
             f.v.flashing = false;
           }
@@ -479,6 +499,7 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic):
         // Blue lights or not, it does not drive through a queue: it slows behind it.
         const gap = traffic.gapAhead(f.car);
         f.speed = gap < 1.2 ? 0 : approach(f.speed, speedForGap(14, gap), 12, dt);
+        stood(f.car, f.speed, dt);
         rollWheels(f.v.group, f.speed * dt);
         if (step(pos, target, f.speed, dt)) {
           f.leg++;
@@ -548,7 +569,7 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic):
 function edgePoint(random: Random): Vector3 {
   const t = random();
   const side = Math.floor(random() * 3);
-  if (side === 0) return new Vector3(-44 + t * 92, 0, 117);
-  if (side === 1) return new Vector3(-44, 0, 52 + t * 64);
-  return new Vector3(48, 0, 52 + t * 64);
+  if (side === 0) return new Vector3(PARK.x0 + t * (PARK.x1 - PARK.x0), 0, PARK.z1);
+  if (side === 1) return new Vector3(PARK.x0, 0, PARK.z0 + t * (PARK.z1 - PARK.z0));
+  return new Vector3(PARK.x1, 0, PARK.z0 + t * (PARK.z1 - PARK.z0));
 }

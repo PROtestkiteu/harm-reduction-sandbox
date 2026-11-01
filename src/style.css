@@ -130,6 +130,9 @@ html, body {
   /* The scene's horizon colour once the game runs (set from main.ts); the theme's until then. */
   background: var(--page, var(--bg));
   overscroll-behavior: none;
+  /* Panning lists scrolls; pinching never zooms the page (the camera has its own zoom). */
+  touch-action: pan-x pan-y;
+  -webkit-text-size-adjust: 100%;
 }
 
 #scene {
@@ -1764,11 +1767,27 @@ body:has(.sandbox-toggle[aria-expanded='true']) .portrait { display: none; }
 .crisis-box[data-state='rising'] .crisis-title { color: var(--closing); }
 .crisis-line { color: var(--text); }
 
-/* Need icons on priced replies: which city meters a spend eases, coloured as the meter is now. */
-.needs { display: inline-flex; gap: 3px; flex: none; margin-left: 6px; vertical-align: -2px; color: var(--muted); }
+/* Need icons on priced replies: which city meters a spend eases, coloured as the meter is now.
+   Calm needs take the reply's own colour (gold on dark, deep gold on light, grey when disabled). */
+.needs { display: inline-flex; gap: 3px; flex: none; margin-left: 6px; vertical-align: -2px; color: inherit; opacity: 0.8; }
+:disabled .needs { opacity: 0.6; }
 .needs[hidden] { display: none; }
 .need { display: inline-flex; width: 12px; height: 12px; }
 .need svg { width: 100%; height: 100%; }
 [data-need-police='mid'] .need[data-need='police'], [data-need-medics='mid'] .need[data-need='medics'], [data-need-sobering='mid'] .need[data-need='sobering'] { color: var(--closing); }
 [data-need-police='high'] .need[data-need='police'], [data-need-medics='high'] .need[data-need='medics'], [data-need-sobering='high'] .need[data-need='sobering'] { color: var(--law); }
 .need[data-need='district'] { color: var(--open, #6cc28a); }
+
+/* More contrast asked for: icons at full strength and a touch larger, meters thicker with an outlined track. */
+@media (prefers-contrast: more) {
+  .needs, :disabled .needs { opacity: 1; }
+  .need { width: 14px; height: 14px; }
+  .stress-bar { height: 6px; outline: 1px solid var(--text); outline-offset: 0; }
+  .stress-icon { color: var(--text); }
+}
+/* Forced colours (Windows high contrast): system colours, the meter fill as a solid system fill. */
+@media (forced-colors: active) {
+  .need, .stress-icon { color: CanvasText !important; }
+  .stress-bar { border: 1px solid CanvasText; background: Canvas; }
+  .stress-fill { background: Highlight !important; forced-color-adjust: none; }
+}

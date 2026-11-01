@@ -4,7 +4,7 @@ import type { Random } from '../sim/random';
 import { advertPillar, busShelter, manhole, postBox, signPost } from './details';
 import { cableBundle, steamVent, utilityPole, type Steam } from './grit';
 import { add, bench, bin, bollard, box, tree } from './kit';
-import { AID_BUS, AMBULANCE_BAY, CAMPER_SPOTS, HALF, LOTS, MAIN_CROSSINGS, ROAD, SPOTS, STREETS, type Rect } from './layout';
+import { AID_BUS, AMBULANCE_BAY, CAMPER_SPOTS, DISTRICT, HALF, LOTS, MAIN_CROSSINGS, ROAD, SPOTS, STREETS, type Rect } from './layout';
 import { glowMat, mat } from './materials';
 import { mergeStatic } from './mergeStatic';
 import { solid } from './solids';
@@ -103,6 +103,17 @@ export function buildStreetscape(scene: Object3D, random: Random): Steam[] {
     for (const z of along(STREETS.east.road, 'z', 6.2, random)) if (random() < 0.5) park(x, z, x < 26 ? Math.PI : 0);
   }
   for (const z of along(STREETS.main.road, 'z', 6.2, random)) if (Math.abs(z) > HALF + 3 && random() < 0.6) park(ROAD.parkX, z, 0);
+  // The ring road carries no through-traffic: cars parked along both kerbs, more thinly.
+  for (const s of [STREETS.ringNorth, STREETS.ringSouth]) {
+    for (const z of [s.road.z0 + 1.0, s.road.z1 - 1.0]) {
+      for (const x of along(s.road, 'x', 6.2, random)) if (random() < 0.35) park(x, z, Math.PI / 2 + (z < (s.road.z0 + s.road.z1) / 2 ? Math.PI : 0));
+    }
+  }
+  for (const s of [STREETS.ringWest, STREETS.ringEast]) {
+    for (const x of [s.road.x0 + 1.0, s.road.x1 - 1.0]) {
+      for (const z of along(s.road, 'z', 6.2, random)) if (random() < 0.35) park(x, z, x < (s.road.x0 + s.road.x1) / 2 ? Math.PI : 0);
+    }
+  }
 
   // Bus shelters on the cross streets, a kiosk on a corner, a post box.
   const advert = glowMat(0xe0d2b4, 0xffe0b0, 0.4);
@@ -168,7 +179,7 @@ export function buildStreetscape(scene: Object3D, random: Random): Steam[] {
       const roadIsLow = st.along === 'z' ? pave.x0 >= st.road.x1 - 0.01 : pave.z0 >= st.road.z1 - 0.01;
       // Against the buildings: the pavement's far edge from the road.
       const back = st.along === 'z' ? (roadIsLow ? pave.x1 - 0.45 : pave.x0 + 0.45) : (roadIsLow ? pave.z1 - 0.45 : pave.z0 + 0.45);
-      const spots = along(pave, st.along, 4, random).filter((v) => Math.abs(v) > 30 && Math.abs(v) < 42);
+      const spots = along(pave, st.along, 4, random).filter((v) => Math.abs(v) > DISTRICT - 15 && Math.abs(v) < DISTRICT - 3);
       for (const v of spots) {
         const [x, z] = st.along === 'z' ? [back, v] : [v, back];
         if (blocked(x, z, 2)) continue;

@@ -921,9 +921,13 @@ export class Simulation {
   private tickProperty(dtMinutes: number): void {
     const cost = this.property.costPerHour * (dtMinutes / 60);
     const paid = cost <= 0 || this.org.spend(cost);
-    for (const e of this.property.tick(dtMinutes, this.org.now, this.neighbourhood.state.shopTrade, paid)) {
+    // People who need a roof: those sleeping out, and a squat already full.
+    const housing = Math.min(1, this.camp.outdoors + 0.5 * this.camp.squat);
+    for (const e of this.property.tick(dtMinutes, this.org.now, this.neighbourhood.state.shopTrade, paid, housing)) {
       if (e.kind === 'closed') this.org.notice(this.clockMinutes, t('A shop on the street has closed. The unit is to let.'));
       else if (e.kind === 'reopened') this.org.notice(this.clockMinutes, t('A new business has taken an empty shop.'));
+      else if (e.kind === 'squatted') this.org.notice(this.clockMinutes, t('People with nowhere else to go have moved into an empty shop: a new squat.'));
+      else if (e.kind === 'evicted') this.org.notice(this.clockMinutes, t('A new business has taken a squatted shop; the people living there have moved on.'));
       else if (e.kind === 'pointLost') this.org.notice(this.clockMinutes, t('Rent unpaid: a {name} point has closed.', { name: SATELLITE_NAME[e.service].replace(/ point$/, '') }));
       else this.org.notice(this.clockMinutes, t('Rent unpaid: the {name} in the rented shop has closed.', { name: SATELLITE_NAME[e.service] }));
     }

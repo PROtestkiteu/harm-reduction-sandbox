@@ -101,3 +101,14 @@ export function aboutSection(version: string): HTMLFieldSetElement {
   section.append(legend, ...lines, linkLine, by);
   return section;
 }
+
+/**
+ * Safari on iPhone cannot put a web page in full screen; added to the Home Screen it opens without
+ * the browser bars (the manifest asks for that). A one-line pointer there, on iPhone in the browser only.
+ */
+export function homeScreenNote(): HTMLParagraphElement | null {
+  const iPhone = /iPhone|iPod/.test(navigator.userAgent);
+  const installed = window.matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches || (navigator as { standalone?: boolean }).standalone === true;
+  if (!iPhone || installed) return null;
+  return Object.assign(document.createElement('p'), { className: 'note home-screen-note', textContent: t('Full screen on iPhone: Share, then Add to Home Screen.') });
+}

@@ -30,7 +30,7 @@ import {
 } from './details';
 import { add, bench, bin, bollard, box, cylinder, planter, signBoard, setFoliageSeason, setLampNight, streetLight, tree } from './kit';
 import { setPuddleLight, tickPuddles } from './puddles';
-import { AID_BUS, CAMPER_SPOTS, SQUAT_SPOT, STATION_CAMP, moveCamper as moveCamperFrame, CROSSING, HALF, HOME_CAMPER, HOME_CLUB, LOTS, NODES, PAVE_E, PAVE_W, ROAD, VENUE_FACE, VENUES_AT_HOME, type P2 } from './layout';
+import { AID_BUS, CAMPER_SPOTS, DISTRICT, SQUAT_SPOT, STATION_CAMP, moveCamper as moveCamperFrame, CROSSING, HALF, HOME_CAMPER, HOME_CLUB, LOTS, NODES, PAVE_E, PAVE_W, ROAD, VENUE_FACE, VENUES_AT_HOME, type P2 } from './layout';
 import { buildBlockGround, buildOutskirts, buildStreets } from './district';
 import { lightPool, setPoolDaylight } from './dressing';
 import { buildInfill } from './infill';
@@ -408,7 +408,7 @@ export function buildWorld(random: Random): World {
   const zabkaPool = allBuildings()
     .filter((b) => !taken.has(b.id) && b.id !== squat)
     .map((b) => ({ b, roof: roofOf(b), cx: (b.x0 + b.x1) / 2, cz: (b.z0 + b.z1) / 2 }))
-    .filter(({ b, roof, cx, cz }) => roof < b.height + 4 && Math.max(Math.abs(cx), Math.abs(cz)) > 26 && Math.max(Math.abs(cx), Math.abs(cz)) < 46)
+    .filter(({ b, roof, cx, cz }) => roof < b.height + 4 && Math.max(Math.abs(cx), Math.abs(cz)) > DISTRICT - 20 && Math.max(Math.abs(cx), Math.abs(cz)) < DISTRICT + 1)
     // The lowest first: a corner shop, not a tower block.
     .sort((p, q) => p.b.storeys - q.b.storeys);
   const zabkas: number[] = [];

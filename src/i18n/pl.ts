@@ -38,7 +38,7 @@ export const PL: Record<string, string> = {
   'Staffing.': 'Zespół.',
   'Close details (Escape)': 'Zamknij szczegóły (Escape)',
   'Aid.': 'Pomoc.',
-  'Drive.': 'Zbiórka.',
+  'Fundraise.': 'Zbiórka.',
   'Favour.': 'Przysługa.',
   'Back.': 'Wróć.',
   'Overview.': 'Widok ogólny.',
@@ -69,7 +69,12 @@ export const PL: Record<string, string> = {
   'Medics': 'Medycy',
   'Overdoses nobody reached, people harmed outdoors and people turned away from services fill ambulances and A&E; overstretched, fewer survive.': 'Przedawkowania bez pomocy, osoby poszkodowane na zewnątrz i osoby odesłane z usług zapełniają karetki i SOR; gdy są przeciążone, mniej osób przeżywa.',
   'Sobering': 'Izba',
+  "People with nowhere else to go have moved into an empty shop: a new squat.": "Osoby, które nie mają się gdzie podziać, zajęły pusty sklep: nowy squat.",
+  "A new business has taken a squatted shop; the people living there have moved on.": "Zajęty sklep przejęła nowa firma; mieszkające tam osoby musiały się wynieść.",
+  "A squat: the shop stood empty, and people with nowhere else to go moved in. A new business would move them on.": "Squat: sklep stał pusty i zamieszkały w nim osoby, które nie mają się gdzie podziać. Nowa firma by je stąd wyprosiła.",
+  "Empty, squatted": "Pusty, zajęty na squat",
   'Eases: {needs}': 'Odciąża: {needs}',
+  'Full screen on iPhone: Share, then Add to Home Screen.': 'Pełny ekran na iPhonie: Udostępnij, potem Do ekranu początkowego.',
   'Drunk club leavers taken to the sobering-up centre (izba wytrzeźwień), more of them when the club service turns people away.': 'Pijane osoby wychodzące z klubu, odwożone do izby wytrzeźwień; więcej, gdy punkt w klubie odsyła ludzi.',
 
   // Focus and person

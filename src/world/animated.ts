@@ -50,12 +50,15 @@ export class WindowBank {
         this.timers[i] = 4 + this.random() * 14;
       }
       this.current[i] = approach(this.current[i], this.lit[i] ? this.onIntensity : this.offIntensity, 3, dt);
-      this.mats[i].emissiveIntensity = this.current[i] * (1 - 0.8 * windowDaylight);
+      // By day nobody's lights read against the sun: the on/off difference fades out, so groups of
+      // windows sharing a material never blink together in daylight; they twinkle from dusk on.
+      const off = this.offIntensity;
+      this.mats[i].emissiveIntensity = off + (this.current[i] - off) * (1 - windowDaylight);
     }
   }
 }
 
-/** Daylight (0 to 1): lit windows fade in daylight, they still glow at dusk and night. */
+/** Daylight (0 to 1): window lights fade out in daylight; they glow at dusk and night. */
 let windowDaylight = 0;
 export function setWindowDaylight(day: number): void {
   windowDaylight = day;

@@ -94,5 +94,11 @@ if (line) {
   }, 1400);
 }
 
+// Safari on iPhone ignores user-scalable=no: its own pinch gesture events are cancelled, so a pinch on the
+// panel cannot zoom the page (the scene handles its own pinch through pointer events).
+for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
+  document.addEventListener(type, (e) => e.preventDefault(), { passive: false });
+}
+
 // The game: its own chunk, fetched once the language's text is in (t() reads it as modules load).
 void loadCatalogue().catch(() => { /* offline mid-load: English */ }).then(() => import('./main'));

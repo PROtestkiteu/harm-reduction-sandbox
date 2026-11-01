@@ -1,3 +1,4 @@
+import { DISTRICT } from './layout';
 import { Color, MeshLambertMaterial, MeshPhongMaterial, type Material, type WebGLProgramParametersWithUniforms } from 'three';
 
 /**
@@ -18,7 +19,7 @@ function paintSurface(shader: WebGLProgramParametersWithUniforms, moving = false
       /* glsl */ `#include <common>
       varying vec3 vPaintPos;
       varying vec3 vPaintN;
-      float bHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float bHash(vec2 p) { vec3 h = fract(vec3(p.xyx) * 0.1031); h += dot(h, h.yzx + 33.33); return fract((h.x + h.y) * h.z); }
       float bNoise(vec2 p) {
         vec2 i = floor(p); vec2 f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
         return mix(mix(bHash(i), bHash(i + vec2(1, 0)), u.x), mix(bHash(i + vec2(0, 1)), bHash(i + vec2(1, 1)), u.x), u.y);
@@ -74,7 +75,8 @@ function paintSurface(shader: WebGLProgramParametersWithUniforms, moving = false
       varying vec3 vPaintPos;
       varying vec3 vPaintN;
       uniform float uSnow;
-      float pHash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+      // A sin-free hash: a sin() hash turns blocky far from the origin on phone GPUs.
+      float pHash(vec2 p) { vec3 h = fract(vec3(p.xyx) * 0.1031); h += dot(h, h.yzx + 33.33); return fract((h.x + h.y) * h.z); }
       float pNoise(vec2 p) {
         vec2 i = floor(p); vec2 f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
         return mix(mix(pHash(i), pHash(i + vec2(1, 0)), u.x), mix(pHash(i + vec2(0, 1)), pHash(i + vec2(1, 1)), u.x), u.y);
@@ -183,8 +185,11 @@ function paintSurface(shader: WebGLProgramParametersWithUniforms, moving = false
             vec2 inCell = abs(fract(q * 0.33) - 0.5);
             float edge = repair * smoothstep(0.38, 0.4, max(inCell.x, inCell.y)) * (1.0 - smoothstep(0.42, 0.44, max(inCell.x, inCell.y)));
             float oil = smoothstep(0.62, 0.8, pFbm(q * 0.55 + 31.0)) * step(0.6, pNoise(q * 0.1 + 2.0));
-            col *= mix(1.0, (1.0 - 0.5 * crack) * (1.0 - 0.14 * repair) * (1.0 - 0.35 * edge), detail);
-            col *= 1.0 - 0.35 * oil;
+            // Cracks, repairs and oil belong to the district's streets; out in the city beyond, the
+            // dark ground between blocks would turn them into black blotches.
+            float town = 1.0 - smoothstep(${DISTRICT + 6}.0, ${DISTRICT + 20}.0, max(abs(vPaintPos.x), abs(vPaintPos.z)));
+            col *= mix(1.0, (1.0 - 0.5 * crack) * (1.0 - 0.14 * repair) * (1.0 - 0.35 * edge), detail * town);
+            col *= 1.0 - 0.35 * oil * town;
           } else {
             col *= 1.0 + (pNoise(q * 6.0) - 0.5) * 0.12;
             if (!emissive && detail > 0.0) {

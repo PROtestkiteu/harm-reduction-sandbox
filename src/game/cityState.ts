@@ -89,6 +89,20 @@ const SATELLITE_SIGN: Record<SatelliteService, { sign: string; fg: string; bg: s
   drugChecking: { sign: 'DRUG CHECKING', fg: '#eafffb', bg: '#245c58' },
   footPatrol: { sign: 'NEEDLE EXCHANGE', fg: '#ffffff', bg: '#2f7a48' },
 };
+/** The banner on a squat's roof, the launch's derelict building or a squatted shop. */
+const SQUAT_SIGN = { sign: 'SQUAT', fg: '#f4e8d0', bg: '#2a2a2a' };
+/** A camper parked this close to a squat (metres) reaches the people living there. */
+const SQUAT_REACH = 14;
+
+/** Is a camper parked by the building? The first camper and the extra ones. */
+function camperBy(world: World, sim: Simulation, building: number): boolean {
+  const b = cityBuilding(building);
+  if (!b) return false;
+  return [camperSpot(), ...sim.property.campers].some((spot) => {
+    const c = world.camperCounter(spot);
+    return !!c && Math.hypot(Math.min(b.x1, Math.max(b.x0, c.x)) - c.x, Math.min(b.z1, Math.max(b.z0, c.z)) - c.z) < SQUAT_REACH;
+  });
+}
 
 /** Cards for an ordinary building (who lives there, the neighbourhood round it) and for a police car or ambulance. */
 export class CityCards {
@@ -199,9 +213,14 @@ export class CityCards {
     const unit = this.unitPart(id);
     const point = this.unitOf(id) >= 0 || shopKindOf(world, id) || id === world.squat ? {} : this.pointPart(id);
     const shop = world.shopAt(id);
+    const reach = () => (camperBy(world, sim, id) || (id === world.squat && (camperSpot() === SQUAT_SPOT || sim.property.campers.includes(SQUAT_SPOT)))
+      ? t('A camper parked outside reaches them.')
+      : t('Park a camper outside to reach them.'));
     const squat = id === world.squat
-      ? `${t('A squat: about {n} people live here without a tenancy, some of them use drugs. In winter more move in from the street.', { n: sim.camp.squatPeople })} ${camperSpot() === SQUAT_SPOT || sim.property.campers.includes(SQUAT_SPOT) ? t('A camper parked outside reaches them.') : t('Park a camper outside to reach them.')}`
-      : undefined;
+      ? `${t('A squat: about {n} people live here without a tenancy, some of them use drugs. In winter more move in from the street.', { n: sim.camp.squatPeople })} ${reach()}`
+      : sim.property.units[this.unitOf(id)]?.kind === 'squatted'
+        ? `${t('A squat: the shop stood empty, and people with nowhere else to go moved in. A new business would move them on.')} ${reach()}`
+        : undefined;
     const said = squat ?? (shop ? SHOP_SAID[shop] : undefined) ?? unit.said ?? (b.households ? t('{storeys}, {households}, about {residents}.', {
       storeys: plural(b.storeys, ['{n} storey', '{n} storeys'], ['{n} kondygnacja', '{n} kondygnacje', '{n} kondygnacji']),
       households: plural(b.households, ['{n} household', '{n} households'], ['{n} gospodarstwo domowe', '{n} gospodarstwa domowe', '{n} gospodarstw domowych']),
@@ -294,6 +313,7 @@ export class CityCards {
     const u = i >= 0 ? sim.property.units[i] : undefined;
     if (!u) return {};
     if (u.kind === 'trading') return { fact: [t('Shop'), t('Trading')] };
+    if (u.kind === 'squatted') return { fact: [t('Shop'), t('Empty, squatted')] };
     const cost = t('{fitOut}, then {rent} an hour', { fitOut: price(PROPERTY.fitOut), rent: price(PROPERTY.rentPerHour) });
     if (u.kind === 'vacant') {
       return {
@@ -326,19 +346,27 @@ export class PropertyView {
   private campersShown = '';
   private pointsShown = new Map<number, string>();
   private satelliteKey = '';
+  private squatsShown = '';
 
   constructor(private readonly sim: Simulation, private readonly world: World, private readonly crowd: Crowd) {}
 
   sync(): void {
     const { sim, world } = this;
     // A camper parked by the squat reaches the people living there.
-    sim.squatCovered = camperSpot() === SQUAT_SPOT || sim.property.campers.includes(SQUAT_SPOT);
+    // Squats: the launch's derelict building, and any shop people have moved into.
+    const squats = [...(world.squat === null ? [] : [world.squat]), ...sim.property.squats.map((i) => world.shopUnits[i])];
+    sim.squatCovered = camperSpot() === SQUAT_SPOT || sim.property.campers.includes(SQUAT_SPOT) || squats.some((b) => camperBy(world, sim, b));
     sim.property.units.forEach((u, i) => {
       const key = u.kind === 'rented' ? u.service : u.kind;
       if (this.unitShown[i] === key) return;
       this.unitShown[i] = key;
-      world.setUnit(i, u.kind === 'trading' ? 'trading' : u.kind === 'vacant' ? 'toLet' : SATELLITE_SIGN[u.service]);
+      world.setUnit(i, u.kind === 'trading' ? 'trading' : u.kind === 'vacant' ? 'toLet' : u.kind === 'squatted' ? SQUAT_SIGN : SATELLITE_SIGN[u.service]);
     });
+    const squatKey = squats.join(',');
+    if (squatKey !== this.squatsShown) {
+      this.squatsShown = squatKey;
+      this.crowd.setSquats(squats);
+    }
     // Points' signs: new ones go up, closed ones come down.
     const now = new Map(sim.property.points.map((q) => [q.building, `${q.service}:${q.level}`]));
     for (const [b, key] of now) if (this.pointsShown.get(b) !== key) world.setPoint(b, SATELLITE_SIGN[sim.property.pointAt(b)!.service]);

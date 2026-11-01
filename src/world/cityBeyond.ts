@@ -5,7 +5,7 @@ import type { Random } from '../sim/random';
 import { WindowBank } from './animated';
 import { bench, box, cylinder, gableRoof, add, pixelTextTexture, streetLight, tree } from './kit';
 import { registerBuilding } from './cityBuildings';
-import { DISTRICT, POLICE_STATION, ROAD, STATION_CAMP, STREETS, type Rect } from './layout';
+import { DISTRICT, GROW, POLICE_STATION, ROAD, STATION_CAMP, STREETS, type Rect } from './layout';
 import { glowMat, mat, softMat } from './materials';
 import { dynamic, mergeStatic } from './mergeStatic';
 import { car, train as trainModel } from './vehicles';
@@ -62,9 +62,9 @@ export function heightCap(x: number, z: number): number {
 }
 
 /** The river runs north to south east of the district. */
-const RIVER = { x0: 56, x1: 76 };
+const RIVER = { x0: 56 + GROW, x1: 76 + GROW };
 /** The railway runs east to west north of the district. */
-const RAIL_Z = -64;
+const RAIL_Z = -64 - GROW;
 
 export function buildCityBeyond(scene: Object3D, random: Random): CityBeyond {
   const g = add(scene, new Group());
@@ -108,7 +108,8 @@ export function buildCityBeyond(scene: Object3D, random: Random): CityBeyond {
   // Blocks stay separate meshes (not merged into one city-wide mesh), so the
   // camera skips every block outside the view: cheap when zoomed in.
   const blocksGroup = add(scene, dynamic(new Group()));
-  const sites = lattice(towers, random);
+  const { sites, streets } = lattice(towers, random);
+  buildStreets(add(scene, dynamic(new Group())), streets);
   // A few sites, spread round the city, are kept for the kit's buildings; until
   // the kit loads they are built like the rest, in a group of their own.
   const kitSites: Rect[] = [];
@@ -167,9 +168,9 @@ export function buildCityBeyond(scene: Object3D, random: Random): CityBeyond {
         if (!pieces.length) return;
         const groups = new Map<Object3D, Placement[]>();
         for (let i = 0; i < count; i++) {
-          const x = -44 + random() * 92;
-          const z = 52 + random() * 64;
-          if (Math.abs(z - 76.6) < 2.5 || Math.abs(x - 12.6) < 2.5 || Math.hypot((x - 34) / 13, (z - 96) / 9) < 1) continue;
+          const x = -44 - GROW + random() * (92 + 2 * GROW);
+          const z = 52 + GROW + random() * 64;
+          if (Math.abs(z - PARK_PATH_Z - 0.6) < 2.5 || Math.abs(x - 12.6) < 2.5 || Math.hypot((x - 34) / 13, (z - POND_Z) / 9) < 1) continue;
           if (Math.abs(x - (ROAD.x0 + ROAD.x1) / 2) < 6 || (x > 21 && x < 33)) continue;
           const piece = pieces[i % pieces.length];
           const list = groups.get(piece) ?? [];
@@ -213,21 +214,23 @@ function buildRiver(g: Object3D, random: Random): void {
   const paving = mat(PALETTE.pavementAlt);
   const grass = mat(PALETTE.grassDark);
   const w = RIVER.x1 - RIVER.x0;
+  // Long enough to run past the park and the far blocks at both ends.
+  const len = 260 + 2 * GROW;
   // Water a hair above the ground plane, walled in by stone embankments; it mirrors the promenade lamps
   // (heads 0.85 m out on their arms from posts 1 m off the bank, every 20 m from z = -115, 4.07 m up).
-  const river = add(g, dynamic(new Mesh(new PlaneGeometry(w, 260).rotateX(-Math.PI / 2), riverMaterial(RIVER.x0 - 1.85, -115, 20, 4.07))));
+  const river = add(g, dynamic(new Mesh(new PlaneGeometry(w, len).rotateX(-Math.PI / 2), riverMaterial(RIVER.x0 - 1.85, -115, 20, 4.07))));
   river.position.set((RIVER.x0 + RIVER.x1) / 2, LAYER.water, 0);
-  for (const x of [RIVER.x0, RIVER.x1]) add(g, box(0.6, 0.5, 260, stone, x, -0.1, 0));
+  for (const x of [RIVER.x0, RIVER.x1]) add(g, box(0.6, 0.5, len, stone, x, -0.1, 0));
   // Promenade on the city side: paving, a lamp and a tree every so often, benches facing the water.
-  flat(g, RIVER.x0 - EDGE - 2.3, 260, paving, (EDGE + 2 + RIVER.x0 - 0.3) / 2, 0, LAYER.promenade);
-  for (let z = -120; z <= 120; z += 10) {
+  flat(g, RIVER.x0 - EDGE - 2.3, len, paving, (EDGE + 2 + RIVER.x0 - 0.3) / 2, 0, LAYER.promenade);
+  for (let z = -150; z <= 150; z += 10) {
     if (Math.abs(z - (STREETS.north.road.z0 + STREETS.north.road.z1) / 2) < 6 || Math.abs(z - (STREETS.south.road.z0 + STREETS.south.road.z1) / 2) < 6 || Math.abs(z - RAIL_Z) < 6) continue;
     add(g, tree((z / 10) % 2 ? 0 : 3, 0.9 + random() * 0.3)).position.set(RIVER.x0 - 3.5, 0, z);
     if ((z / 10) % 2) add(g, bench(), Math.PI / 2).position.set(RIVER.x0 - 1.4, 0, z + 4);
     else add(g, streetLight(-1).group).position.set(RIVER.x0 - 1.0, 0, z + 5);
   }
   // Far bank: a strip of meadow.
-  flat(g, 5.7, 260, grass, RIVER.x1 + 3.15, 0, LAYER.grass);
+  flat(g, 5.7, len, grass, RIVER.x1 + 3.15, 0, LAYER.grass);
   // Road bridges where the cross streets meet the river, with railings.
   const deck = mat(0x5a5650);
   const rail = mat(PALETTE.metal);
@@ -246,7 +249,7 @@ function buildRiver(g: Object3D, random: Random): void {
 
 function buildPark(g: Object3D, random: Random, onRoad: (x: number, z: number, w: number, d: number) => boolean): void {
   const z0 = EDGE + 3;
-  const z1 = 118;
+  const z1 = 118 + GROW;
   const x0 = -EDGE + 2;
   // Up to the promenade, never under it: overlapping flats flicker.
   const x1 = EDGE + 1.9;
@@ -254,40 +257,45 @@ function buildPark(g: Object3D, random: Random, onRoad: (x: number, z: number, w
   const path = mat(PALETTE.gravel);
   flat(g, x1 - x0, z1 - z0, lawn, (x0 + x1) / 2, (z0 + z1) / 2, LAYER.grass);
   // Paths: one along the park, one across, and a loop round the pond.
-  flat(g, x1 - x0, 3, path, (x0 + x1) / 2, 76, LAYER.path);
+  flat(g, x1 - x0, 3, path, (x0 + x1) / 2, PARK_PATH_Z, LAYER.path);
   flat(g, 3, z1 - z0, path, 12, (z0 + z1) / 2, LAYER.path);
   // The pond, with a stone rim.
   const pond = add(g, new Mesh(new IcosahedronGeometry(1, 1), glowMat(0x22404c, 0x0c2028, 0.5)));
   pond.scale.set(11, 0.01, 7);
-  pond.position.set(34, LAYER.path + 0.015, 96);
+  pond.position.set(34, LAYER.path + 0.015, POND_Z);
   const rim = add(g, new Mesh(new IcosahedronGeometry(1, 1), mat(0x7a756a)));
   rim.scale.set(11.8, 0.012, 7.8);
-  rim.position.set(34, LAYER.path - 0.004, 96);
+  rim.position.set(34, LAYER.path - 0.004, POND_Z);
   // A fountain where the paths cross.
-  add(g, cylinder(2.2, 0.5, mat(0x8a857a), 16, 12, -0.02, 76));
-  add(g, cylinder(1.8, 0.05, glowMat(0x3a5a68, 0x1a3a48, 0.6), 16, 12, 0.46, 76));
-  add(g, cylinder(0.3, 1.6, mat(0x8a857a), 8, 12, 0, 76));
+  add(g, cylinder(2.2, 0.5, mat(0x8a857a), 16, 12, -0.02, PARK_PATH_Z));
+  add(g, cylinder(1.8, 0.05, glowMat(0x3a5a68, 0x1a3a48, 0.6), 16, 12, 0.46, PARK_PATH_Z));
+  add(g, cylinder(0.3, 1.6, mat(0x8a857a), 8, 12, 0, PARK_PATH_Z));
   // A playground: a frame, a slide and sandpit.
   const red = mat(0xb04a3a);
   const yellow = mat(0xd0a830);
-  flat(g, 5, 4, mat(0xc8b48a), -24, 92, LAYER.path);
-  for (const x of [-26, -22]) add(g, box(0.15, 2.4, 0.15, red, x, 0, 91));
-  add(g, box(4.3, 0.15, 0.15, red, -24, 2.3, 91));
-  add(g, box(1.2, 1.6, 1.2, yellow, -23, 0, 93.5));
-  add(g, box(0.8, 0.1, 2.6, yellow, -21.6, 0.8, 93.5)).rotation.x = -0.5;
+  const pz = 92 + GROW;
+  flat(g, 5, 4, mat(0xc8b48a), -24, pz, LAYER.path);
+  for (const x of [-26, -22]) add(g, box(0.15, 2.4, 0.15, red, x, 0, pz - 1));
+  add(g, box(4.3, 0.15, 0.15, red, -24, 2.3, pz - 1));
+  add(g, box(1.2, 1.6, 1.2, yellow, -23, 0, pz + 1.5));
+  add(g, box(0.8, 0.1, 2.6, yellow, -21.6, 0.8, pz + 1.5)).rotation.x = -0.5;
   // Benches along the main path.
-  for (let x = x0 + 6; x < x1 - 4; x += 9) if (!onRoad(x, 78.6, 2, 1)) add(g, bench(), Math.PI).position.set(x, 0, 78.6);
+  for (let x = x0 + 6; x < x1 - 4; x += 9) if (!onRoad(x, PARK_PATH_Z + 2.6, 2, 1)) add(g, bench(), Math.PI).position.set(x, 0, PARK_PATH_Z + 2.6);
   // Trees: full ones near the district, simple far ones further out.
   for (let i = 0; i < 90; i++) {
     const x = x0 + 2 + random() * (x1 - x0 - 4);
     const z = z0 + 2 + random() * (z1 - z0 - 4);
-    if (onRoad(x, z, 3, 3) || Math.abs(z - 76) < 3 || Math.abs(x - 12) < 3) continue;
-    if (Math.hypot((x - 34) / 13, (z - 96) / 9) < 1) continue;
-    if (x > -28 && x < -19 && z > 88 && z < 96) continue;
-    if (z < 70 && i % 3 === 0) add(g, tree(pick4(random), 1 + random() * 0.4)).position.set(x, 0, z);
+    if (onRoad(x, z, 3, 3) || Math.abs(z - PARK_PATH_Z) < 3 || Math.abs(x - 12) < 3) continue;
+    if (Math.hypot((x - 34) / 13, (z - POND_Z) / 9) < 1) continue;
+    if (x > -28 && x < -19 && z > pz - 4 && z < pz + 4) continue;
+    if (z < 70 + GROW && i % 3 === 0) add(g, tree(pick4(random), 1 + random() * 0.4)).position.set(x, 0, z);
     else farTree(g, x, z, 1 + random() * 0.6, random);
   }
 }
+
+/** The park's long path (with the fountain where the cross path meets it) and its pond, south of the district. */
+const PARK_PATH_Z = 76 + GROW;
+const POND_Z = 96 + GROW;
 
 const pick4 = (random: Random) => Math.floor(random() * 4) as 0 | 1 | 2 | 3;
 
@@ -415,10 +423,10 @@ function buildRailway(g: Object3D): { update(dt: number): void } {
 // ------------------------------------------------------------------ hospital and sobering-up centre
 
 /** The public hospital across the river, east of the district; the sobering-up centre by the railway, north. */
-const HOSPITAL = { x0: 88, x1: 124, z0: -30, z1: 2 };
+const HOSPITAL = { x0: 88 + GROW, x1: 124 + GROW, z0: -30, z1: 2 };
 /** City hall: on the old town's edge nearest the district, facing it across the main street west. */
-const CITY_HALL = { x0: -68, x1: -54, z0: -21, z1: -6 };
-const SOBERING = { x0: 30, x1: 44, z0: -59, z1: -51 };
+const CITY_HALL = { x0: -68 - GROW, x1: -54 - GROW, z0: -21, z1: -6 };
+const SOBERING = { x0: 30, x1: 44, z0: -59 - GROW, z1: -51 - GROW };
 
 function buildLandmarks(g: Object3D, lit: MeshLambertMaterial[]): { hospital: number; sobering: number; police: number; cityHall: number } {
   const white = mat(0xdadcd8);
@@ -583,7 +591,7 @@ function buildTowers(g: Object3D, random: Random, towerGlass: MeshLambertMateria
   const ox = (random() - 0.5) * 16;
   const oz = (random() - 0.5) * 12;
   for (let x = -55 + ox; x <= 55 + ox; x += 26) {
-    for (let z = -96 + oz; z >= -150 + oz; z -= 26) {
+    for (let z = -96 - GROW + oz; z >= -150 - GROW + oz; z -= 26) {
       if (random() < 0.15) continue;
       const w = 9.5 + random() * 2;
       const d = 9.5 + random() * 2;
@@ -635,7 +643,7 @@ function buildOldTown(g: Object3D, random: Random, lit: Material[], pick: <T>(it
   const roofs = [mat(0x8a4a3a), mat(0x6a3a30), mat(0x5a4a44)];
   const cobbles = mat(0x6e6658);
   // Cobbled square with market stalls.
-  const sqx = -78;
+  const sqx = -78 - GROW;
   const sqz = 4;
   flat(g, 26, 22, cobbles, sqx, sqz, LAYER.path);
   const awnings = [0xb04a3a, 0x2e7d6b, 0xd0a830, 0x3a6ea8].map(mat);
@@ -649,7 +657,7 @@ function buildOldTown(g: Object3D, random: Random, lit: Material[], pick: <T>(it
   // The church: nave, transept, a tower with a spire.
   const stone = mat(0x9a9080);
   // Far enough west that the tower and spire never stand in front of the district.
-  const cx = -118;
+  const cx = -118 - GROW;
   const cz = -26;
   add(g, box(10, 12, 26, stone, cx, 0, cz));
   add(g, gableRoof(10, 26, 6, roofs[1])).position.set(cx, 12, cz);
@@ -670,11 +678,11 @@ function buildOldTown(g: Object3D, random: Random, lit: Material[], pick: <T>(it
   // Pavement under each row of houses and cobbled lanes between the rows.
   const pave = mat(PALETTE.pavement);
   for (let z = -46; z <= 48; z += 13) {
-    if (!onRoad(-91, z, 76, 11)) add(g, box(78, 0.14, 11.5, pave, -91, -0.12, z));
-    flat(g, 78, 2.2, cobbles, -91, z + 6.6, LAYER.path);
+    if (!onRoad(-91 - GROW, z, 76, 11)) add(g, box(78, 0.14, 11.5, pave, -91 - GROW, -0.12, z));
+    flat(g, 78, 2.2, cobbles, -91 - GROW, z + 6.6, LAYER.path);
   }
   for (let z = -46; z <= 48; z += 13) {
-    for (let x = -54; x >= -128; x -= 4.6) {
+    for (let x = -54 - GROW; x >= -128 - GROW; x -= 4.6) {
       const w = 4.2;
       const d = 9;
       if (onRoad(x, z, w, d)) continue;
@@ -718,8 +726,8 @@ function buildOldTown(g: Object3D, random: Random, lit: Material[], pick: <T>(it
 
 function buildHill(g: Object3D, random: Random): void {
   const grass = [softMat(0x4e6a3a), softMat(0x587240), softMat(0x62783e)];
-  const cx = -100;
-  const cz = -100;
+  const cx = -100 - GROW;
+  const cz = -100 - GROW;
   // A heightfield that eases into the ground on every side (no rim), with an
   // uneven outline and shoulders, so it reads as a hill and not a dome.
   const radiusAt = (a: number) => 37 * (1 + 0.09 * Math.sin(3 * a + 0.7) + 0.05 * Math.cos(5 * a + 1.9));
@@ -824,9 +832,9 @@ function massing(g: Object3D, x: number, z: number, w: number, d: number, floors
 function buildSkyline(cellAt: (x: number, z: number) => Object3D, random: Random, lit: Material[], cool: Material[]): void {
   const ox = random() * 20;
   const oz = random() * 20;
-  for (let x = -260 + ox; x <= 260; x += 20) {
-    for (let z = -260 + oz; z <= 260; z += 20) {
-      if (Math.abs(x) < 170 && Math.abs(z) < 170) continue;
+  for (let x = -260 - GROW + ox; x <= 260 + GROW; x += 20) {
+    for (let z = -260 - GROW + oz; z <= 260 + GROW; z += 20) {
+      if (Math.abs(x) < 170 + GROW && Math.abs(z) < 170 + GROW) continue;
       if (x > RIVER.x0 - 4 && x < RIVER.x1 + 4) continue;
       if (Math.abs(z - RAIL_Z) < 6) continue;
       if (random() < 0.1) continue;
@@ -838,47 +846,25 @@ function buildSkyline(cellAt: (x: number, z: number) => Object3D, random: Random
 
 /** Ground already taken by something else, with a little margin. */
 const TAKEN: Rect[] = [
-  { x0: -49, x1: 49, z0: -49, z1: 49 }, // the district
-  { x0: 47, x1: 82, z0: -400, z1: 400 }, // promenade, river, far bank
-  { x0: -47, x1: 49, z0: 49, z1: 120 }, // the big park
-  { x0: -134, x1: -52, z0: -50, z1: 52 }, // the old town and the church
-  { x0: -52, x1: -4, z0: -84, z1: -60 }, // the station
+  { x0: -DISTRICT - 4, x1: DISTRICT + 4, z0: -DISTRICT - 4, z1: DISTRICT + 4 }, // the district
+  { x0: DISTRICT + 2, x1: 82 + GROW, z0: -400, z1: 400 }, // promenade, river, far bank
+  { x0: -DISTRICT - 2, x1: DISTRICT + 4, z0: DISTRICT + 4, z1: 120 + GROW }, // the big park
+  { x0: -134 - GROW, x1: -52 - GROW, z0: -50, z1: 52 }, // the old town and the church
+  { x0: -52, x1: -4, z0: -84 - GROW, z1: -60 - GROW }, // the station
   { x0: -400, x1: 400, z0: RAIL_Z - 4, z1: RAIL_Z + 4 }, // the railway
-  { x0: -142, x1: -58, z0: -142, z1: -58 }, // the hill
+  { x0: -142 - GROW, x1: -58 - GROW, z0: -142 - GROW, z1: -58 - GROW }, // the hill
   { x0: HOSPITAL.x0 - 3, x1: HOSPITAL.x1 + 3, z0: HOSPITAL.z0 - 3, z1: HOSPITAL.z1 + 3 }, // the public hospital
   { x0: SOBERING.x0 - 2, x1: SOBERING.x1 + 2, z0: SOBERING.z0 - 2, z1: SOBERING.z1 + 2 }, // the sobering-up centre
   { x0: STATION_CAMP.x0 - 2, x1: STATION_CAMP.x1 + 2, z0: STATION_CAMP.z0, z1: STATION_CAMP.z1 + 1 }, // the station forecourt and its camp
   { x0: POLICE_STATION.x0 - 2, x1: POLICE_STATION.x1 + 2, z0: POLICE_STATION.z0, z1: POLICE_STATION.z1 + 2 }, // the police station
 ];
 
-/** Block sites on a regular lattice out to the skyline, clear of roads and of TAKEN ground. */
-function lattice(extra: readonly Rect[], random: Random): Rect[] {
-  // The four roads out of the district split the city into strips; each strip
-  // is cut into blocks that fit it exactly, so no strip is left as a sliver of
-  // empty ground. Block and street sizes vary each launch.
-  const main = STREETS.main.road;
-  const east = STREETS.east.road;
-  const north = STREETS.north.road;
-  const south = STREETS.south.road;
-  const xStrips: [number, number][] = [[-168, main.x0 - 2.5], [main.x1 + 2.5, east.x0 - 2.5], [east.x1 + 2.5, 170]];
-  const zStrips: [number, number][] = [[-168, north.z0 - 2.5], [north.z1 + 2.5, south.z0 - 2.5], [south.z1 + 2.5, 170]];
-  const cut = ([a, b]: [number, number]): [number, number][] => {
-    const street = 4 + random() * 2;
-    const target = 17 + random() * 9;
-    const n = Math.max(1, Math.round((b - a + street) / (target + street)));
-    const w = (b - a - street * (n - 1)) / n;
-    return Array.from({ length: n }, (_, i) => [a + i * (w + street), a + i * (w + street) + w] as [number, number]);
-  };
-  const xs = xStrips.flatMap(cut);
-  const zs = zStrips.flatMap(cut);
+/** Cuts every rect round the taken ground, keeping the free pieces `keep` accepts. */
+function carve(rects: Rect[], taken: readonly Rect[], keep: (r: Rect) => boolean): Rect[] {
   const hit = (r: Rect, q: Rect) => r.x0 < q.x1 && r.x1 > q.x0 && r.z0 < q.z1 && r.z1 > q.z0;
-  const big = (r: Rect) => r.x1 - r.x0 >= 7 && r.z1 - r.z0 >= 7;
-  let sites: Rect[] = [];
-  for (const [x0, x1] of xs) for (const [z0, z1] of zs) sites.push({ x0, x1, z0, z1 });
-  // Ground already taken (the river, the park, the towers...) cuts a site into
-  // the free pieces round it; every piece big enough to build on is kept.
-  for (const t of [...TAKEN, ...extra]) {
-    sites = sites.flatMap((r) => {
+  let out = rects;
+  for (const t of taken) {
+    out = out.flatMap((r) => {
       if (!hit(r, t)) return [r];
       const mx0 = Math.max(r.x0, t.x0);
       const mx1 = Math.min(r.x1, t.x1);
@@ -887,10 +873,89 @@ function lattice(extra: readonly Rect[], random: Random): Rect[] {
         { ...r, x0: t.x1 },
         { x0: mx0, x1: mx1, z0: r.z0, z1: t.z0 },
         { x0: mx0, x1: mx1, z0: t.z1, z1: r.z1 },
-      ].filter((p) => p.x1 > p.x0 && p.z1 > p.z0 && big(p));
+      ].filter((q) => q.x1 > q.x0 && q.z1 > q.z0 && keep(q));
     });
   }
-  return sites;
+  return out;
+}
+
+/**
+ * Block sites on a regular lattice out to the skyline, clear of roads and of TAKEN ground, and
+ * the streets between them (so the district's roads carry on into a street grid, not bare ground).
+ */
+function lattice(extra: readonly Rect[], random: Random): { sites: Rect[]; streets: { x: Rect[]; z: Rect[] } } {
+  // The four roads out of the district split the city into strips; each strip
+  // is cut into blocks that fit it exactly, so no strip is left as a sliver of
+  // empty ground. Block and street sizes vary each launch.
+  const main = STREETS.main.road;
+  const east = STREETS.east.road;
+  const north = STREETS.north.road;
+  const south = STREETS.south.road;
+  const xStrips: [number, number][] = [[-168 - GROW, main.x0 - 2.5], [main.x1 + 2.5, east.x0 - 2.5], [east.x1 + 2.5, 170 + GROW]];
+  const zStrips: [number, number][] = [[-168 - GROW, north.z0 - 2.5], [north.z1 + 2.5, south.z0 - 2.5], [south.z1 + 2.5, 170 + GROW]];
+  const cut = ([a, b]: [number, number]): [number, number][] => {
+    const street = 4 + random() * 2;
+    const target = 17 + random() * 9;
+    const n = Math.max(1, Math.round((b - a + street) / (target + street)));
+    const w = (b - a - street * (n - 1)) / n;
+    return Array.from({ length: n }, (_, i) => [a + i * (w + street), a + i * (w + street) + w] as [number, number]);
+  };
+  const xCuts = xStrips.map(cut);
+  const zCuts = zStrips.map(cut);
+  const xs = xCuts.flat();
+  const zs = zCuts.flat();
+  const sites: Rect[] = [];
+  for (const [x0, x1] of xs) for (const [z0, z1] of zs) sites.push({ x0, x1, z0, z1 });
+  const taken = [...TAKEN, ...extra];
+  // The street between each pair of neighbouring blocks in a strip, the length of the lattice.
+  const gaps = (cuts: [number, number][][]) => cuts.flatMap((c) => c.slice(1).map((q, i) => [c[i][1], q[0]] as [number, number]));
+  const [lo, hi] = [-168 - GROW, 170 + GROW];
+  return {
+    // Ground already taken (the river, the park, the towers...) cuts a site into
+    // the free pieces round it; every piece big enough to build on is kept.
+    sites: carve(sites, taken, (r) => r.x1 - r.x0 >= 7 && r.z1 - r.z0 >= 7),
+    // Streets stop at taken ground too; a stub shorter than a car is dropped.
+    streets: {
+      x: carve(gaps(xCuts).map(([x0, x1]) => ({ x0, x1, z0: lo, z1: hi })), taken, (r) => r.z1 - r.z0 >= 6),
+      z: carve(gaps(zCuts).map(([z0, z1]) => ({ x0: lo, x1: hi, z0, z1 })), taken, (r) => r.x1 - r.x0 >= 6),
+    },
+  };
+}
+
+/** Asphalt down every street of the lattice, with dashed centre lanes that skip the junctions. */
+function buildStreets(g: Object3D, streets: { x: Rect[]; z: Rect[] }): void {
+  const road = mat(0x2e2f31);
+  const line = mat(0xd8d0b8);
+  // Merged by 60 m cell, so the camera still skips the cells out of view.
+  const cells = new Map<string, Group>();
+  const cellAt = (x: number, z: number) => {
+    const key = `${Math.floor(x / 60)},${Math.floor(z / 60)}`;
+    let cell = cells.get(key);
+    if (!cell) { cell = add(g, new Group()); cells.set(key, cell); }
+    return cell;
+  };
+  const inside = (x: number, z: number, list: Rect[]) => list.some((r) => x > r.x0 - 1 && x < r.x1 + 1 && z > r.z0 - 1 && z < r.z1 + 1);
+  for (const r of streets.x) {
+    const cx = (r.x0 + r.x1) / 2;
+    // Split into 60 m runs so each lands in its own cell.
+    for (let z = r.z0; z < r.z1; z += 60) {
+      const z1 = Math.min(r.z1, z + 60);
+      const cell = cellAt(cx, (z + z1) / 2);
+      add(cell, box(r.x1 - r.x0, 0.02, z1 - z, road, cx, -0.025, (z + z1) / 2));
+      for (let d = z + 2; d < z1 - 1.5; d += 5) if (!inside(cx, d, streets.z)) add(cell, box(0.12, 0.004, 2.2, line, cx, -0.007, d));
+    }
+  }
+  for (const r of streets.z) {
+    const cz = (r.z0 + r.z1) / 2;
+    for (let x = r.x0; x < r.x1; x += 60) {
+      const x1 = Math.min(r.x1, x + 60);
+      const cell = cellAt((x + x1) / 2, cz);
+      // A hair lower than the cross streets, so the two never fight where they meet.
+      add(cell, box(x1 - x, 0.02, r.z1 - r.z0, road, (x + x1) / 2, -0.027, cz));
+      for (let d = x + 2; d < x1 - 1.5; d += 5) if (!inside(d, cz, streets.x)) add(cell, box(2.2, 0.004, 0.12, line, d, -0.007, cz));
+    }
+  }
+  for (const cell of cells.values()) mergeStatic(cell);
 }
 
 const KIOSK_AWNINGS = [0x2e7d6b, 0xb04a3a, 0xd0a830, 0x3a6ea8, 0x7a4a8a];
@@ -906,7 +971,7 @@ function kiosk(g: Object3D, x: number, z: number, random: Random): void {
 }
 
 /** Blocks closer than this to the district's middle get detailed buildings; further out, plain massing. */
-const NEAR_DETAIL = 95;
+const NEAR_DETAIL = 95 + GROW;
 
 function buildHousing(g: Object3D, random: Random, lit: MeshLambertMaterial[], cool: MeshLambertMaterial[], blocks: readonly Rect[], minH: number, maxH: number): void {
   const pave = mat(PALETTE.pavement);
