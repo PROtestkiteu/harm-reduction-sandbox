@@ -29,6 +29,7 @@ import {
   advertPillar, waterTank, windowTrim,
 } from './details';
 import { add, bench, bin, bollard, box, cylinder, planter, signBoard, setFoliageSeason, setLampNight, streetLight, tree } from './kit';
+import { setPuddleLight, tickPuddles } from './puddles';
 import { AID_BUS, CAMPER_SPOTS, SQUAT_SPOT, moveCamper as moveCamperFrame, CROSSING, HALF, HOME_CAMPER, HOME_CLUB, LOTS, NODES, PAVE_E, PAVE_W, ROAD, VENUE_FACE, VENUES_AT_HOME, type P2 } from './layout';
 import { buildBlockGround, buildOutskirts, buildStreets } from './district';
 import { lightPool, setPoolDaylight } from './dressing';
@@ -80,6 +81,8 @@ export interface World {
   setUnit(i: number, look: UnitLook): void;
   /** The shops the cannabis and new-substances law allows, on fixed shopfronts. */
   setShops(kinds: readonly ShopKind[]): void;
+  /** City traffic waits for anyone on the road ahead (asked of the crowd). */
+  setTrafficYield(ahead: (x: number, z: number, dx: number, dz: number) => boolean): void;
   /** Sends an ambulance or a police car to a spot: it drives in, stops with lights flashing, then leaves. */
   dispatch(kind: 'ambulance' | 'police', x: number, z: number, reason: string): boolean;
   /** Police cars and ambulances on screen, for picking, and what each is doing. */
@@ -406,6 +409,7 @@ export function buildWorld(random: Random): World {
         sign.set(kind ? SHOP_SIGN[kind] : 'trading');
       });
     },
+    setTrafficYield: (ahead) => ambient.setYield(ahead),
     vehicles: () => ambient.vehicles(),
     vehicle: (id) => ambient.vehicle(id),
     dispatch(kind, x, z, reason) {
@@ -533,6 +537,7 @@ export function buildWorld(random: Random): World {
       for (const s of steam) s.update(dt);
       for (const b of blocks) b.update(dt);
       weather.update(dt, still);
+      if (!still) tickPuddles(dt);
     },
     setSeason(season, profile) {
       setFoliageSeason(season);
@@ -553,6 +558,7 @@ export function buildWorld(random: Random): World {
       setVehicleDaylight(day);
       setWindowDaylight(day);
       setPoolDaylight(day);
+      setPuddleLight(night, day);
       // Neon reads brighter as the night deepens and fades out in daylight.
       neonLevel = (0.8 + 0.35 * night) * (1 - 0.75 * day);
     },

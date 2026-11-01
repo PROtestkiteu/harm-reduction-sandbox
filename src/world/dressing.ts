@@ -1,7 +1,6 @@
 import {
   AdditiveBlending,
   CanvasTexture,
-  CircleGeometry,
   Group,
   LinearFilter,
   Mesh,
@@ -70,18 +69,6 @@ export function lightPool(parent: Object3D, x: number, z: number, w: number, d: 
 }
 
 // Puddles: dark, slightly blue, a touch glossy.
-
-const puddleMat = new MeshLambertMaterial({ color: 0x1c2228, emissive: 0x2a3440, emissiveIntensity: 0.35, transparent: true, opacity: 0.72, depthWrite: false });
-const puddleGeo = new CircleGeometry(1, 18).rotateX(-Math.PI / 2);
-
-export function puddle(parent: Object3D, x: number, z: number, y: number, random: Random): void {
-  const m = new Mesh(puddleGeo, puddleMat);
-  m.scale.set(0.5 + random() * 1.2, 1, 0.3 + random() * 0.7);
-  m.rotation.y = random() * Math.PI;
-  m.position.set(x, y + 0.006, z);
-  m.receiveShadow = true;
-  parent.add(m);
-}
 
 // Posters and graffiti: small canvas textures, a shared handful reused.
 

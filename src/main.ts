@@ -55,6 +55,8 @@ import { SelectionMarker } from './ui/selection';
 import { ContextProps } from './world/contextProps';
 import { DISTRICT } from './world/layout';
 import { buildWorld, configureRenderer } from './world/scene';
+import { setPuddleView } from './world/puddles';
+import { canFullscreen, isFullscreen, onFullscreenChange, toggleFullscreen } from './ui/fullscreen';
 import { NeighbourhoodProps } from './world/neighbourhoodProps';
 import { CityProps } from './world/cityProps';
 import { SeasonProps, snowyNight } from './world/seasonProps';
@@ -114,6 +116,8 @@ function syncStreet(): void {
 }
 // Coins over each place where money moves: gold where it comes in, red where visits cost it.
 const coins = new CoinPops(world.scene);
+// City cars stop for people crossing in front of them.
+world.setTrafficYield((x, z, dx, dz) => crowd.someoneAhead(x, z, dx, dz));
 sim.on((e) => {
   if (e.type === 'money' && !reducedMotion.matches) coins.pop(world.locations[e.service === 'clubHr' ? 'club' : e.service].labelAnchor, e.amount > 0);
 
@@ -171,7 +175,7 @@ const hud = new Hud(hudRoot, {
   onMix: (service, activity, weight) => queueOrg(() => { sim.setMix(service, activity, weight); refreshHud(); }),
   onMixSetUp: (service, activity) => queueOrg(() => { sim.setUpMix(service, activity); refreshHud(); }),
   onDrive: () => queueOrg(() => { sim.startDonationDrive(); refreshHud(); }),
-  onConfigure: () => sandbox.setOpen(true),
+  onSettings: () => sandbox.setOpen(true),
   onFavour: (id) => queueOrg(() => { sim.askFavour(id); syncContextProps(); refreshHud(); }),
   onAid: (kind) => queueOrg(() => {
     if (kind === 'cold') sim.warmingBus = !sim.warmingBus;
@@ -476,6 +480,13 @@ const setDateClock = (v: { date: number; clock: number }) => {
   sandbox.setAll(settings);
 };
 sandbox.addAction(t('How it works'), () => welcome.show());
+// Full screen, where the browser has it for pages (not iPhone Safari: there, Add to Home Screen).
+if (canFullscreen()) {
+  const fsLabel = () => (isFullscreen() ? t('Leave full screen') : t('Full screen')) + '.';
+  const fs = sandbox.addAction(t('Full screen'), () => void toggleFullscreen());
+  fs.textContent = fsLabel();
+  onFullscreenChange(() => { fs.textContent = fsLabel(); });
+}
 sandbox.mount(randomSection(setDateClock));
 sandbox.mount(aboutSection(__APP_VERSION__));
 
@@ -772,6 +783,7 @@ function applyView(): void {
   world.setViewFocus(rig.focus.x, rig.focus.z, ((camera.right - camera.left) / 2) * 1.4);
   // Haze starts well past the view's focus, so only the far city fades.
   camera.getWorldDirection(hazeDir);
+  setPuddleView(hazeDir);
   const focusDepth = hazePoint.set(rig.focus.x, 0, rig.focus.z).sub(camera.position).dot(hazeDir);
   world.setHaze(focusDepth + 150, focusDepth + 330);
   pipeline.setCameraDepth(framing.near, framing.far, framing.worldPerPixel, rig.view.elevationDeg);

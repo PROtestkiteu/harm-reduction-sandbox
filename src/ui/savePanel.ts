@@ -41,7 +41,7 @@ export class SavePanel {
   constructor(private readonly cb: SavePanelCallbacks) {
     this.section = el('fieldset', 'sandbox-group save-panel');
     this.section.id = 'save-section';
-    this.section.append(el('legend', undefined, t('Save, share and leaderboard')));
+    this.section.append(el('legend', undefined, t('Save or load game')));
 
     const actions = el('div', 'save-actions');
     const share = el('button', 'btn save-btn', t('Copy a link to this game'));

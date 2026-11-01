@@ -10,7 +10,6 @@ import {
   CAMPER_QUEUE_DIR,
   CENTER_QUEUE_DIR,
   CLUB_QUEUE_DIR,
-  EDGE,
   ENTRY_NODES,
   MAIN_CROSSINGS,
   NODES,
@@ -28,7 +27,7 @@ import {
   type NodeId,
   type P2,
 } from '../world/layout';
-import { bus, car, CAR_COLOURS } from '../world/vehicles';
+import { bus, car, CAR_COLOURS, rollWheels } from '../world/vehicles';
 import type { CityHappening, PasserbyKind } from '../sim/cityLife';
 import { approach } from '../world/animated';
 import { PALETTE } from '../config/palette';
@@ -58,7 +57,9 @@ const PERSONAL_SPACE = 0.62;
 const BODY_RADIUS = 0.3;
 /** How far a figure may be drawn off its path to give way. */
 const MAX_NUDGE = 0.9;
-const MAX_CARS = 6;
+const MAX_CARS = 10;
+/** Main-street cars start and end this far out, beyond what the camera sees, so none pops in at the district's edge. */
+const CAR_RUN = 120;
 
 export type Mode =
   | 'walking'      // on the way somewhere; `onArrive` decides what happens next
@@ -1052,6 +1053,19 @@ export class Crowd {
     while (this.sleepers.length < n.roughSleepers) this.sleepers.push(this.spawnStreetFigure('sleeper', SLEEP_SPOTS[this.sleepers.length]));
   }
 
+  /** Someone visible within 6 m ahead of a car at (x, z) heading (dx, dz), and within 1.6 m of its path. */
+  someoneAhead(x: number, z: number, dx: number, dz: number): boolean {
+    for (const a of this.agents.values()) {
+      if (!a.visible) continue;
+      const rx = a.pos.x - x;
+      const rz = a.pos.z - z;
+      const along = rx * dx + rz * dz;
+      if (along < 1 || along > 6) continue;
+      if (Math.abs(rx * dz - rz * dx) < 1.6) return true;
+    }
+    return false;
+  }
+
   /** Winter: now and then someone with their belongings walks to the squat and goes in. */
   private moveIntoSquat(dt: number): void {
     if (this.sim.season !== 'winter' || this.sim.camp.squat >= 1) return;
@@ -1188,11 +1202,11 @@ export class Crowd {
   private spawnCar(): void {
     if (this.cars.length >= MAX_CARS) return;
     const last = this.cars[this.cars.length - 1];
-    if (last && last.z < -EDGE + 4 + last.half) return;
+    if (last && last.z < -CAR_RUN + 6 + last.half) return;
     const group = car(pick(this.random, CAR_COLOURS), true);
-    group.position.set(ROAD.laneX, 0.02, -EDGE - 2.5);
+    group.position.set(ROAD.laneX, 0.02, -CAR_RUN);
     this.world.scene.add(group);
-    this.cars.push({ group, z: -EDGE - 2.5, speed: 5.5, half: 2, cruise: 4.5 + this.random() * 2.8 });
+    this.cars.push({ group, z: -CAR_RUN, speed: 5.5, half: 2, cruise: 4.5 + this.random() * 2.8 });
   }
 
   // City life: night bus, cleaners, street incidents
@@ -1205,9 +1219,9 @@ export class Crowd {
 
   private spawnBus(): void {
     const last = this.cars[this.cars.length - 1];
-    if (last && last.z < -EDGE + 6 + last.half) return;
+    if (last && last.z < -CAR_RUN + 8 + last.half) return;
     const group = bus();
-    const z = -EDGE - 5;
+    const z = -CAR_RUN - 2.5;
     group.position.set(ROAD.laneX, 0.02, z);
     this.world.scene.add(group);
     this.cars.push({ group, z, speed: 5, half: 4.5, cruise: 5, stopAt: BUS_STOP_Z, stopLeft: 7 });
@@ -1323,9 +1337,10 @@ export class Crowd {
       if (ahead) target = Math.min(target, Math.max(0, (ahead.z - c.z - ahead.half - c.half - 2) * 1.5));
       c.speed = approach(c.speed, target, 3, dt);
       c.z += c.speed * dt;
+      rollWheels(c.group, c.speed * dt);
       c.group.position.z = c.z;
     }
-    while (this.cars.length && this.cars[0].z > EDGE + 3) {
+    while (this.cars.length && this.cars[0].z > CAR_RUN) {
       this.world.scene.remove(this.cars.shift()!.group);
     }
   }

@@ -1,4 +1,4 @@
-import { BufferGeometry, CapsuleGeometry, CylinderGeometry, Float32BufferAttribute, Group, LatheGeometry, Mesh, SphereGeometry, Vector2, type Material } from 'three';
+import { BufferGeometry, CapsuleGeometry, CylinderGeometry, Float32BufferAttribute, Group, LatheGeometry, Mesh, SphereGeometry, Vector2, type Material, type Object3D } from 'three';
 import { PALETTE } from '../config/palette';
 import { glowMat, vehicleMat } from './materials';
 import { solid } from './solids';
@@ -218,12 +218,28 @@ function bodyGeometry(key: string, p: Profile): { paint: BufferGeometry; glass: 
   return out;
 }
 
-/** A tyre with rounded shoulders and a recessed hub, axis along x, sitting on the ground. */
+/** A tyre with rounded shoulders, axis along x, centred on its axle (the wheel turns about it). */
 const tyreGeo = new LatheGeometry(
   [[0.17, -0.11], [0.29, -0.11], [WHEEL_R, -0.06], [WHEEL_R, 0.06], [0.29, 0.11], [0.17, 0.11]].map(([x, y]) => new Vector2(x, y)),
   14,
-).rotateZ(Math.PI / 2).translate(0, WHEEL_R, 0);
-const hubGeo = new CylinderGeometry(0.175, 0.19, 0.2, 10).rotateZ(Math.PI / 2).translate(0, WHEEL_R, 0);
+).rotateZ(Math.PI / 2);
+/** A five-sided hub cap: its flat faces catch the light, so the wheel can be seen turning. */
+const hubGeo = new CylinderGeometry(0.175, 0.19, 0.2, 5).rotateZ(Math.PI / 2);
+
+/**
+ * Turns a vehicle's wheels for `distance` metres travelled (negative rolls
+ * back). Cheap: four rotations; nothing for a vehicle without wheels.
+ */
+export function rollWheels(vehicle: Object3D, distance: number): void {
+  let w = vehicle.userData.wheels as { meshes: Mesh[]; r: number } | undefined;
+  if (w === undefined) {
+    vehicle.traverse((o) => { if (!w && o.userData.wheels) w = o.userData.wheels; });
+    vehicle.userData.wheels = w ?? null;
+  }
+  if (!w) return;
+  const a = distance / w.r;
+  for (const m of w.meshes) m.rotation.x += a;
+}
 const bumperGeo = new CapsuleGeometry(0.085, 1, 2, 8).rotateZ(Math.PI / 2);
 const lampGeo = new SphereGeometry(1, 8, 4);
 const plateGeo = new CapsuleGeometry(0.05, 0.36, 1, 4).rotateZ(Math.PI / 2).scale(1, 1, 0.25);
@@ -270,13 +286,16 @@ export function mouldedVehicle(key: string, p: Profile, paint: Material, lit: bo
   const tyre = vehicleMat(PALETTE.tyre, 0);
   const hub = vehicleMat(hubColour, 1);
   const k = (p.wheel ?? WHEEL_R) / WHEEL_R;
+  const wheels: Mesh[] = [];
   for (const z of p.axles) {
     for (const side of [-1, 1]) {
       const x = side * (p.width / 2 - 0.16 * k);
-      part(g, tyreGeo, tyre, x, 0, z, k, k, k);
-      part(g, hubGeo, hub, x * 1.015, 0, z, k, k, k);
+      // On the axle: tyre and hub turn together about it.
+      part(g, tyreGeo, tyre, x, WHEEL_R * k, z, k, k, k);
+      wheels.push(part(g, hubGeo, hub, x * 1.015, WHEEL_R * k, z, k, k, k));
     }
   }
+  g.userData.wheels = { meshes: wheels, r: WHEEL_R * k };
 
   // Wrap-round bumpers, a grille, plates.
   const endW = p.width * 0.84;

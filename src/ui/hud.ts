@@ -35,8 +35,8 @@ export interface HudCallbacks {
   onFavour(id: FavourId): void;
   /** Starts a donation drive. */
   onDrive(): void;
-  /** Opens the Configure menu (phones reach it from the replies). */
-  onConfigure(): void;
+  /** Opens the Settings menu (phones reach it from the replies). */
+  onSettings(): void;
   /** Start or stop this season's aid: the warming bus, or water and shade. */
   onAid(kind: 'cold' | 'heat'): void;
 }
@@ -284,7 +284,7 @@ export class Hud {
     for (const id of LOCATION_IDS) this.trends[id] = new MetricTrend();
 
     this.header = el('header', 'hud-header');
-    // 'How it works' lives in the Configure menu.
+    // "How it works" lives in the Settings menu.
     const subtitle = el('p', 'subtitle', t('Help people stay alive without going bankrupt.'));
     this.header.append(el('h1', undefined, t('Harm reduction project')), subtitle);
 
@@ -305,6 +305,8 @@ export class Hud {
     // Unmet need over the last day: the other thing that can sink a run.
     this.unmet = el('span', 'unmet');
     this.unmet.setAttribute('role', 'status');
+    // The red tag beside the count in a crisis, drawn by CSS from this attribute.
+    this.unmet.dataset.tag = t('Crisis');
     // One quiet line under the money: people out, and people turned away (red in a crisis).
     const sub = el('div', 'column-sub');
     sub.append(this.people, this.unmet);
@@ -564,9 +566,9 @@ export class Hud {
       b.addEventListener('click', () => { if (o.id) cb.onFavour(o.id as FavourId); this.favourOpen = false; });
       this.favourOpts.push(o);
     }
-    // Phones: Configure is the last reply here (with a gear, not a number) instead of a button over the scene.
-    const configure = button('opt configure-opt', t('Configure'));
-    configure.addEventListener('click', () => cb.onConfigure());
+    // Phones: Settings is the last reply here (with a gear, not a number) instead of a button over the scene.
+    const configure = button('opt configure-opt', t('Settings'));
+    configure.addEventListener('click', () => cb.onSettings());
     this.configureOpt = opt(configure);
     this.configureOpt.classList.add('phone-only');
     const back = button('opt', t('Back.'));

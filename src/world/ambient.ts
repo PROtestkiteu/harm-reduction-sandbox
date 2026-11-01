@@ -1,8 +1,8 @@
 import { QUALITY } from '../render/quality';
 import { CapsuleGeometry, Color, Group, InstancedMesh, Matrix4, MeshLambertMaterial, Quaternion, SphereGeometry, Vector3, type Object3D } from 'three';
 import type { Random } from '../sim/random';
-import { DISTRICT, ROAD, STREETS } from './layout';
-import { bus, car, CAR_COLOURS, emergencyVehicle, type EmergencyVehicle } from './vehicles';
+import { ROAD, STREETS } from './layout';
+import { bus, car, CAR_COLOURS, emergencyVehicle, rollWheels, type EmergencyVehicle } from './vehicles';
 import { dynamic } from './mergeStatic';
 import type { Figure } from '../agents/character';
 import { t } from '../i18n';
@@ -28,6 +28,8 @@ export interface Ambient {
   setView(x: number, z: number, radius: number, metresPerPixel: number): void;
   /** Makes a sculpted figure for a person of this kind, once the people's assets are loaded. */
   setFigureFactory(make: (kind: AmbientKind) => Figure): void;
+  /** Asks whether someone is on the road just ahead of a car at (x, z) heading (dx, dz): it waits if so. */
+  setYield(ahead: (x: number, z: number, dx: number, dz: number) => boolean): void;
   /** Places where people who have had too much hang about: a liquor store, a casino. */
   setHangouts(points: readonly { x: number; z: number }[]): void;
   /**
@@ -59,7 +61,6 @@ interface Run { from: Vector3; to: Vector3 }
 interface Driver { group: Group; run: Run; t: number; speed: number; length: number; /** Seconds off the road before its next run. */ wait?: number }
 interface Walker { run: Run; t: number; speed: number; length: number; phase: number; height: number }
 
-const EDGE = DISTRICT + 4;
 const FAR = 250;
 /** Bridges lift the road over the river (x 56 to 76): deck top at 0.37. */
 const RIVER = { x0: 55, x1: 77 };
@@ -67,28 +68,19 @@ const RIVER = { x0: 55, x1: 77 };
 export function buildAmbient(scene: Object3D, random: Random): Ambient {
   const runs: Run[] = [];
   const lane = (a: [number, number], b: [number, number]) => runs.push({ from: new Vector3(a[0], 0, a[1]), to: new Vector3(b[0], 0, b[1]) });
-  // Main and east streets running north and south out of the district, both ways.
-  const main = STREETS.main.road;
+  // Through-traffic, one way per street, horizon to horizon, so no car ever
+  // appears or vanishes at the district's edge: eastbound on the north street,
+  // westbound on the south street, southbound on the east street, each in the
+  // kerb lane kept free of parking. The main street's own traffic is the crowd's.
+  const north = STREETS.north.road;
+  const south = STREETS.south.road;
   const east = STREETS.east.road;
-  for (const r of [main, east]) {
-    const xOut = r.x0 + 1.4;
-    const xIn = r.x1 - 1.4;
-    lane([xOut, -EDGE], [xOut, -FAR]);
-    lane([xIn, -FAR], [xIn, -EDGE]);
-    lane([xIn, EDGE], [xIn, FAR]);
-    lane([xOut, FAR], [xOut, EDGE]);
-  }
-  // Cross streets running east and west, out to the horizon, over the bridges.
-  for (const r of [STREETS.north.road, STREETS.south.road]) {
-    const zA = r.z0 + 1.4;
-    const zB = r.z1 - 1.4;
-    lane([EDGE, zA], [FAR, zA]);
-    lane([FAR, zB], [EDGE, zB]);
-    lane([-EDGE, zB], [-FAR, zB]);
-    lane([-FAR, zA], [-EDGE, zA]);
-  }
+  lane([-FAR, north.z0 + 1.4], [FAR, north.z0 + 1.4]);
+  lane([FAR, south.z0 + 1.4], [-FAR, south.z0 + 1.4]);
+  lane([east.x0 + 1.4, -FAR], [east.x0 + 1.4, FAR]);
 
   const drivers: Driver[] = [];
+  let yieldTo: ((x: number, z: number, dx: number, dz: number) => boolean) | null = null;
   // Everything here moves: kept out of the static merge.
   const g = dynamic(new Group());
   scene.add(g);
@@ -311,7 +303,14 @@ export function buildAmbient(scene: Object3D, random: Random): Ambient {
           d.wait -= dt;
           continue;
         }
+        // Someone on the road just ahead (at a zebra or not): wait for them.
+        if (yieldTo && d.t > 0) {
+          at.lerpVectors(d.run.from, d.run.to, d.t);
+          const inv = 1 / d.length;
+          if (yieldTo(at.x, at.z, (d.run.to.x - d.run.from.x) * inv, (d.run.to.z - d.run.from.z) * inv)) continue;
+        }
         d.t += (dt * d.speed) / d.length;
+        rollWheels(d.group, d.speed * dt);
         if (d.t >= 1) {
           // A new journey each time: another road and direction, another pace, after a pause off screen.
           d.t = 0;
@@ -434,6 +433,7 @@ export function buildAmbient(scene: Object3D, random: Random): Ambient {
         if (!target) { f.busy = false; f.v.group.visible = false; continue; }
         const dir = at.subVectors(target, pos);
         if (dir.lengthSq() > 1e-4) f.v.group.rotation.y = Math.atan2(dir.x, dir.z);
+        rollWheels(f.v.group, 14 * dt);
         if (step(pos, target, 14, dt)) {
           f.leg++;
           if (f.leg === f.path.length - 1 && f.v.flashing) f.hold = 28;
@@ -441,6 +441,9 @@ export function buildAmbient(scene: Object3D, random: Random): Ambient {
         pos.y = pos.x > RIVER.x0 && pos.x < RIVER.x1 ? 0.37 : 0.02;
       }
       draw(dt);
+    },
+    setYield(ahead) {
+      yieldTo = ahead;
     },
     setHangouts(points) {
       hangouts = points.map((p) => new Vector3(p.x, 0, p.z));

@@ -102,6 +102,9 @@ export const PL: Record<string, string> = {
   '{n} turned away': 'Odesłani: {n}',
   '{away}: crisis on the street': '{away}: kryzys na ulicy',
   '{away}, crisis': '{away}, kryzys',
+  'Crisis': 'Kryzys',
+  'Full screen': 'Pełny ekran',
+  'Leave full screen': 'Wyjdź z pełnego ekranu',
 
   // Aid, drive, favours
   'Warming bus out: stop': 'Autobus grzewczy w trasie: zatrzymaj',
@@ -532,7 +535,7 @@ export const PL: Record<string, string> = {
   "off shift": "poza zmianą",
   "{where} · energy {pct}%": "{where} · energia {pct}%",
   "Energy {pct}%": "Energia {pct}%",
-  "Save, share and leaderboard": "Zapis, udostępnianie i ranking",
+  "Save or load game": "Zapisz lub wczytaj grę",
   "Copy a link to this game": "Skopiuj link do tej gry",
   "Save here": "Zapisz tutaj",
   "Keep this game in this browser": "Zachowaj tę grę w tej przeglądarce",
@@ -1247,5 +1250,5 @@ export const PL: Record<string, string> = {
   "Things got worse on the street: the {venue} has closed.": "Na ulicy zrobiło się gorzej: zamknięto miejsce ({venue}).",
   "District": "Dzielnica",
   "How well the district is doing: harm reduction that works brings more people out and new venues.": "Jak radzi sobie dzielnica: skuteczna redukcja szkód przyciąga więcej osób i nowe lokale.",
-  "Configure": "Ustawienia",
+  "Settings": "Ustawienia",
 };

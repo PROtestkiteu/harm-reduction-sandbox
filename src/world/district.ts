@@ -4,7 +4,9 @@ import type { Random } from '../sim/random';
 import { WindowBank } from './animated';
 import { add, box, streetLight, tree } from './kit';
 import { drainGrate, manhole } from './details';
-import { lightPool, puddle } from './dressing';
+import { lightPool } from './dressing';
+import { addPuddle, nearestLamp, type LampHead } from './puddles';
+import { QUALITY } from '../render/quality';
 import { groundLitter } from './grit';
 import { BLOCKS, DISTRICT, HALF, MAIN_CROSSINGS, ROAD, STREETS, type Rect } from './layout';
 import { glowMat, mat } from './materials';
@@ -122,6 +124,7 @@ export function buildStreets(scene: Object3D, random: Random): void {
     // Rotated a quarter turn, the arm's local +x points to world -z.
     lamps.push([v, -23.7, -1, Math.PI / 2], [v, 23.7, 1, Math.PI / 2]);
   }
+  const heads: LampHead[] = [];
   for (const [x, z, dir, rot] of lamps) {
     const lamp = streetLight(dir);
     lamp.group.remove(lamp.light);
@@ -130,16 +133,29 @@ export function buildStreets(scene: Object3D, random: Random): void {
     const hx = rot === 0 ? x + dir * 0.82 : x;
     const hz = rot === 0 ? z : z - dir * 0.82;
     lightPool(g, hx, hz, 6, 6);
+    // The bulb hangs 4.07 m above the lamp's base.
+    heads.push({ x: hx, y: 0.12 + 4.07, z: hz });
   }
 
-  // Puddles after rain, on roads and pavements alike.
-  for (let i = 0; i < 46; i++) {
+  // Puddles after rain, on roads and pavements alike; each mirrors its nearest lamp.
+  const strips = Object.values(STREETS).flatMap((s) => [{ q: s.road, y: 0.02 }, ...s.pavements.map((q) => ({ q, y: 0.12 }))]);
+  const stripAt = (x: number, z: number) => strips.find(({ q }) => x > q.x0 + 0.5 && x < q.x1 - 0.5 && z > q.z0 + 0.5 && z < q.z1 - 0.5);
+  // Every other lamp gets a puddle where its image lands in the default view (camera to +x +z, 35 degrees up).
+  const toViewer = 1 / Math.tan(Math.atan(1 / Math.SQRT2)) / Math.SQRT2;
+  heads.forEach((l, i) => {
+    if (i % 2) return;
+    const x = l.x + (l.y - 0.1) * toViewer + (random() - 0.5) * 0.6;
+    const z = l.z + (l.y - 0.1) * toViewer + (random() - 0.5) * 0.6;
+    const at = stripAt(x, z);
+    if (at) addPuddle(g, x, z, at.y, random, l);
+  });
+  for (let i = 0; i < (QUALITY.low ? 20 : 40); i++) {
     const s = Object.values(STREETS)[i % 4];
-    const strips = [s.road, ...s.pavements];
-    const q = strips[Math.floor(random() * strips.length)];
+    const parts = [s.road, ...s.pavements];
+    const q = parts[Math.floor(random() * parts.length)];
     const x = q.x0 + 0.6 + random() * (q.x1 - q.x0 - 1.2);
     const z = q.z0 + 0.6 + random() * (q.z1 - q.z0 - 1.2);
-    puddle(g, x, z, q === s.road ? 0.02 : 0.12, random);
+    addPuddle(g, x, z, q === s.road ? 0.02 : 0.12, random, nearestLamp(heads, x, z));
   }
   mergeStatic(g);
 }

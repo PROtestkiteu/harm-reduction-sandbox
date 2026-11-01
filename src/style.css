@@ -1,6 +1,10 @@
-@import '@fontsource/permanent-marker/latin-400.css';
+@import '@fontsource/sedgwick-ave/latin-400.css';
+@import '@fontsource/sedgwick-ave/latin-ext-400.css';
 @import '@fontsource/roboto-condensed/latin-400.css';
 @import '@fontsource/roboto-condensed/latin-500.css';
+/* Polish letters (ą ć ę ł ń ó ś ź ż): fetched only when a page uses them, by unicode-range. */
+@import '@fontsource/roboto-condensed/latin-ext-400.css';
+@import '@fontsource/roboto-condensed/latin-ext-500.css';
 
 /*
  * HUD as a conversation over the painted scene. A dark column on the right
@@ -43,7 +47,7 @@
   --role-resident: #d8a888;
   --outline: 0 1px 2px rgba(0, 0, 0, 0.95), 0 0 6px rgba(0, 0, 0, 0.85), 0 0 14px rgba(0, 0, 0, 0.55);
   --body: 'Roboto Condensed', 'Arial Narrow', sans-serif;
-  --caps: 'Permanent Marker', 'Roboto Condensed', sans-serif;
+  --caps: 'Sedgwick Ave', 'Roboto Condensed', sans-serif;
   /* Canvas grain laid over the column, the same character as the scene's. */
   --grain: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.6 0 0 0 0 0.55 0 0 0 0 0.5 0 0 0 0.09 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
   --column-w: min(440px, 40vw);
@@ -1498,28 +1502,29 @@ body:has(.sandbox-toggle[aria-expanded='true']) .portrait { display: none; }
 .column-sub { display: flex; gap: 8px; font-size: 12px; white-space: nowrap; }
 .unmet { color: var(--muted); font-variant-numeric: tabular-nums; }
 .unmet::before { content: '·'; margin-right: 8px; color: var(--muted); }
-.unmet[data-state='crisis']::after, .unmet[data-state='rising']::after { content: 'crisis'; margin-left: 6px; padding: 0 5px; border-radius: 3px; background: var(--law); color: #fff; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; vertical-align: 1px; }
+.unmet[data-state='crisis']::after, .unmet[data-state='rising']::after { content: attr(data-tag); margin-left: 6px; padding: 0 5px; border-radius: 3px; background: var(--law); color: #fff; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; vertical-align: 1px; }
 .unmet[data-state='rising'] { color: var(--closing); }
 .unmet[data-state='crisis'] { color: var(--law); font-weight: 600; }
 
 /* City services under pressure: three small meters under the top line. */
-.stress-row { display: flex; gap: 12px; margin: 4px 0 2px; font-size: 11px; color: var(--muted); }
-.stress { display: flex; align-items: center; gap: 5px; flex: 1; min-width: 0; }
+.stress-row { display: flex; flex-wrap: wrap; gap: 3px 12px; margin: 4px 0 2px; font-size: 11px; color: var(--muted); }
+/* Each meter keeps its name and a readable bar; when four do not fit on one line they wrap. */
+.stress { display: flex; align-items: center; gap: 5px; flex: 1 1 auto; min-width: 0; }
 .stress-name { white-space: nowrap; }
-.stress-bar { flex: 1; height: 4px; min-width: 24px; background: color-mix(in srgb, var(--muted) 28%, transparent); border-radius: 2px; overflow: hidden; }
+.stress-bar { flex: 1; height: 4px; min-width: 32px; background: color-mix(in srgb, var(--muted) 28%, transparent); border-radius: 2px; overflow: hidden; }
 .stress-fill { display: block; height: 100%; width: 0; background: var(--muted); transition: width 0.4s; }
 .stress-fill[data-state='mid'] { background: var(--closing); }
 .stress-fill[data-state='high'] { background: var(--law); }
 @media (prefers-reduced-motion: reduce) { .stress-fill { transition: none; } }
 
 /* The money block takes the room left beside the clock; its second line never runs under the speed button. */
-.column-right { flex: 1; container-type: inline-size; }
-.column-sub { justify-content: flex-end; max-width: 100%; overflow: hidden; }
-.column-sub > * { overflow: hidden; text-overflow: ellipsis; }
-@container (max-width: 190px) {
-  .column-sub .people { display: none; }
-  .column-sub .unmet::before { content: none; }
-}
+/* Clock and money share the line when there is room; otherwise the money block wraps under the clock. */
+.column-top { flex-wrap: wrap; row-gap: 2px; }
+.column-right { flex: 1 1 auto; margin-left: auto; }
+.column-sub { justify-content: flex-end; flex-wrap: wrap; row-gap: 1px; max-width: 100%; }
+/* The tag stays whole: it wraps under the count when the line runs out. */
+.unmet { white-space: normal; text-align: right; min-width: 0; }
+.unmet::after { display: inline-block; white-space: nowrap; line-height: 1.35; }
 .stress-fill[data-state='good'] { background: var(--open, #6cc28a); }
 
 /* Small phones: a tighter top line, the city-service meters two by two, a compact title. */
@@ -1678,3 +1683,4 @@ body:has(.sandbox-toggle[aria-expanded='true']) .portrait { display: none; }
   /* The gold logo reads faintly on the light loading screen: a shade deeper. */
   .loading-logo { filter: brightness(0.72) saturate(1.25); }
 }
+

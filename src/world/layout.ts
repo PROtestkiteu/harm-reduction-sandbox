@@ -210,8 +210,8 @@ export const VENUES_AT_HOME = SITE_OF.club === 'centreWest' && SITE_OF.dropIn ==
 
 /** The A&E entrance and its ambulance bay, in the clinic's site frame. */
 export const AE_ALONG = 4;
-/** Where the ambulance waits outside A&E: only the east street has a lane for it. */
-export const AMBULANCE_BAY: P2 | null = SITE_OF.clinic === 'east' ? toWorld(siteFrame('east'), p(AE_ALONG, 4.6)) : null;
+/** Where the ambulance waits outside A&E: the east street's far kerb (its near lane carries traffic). */
+export const AMBULANCE_BAY: P2 | null = SITE_OF.clinic === 'east' ? toWorld(siteFrame('east'), p(AE_ALONG, 7.3)) : null;
 
 /**
  * Where an outreach camper can stand: kerbside spots off the traffic lane.

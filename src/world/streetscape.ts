@@ -64,18 +64,19 @@ export function buildStreetscape(scene: Object3D, random: Random): Steam[] {
     }
   }
 
-  // Parked cars in both kerb lanes of the cross streets and the east street,
-  // and in the main street's parking lane outside the centre block.
+  // Parked cars in one kerb lane of each cross street and of the east street
+  // (the other lane carries through-traffic), and in the main street's
+  // parking lane outside the centre block.
   const park = (x: number, z: number, rot: number) => {
     if (blocked(x, z, 3.5)) return;
     add(g, car(CAR_COLOURS[Math.floor(random() * CAR_COLOURS.length)], false), rot).position.set(x, 0.02, z);
   };
   for (const s of [STREETS.north, STREETS.south]) {
-    for (const z of [s.road.z0 + 1.0, s.road.z1 - 1.0]) {
+    for (const z of [s.road.z1 - 1.0]) {
       for (const x of along(s.road, 'x', 6.2, random)) if (random() < 0.55) park(x, z, Math.PI / 2 + (z < (s.road.z0 + s.road.z1) / 2 ? Math.PI : 0));
     }
   }
-  for (const x of [STREETS.east.road.x0 + 1.0, STREETS.east.road.x1 - 1.0]) {
+  for (const x of [STREETS.east.road.x1 - 1.0]) {
     for (const z of along(STREETS.east.road, 'z', 6.2, random)) if (random() < 0.5) park(x, z, x < 26 ? Math.PI : 0);
   }
   for (const z of along(STREETS.main.road, 'z', 6.2, random)) if (Math.abs(z) > HALF + 3 && random() < 0.6) park(ROAD.parkX, z, 0);
