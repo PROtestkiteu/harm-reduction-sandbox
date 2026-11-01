@@ -18,7 +18,6 @@ export const PL: Record<string, string> = {
   'People who left without being served, because it was full, closed or the wait ran long': 'Osoby, które odeszły bez pomocy, bo było pełno, zamknięte albo czekanie się przeciągało',
   'Adverse': 'Szkody',
   'Adverse outcomes: a neutral placeholder count with no assumed effect of any service': 'Niepożądane skutki: neutralna liczba zastępcza, bez założonego wpływu jakiejkolwiek usługi',
-  'Closed because': 'Powód zamknięcia',
 
   // Header and column
   'How it works': 'Jak to działa',
@@ -285,12 +284,6 @@ export const PL: Record<string, string> = {
   'Helps with: {events}': 'Pomaga przy: {events}',
 
   // Place facts (side panel)
-  'Switched off': 'Wyłączone',
-  'Opening hours over (funding or council)': 'Poza godzinami otwarcia (finansowanie lub decyzja miasta)',
-  'Not permitted (law, council or venue)': 'Niedozwolone (prawo, miasto lub klub)',
-  'Out of action (event)': 'Nieczynne (zdarzenie)',
-  'No staff available (recruit or find volunteers)': 'Brak dostępnego zespołu (zatrudnij kogoś lub znajdź wolontariuszy)',
-  'Closed down: the money ran out for too long (relaunch it from Your organisation)': 'Zamknięte: zbyt długo brakowało pieniędzy (uruchom ponownie w panelu Twoja organizacja)',
   '{n} {where}, {cap} at a time': 'Obsługiwane {where}: {n}, naraz mieści się {cap}',
   '{n} waiting, {waiting} waiting places': 'W kolejce: {n}, miejsc w kolejce: {waiting}',
   'Staff on site: {n} of {max}': 'Zespół na miejscu: {n} z {max}',
@@ -1254,4 +1247,8 @@ export const PL: Record<string, string> = {
   "District": "Dzielnica",
   "How well the district is doing: harm reduction that works brings more people out and new venues.": "Jak radzi sobie dzielnica: skuteczna redukcja szkód przyciąga więcej osób i nowe lokale.",
   "Settings": "Ustawienia",
+  'switched off': 'wyłączone',
+  'outside opening hours': 'poza godzinami otwarcia',
+  'out of action': 'nieczynne (zdarzenie)',
+  'no staff': 'brak zespołu',
 };

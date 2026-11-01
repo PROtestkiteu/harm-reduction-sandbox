@@ -20,18 +20,19 @@ import type { HudSnapshot, LocationSnapshot, PlaceLevers } from './hud';
 
 /** Builds the HUD's view of the simulation. Pure: reads state, changes nothing. */
 
+/** Why a place is closed, in a few words: what to do about it is in the replies below (hire, relaunch...). */
 const CLOSED_TEXT: Record<ClosedReason, string> = {
-  switchedOff: t('Switched off'),
-  hours: t('Opening hours over (funding or council)'),
-  notPermitted: t('Not permitted (law, council or venue)'),
-  outOfService: t('Out of action (event)'),
-  noStaff: t('No staff available (recruit or find volunteers)'),
-  closedDown: t('Closed down: the money ran out for too long (relaunch it from Your organisation)'),
+  switchedOff: t('switched off'),
+  hours: t('outside opening hours'),
+  notPermitted: t('not permitted'),
+  outOfService: t('out of action'),
+  noStaff: t('no staff'),
+  closedDown: t('out of money'),
 };
 
 /** Why a place is closed, when it is: the one fact worth a sentence. */
 function contextFacts(s: ServiceModel): [string, string][] {
-  return s.closedReason ? [[t('Closed because'), CLOSED_TEXT[s.closedReason]]] : [];
+  return s.closedReason ? [[t('Closed'), CLOSED_TEXT[s.closedReason]]] : [];
 }
 
 type Chip = LocationSnapshot['chips'][number];

@@ -1250,7 +1250,7 @@ export class Hud {
       const dd = this.facts.children[i].lastElementChild as HTMLElement;
       setText(dd, v);
       // The reason a place is shut by law stands out in red.
-      const alert = String(!!loc.blockedByLaw && k === t('Closed because'));
+      const alert = String(!!loc.blockedByLaw && k === t('Closed'));
       if (dd.dataset.alert !== alert) dd.dataset.alert = alert;
     });
     setText(this.metricsLabel, loc.metricsLabel);
