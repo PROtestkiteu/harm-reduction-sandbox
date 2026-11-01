@@ -125,8 +125,8 @@ export interface HudSnapshot {
   stress?: { police: number; medics: number; sobering: number; district: number };
   /** Favours with city hall: held (0 or 1), whether city hall is owed one, and what can be asked. */
   favours?: { held: number; owed: boolean; items: { id: FavourId; label: string }[] };
-  /** A donation drive: running until a clock time, or what starting one costs. */
-  drive?: { until: string | null; cost: number; hours: number };
+  /** A donation drive: running until a clock time, resting until one (`again`), or what starting one costs. */
+  drive?: { until: string | null; again: string | null; cost: number; hours: number };
   /** In winter (or on a cold night) the warming bus, in summer water and shade: on or off, and the running cost. */
   aid?: { kind: 'cold' | 'heat'; on: boolean; perHour: number };
 }
@@ -1083,9 +1083,9 @@ export class Hud {
     }
     const d = s.drive;
     if (d) {
-      setText(this.driveLong, d.until ? t('Donation drive until {time}', { time: d.until }) : t('Donation drive {price}', { price: price(d.cost) }));
+      setText(this.driveLong, d.until ? t('Donation drive until {time}', { time: d.until }) : d.again ? t('Next donation drive from {time}', { time: d.again }) : t('Donation drive {price}', { price: price(d.cost) }));
       this.driveBtn.title = plural(d.hours, ['{n} hour of collecting on the street; donation boxes doubled meanwhile.', '{n} hours of collecting on the street; donation boxes doubled meanwhile.'], ['{n} godzina zbiórki na ulicy; w tym czasie puszki zbierają podwójnie.', '{n} godziny zbiórki na ulicy; w tym czasie puszki zbierają podwójnie.', '{n} godzin zbiórki na ulicy; w tym czasie puszki zbierają podwójnie.']);
-      const off = d.until !== null || (s.money?.budget ?? 0) < d.cost;
+      const off = d.until !== null || d.again !== null || (s.money?.budget ?? 0) < d.cost;
       if (this.driveBtn.disabled !== off) this.driveBtn.disabled = off;
     }
     const f = s.favours;

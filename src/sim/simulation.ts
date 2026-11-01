@@ -246,6 +246,14 @@ export class Simulation {
   private clockRate: number = ILLUSTRATIVE.clockMinutesPerSecond;
   /** Whether the hours move on. Held, the time of night stays put while people go on moving. */
   cycle = true;
+  /**
+   * Seconds of arrivals, service and patience per real second: they follow the clock, so a faster
+   * clock brings the same people per clock hour. Held, they run at the usual pace.
+   */
+  private get timeScale(): number {
+    return this.cycle ? this.clockRate / ILLUSTRATIVE.clockMinutesPerSecond : 1;
+  }
+
   /** Clock minutes per real second right now: zero while the cycle is held. */
   private get minuteRate(): number {
     return this.cycle ? this.clockRate : 0;
@@ -288,6 +296,8 @@ export class Simulation {
   commercialChecking = false;
   /** A donation drive runs until this time (`org.now` minutes), or null. */
   driveUntil: number | null = null;
+  /** The next drive can start from this time (`org.now` minutes): people do not give twice in a day. */
+  driveAgainAt = 0;
   /** How well the district is doing: grows with harm reduction that works, opens new venues. */
   readonly vitality = new Vitality();
   /** Pressure on the city's police, ambulances and sobering-up centre. */
@@ -862,6 +872,19 @@ export class Simulation {
     return true;
   }
 
+  /** A paid stand is a deal the club can walk away from, above all when the stand is not there. */
+  private tickClubContract(dtMinutes: number): void {
+    if (!this.clubContract || dtMinutes <= 0) return;
+    const missing = this.clubOpen && this.services.clubHr.status !== 'open';
+    const perHour = missing ? HUSTLE.clubDropsWithoutStand : HUSTLE.clubDropsPerHour;
+    if (this.random() >= perHour * (dtMinutes / 60)) return;
+    this.clubContract = false;
+    this.clubAskAgainAt = this.org.now + HUSTLE.clubAskAgain;
+    this.org.notice(this.clockMinutes, missing
+      ? t('The club stopped paying for the stand: it was not there while the club was open.')
+      : t('The club stopped paying for the stand: the money is going elsewhere for now.'));
+  }
+
   endClubContract(): void {
     if (!this.clubContract) return;
     this.clubContract = false;
@@ -879,7 +902,7 @@ export class Simulation {
 
   /** A donation drive: staff and volunteers collect for a few hours; donation boxes bring in more meanwhile. */
   startDonationDrive(): boolean {
-    if (this.driveUntil !== null) return false;
+    if (this.driveUntil !== null || this.org.now < this.driveAgainAt) return false;
     if (!this.org.spend(HUSTLE.driveCost, false)) {
       this.org.notice(this.clockMinutes, t('Not enough money to run a donation drive.'));
       return false;
@@ -891,6 +914,7 @@ export class Simulation {
 
   private endDonationDrive(): void {
     this.driveUntil = null;
+    this.driveAgainAt = this.org.now + HUSTLE.driveCooldownHours * 60;
     // A good name brings more in; a crisis on the street brings less.
     const pull = this.neighbourhood.reputationPull * (1 - 0.6 * this.crisis);
     const raised = Math.round((HUSTLE.driveMin + this.random() * (HUSTLE.driveMax - HUSTLE.driveMin)) * Math.max(0.3, Math.min(1.5, pull)));
@@ -1403,6 +1427,7 @@ export class Simulation {
     this.tickUpgrades(dt * this.minuteRate);
     this.tickExposure(dt * this.minuteRate);
     this.tickPlaceIncome(dt * this.minuteRate);
+    this.tickClubContract(dt * this.minuteRate);
     if (this.driveUntil !== null && this.org.now >= this.driveUntil) this.endDonationDrive();
     // When a favour's police arrangement or a concession's posted officer ends, the street goes back to the usual.
     const policeNow = (this.org.now < this.policeAwayUntil ? 1 : 0) + (this.org.now < this.policePostedUntil ? 2 : 0);
@@ -1474,13 +1499,14 @@ export class Simulation {
         this.applyContext();
       } else this.reallocate();
     }
-    if (this.context.possessionStops && this.context.patrol > 0 && (this.stopTimer -= dt) <= 0) {
+    const paced = dt * this.timeScale;
+    if (this.context.possessionStops && this.context.patrol > 0 && (this.stopTimer -= paced) <= 0) {
       this.emit({ type: 'policeStop', arrest: this.random() < ILLUSTRATIVE.people.arrestShare });
       this.stopTimer = nextArrival(this.random, ILLUSTRATIVE.policeStopsPerMinutePerOfficer * this.context.patrol);
     }
-    this.tickArrivals(dt);
-    for (const id of SERVICE_IDS) this.tickService(this.services[id], dt);
-    this.tickClub(dt);
+    this.tickArrivals(paced);
+    for (const id of SERVICE_IDS) this.tickService(this.services[id], paced);
+    this.tickClub(paced);
   }
 
   private tickArrivals(dt: number): void {
