@@ -1,14 +1,17 @@
 import { Group } from 'three';
 import { add, box } from '../world/kit';
-import { glowMat } from '../world/materials';
+import { mat } from '../world/materials';
 import type { LocationVisual } from '../world/buildings';
 
-/** Ground-level corner brackets around the selected location. */
+/**
+ * Ground-level corner brackets around the selected location, in the matte
+ * selection red. They do not glow: emissive brackets bloomed into a shine in
+ * daylight, and the building's own red rim already carries the selection.
+ */
 export class SelectionMarker {
   readonly group = new Group();
-  private readonly material = glowMat(0xfff0c8, 0xffe2a0, 1.2);
+  private readonly material = mat(0xc84a32);
   private readonly corners: Group[] = [];
-  private time = 0;
 
   constructor() {
     for (let i = 0; i < 4; i++) {
@@ -33,11 +36,8 @@ export class SelectionMarker {
     });
   }
 
-  /** Returns true when the marker changed and the frame needs a redraw. */
-  update(dt: number, reducedMotion: boolean): boolean {
-    if (!this.group.visible || reducedMotion) return false;
-    this.time += dt;
-    this.material.emissiveIntensity = 0.9 + 0.5 * Math.sin(this.time * 3);
-    return true;
+  /** Still: nothing to animate. Kept so callers need not change. */
+  update(_dt: number, _reducedMotion: boolean): boolean {
+    return false;
   }
 }

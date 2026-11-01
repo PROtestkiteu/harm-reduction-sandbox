@@ -1067,4 +1067,4 @@ body:has(.sandbox-toggle[aria-expanded='true']) .portrait { display: none; }
 .portrait-sub { display: block; font-weight: 400; font-size: 12.5px; color: var(--muted); }
 .portrait-view { display: block; width: 100%; height: auto; }
 .sandbox-toggle { display: inline-flex; align-items: center; gap: 6px; }
-.sandbox-toggle .gear { width: 16px; height: 16px; flex: none; }
+.sandbox-toggle .gear { width: 18px; height: 18px; flex: none; overflow: visible; margin-left: 2px; }

@@ -57,6 +57,13 @@ export interface PeopleLibrary {
 
 let library: PeopleLibrary | null = null;
 
+/** One white pixel: stands in for any texture that could not be loaded. */
+const WHITE = (() => {
+  const t = new DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
+  t.needsUpdate = true;
+  return t;
+})();
+
 /** The loaded library, or null while loading or if the assets could not be loaded. */
 export function peopleLibrary(): PeopleLibrary | null {
   return library;
@@ -89,16 +96,17 @@ export async function loadPeople(base = `${import.meta.env.BASE_URL}people/`): P
       sc.updateMatrixWorld(true);
       sc.traverse((o) => { if ((o as SkinnedMesh).isSkinnedMesh) hairMap.set(o.name, o as SkinnedMesh); });
     }
-    const tex = (m: SkinnedMesh | undefined) => (m?.material as MeshToonMaterial | undefined)?.map ?? null;
+    // A texture that failed to load falls back to plain white, so the shader always compiles.
+    const tex = (m: SkinnedMesh | undefined) => (m?.material as MeshToonMaterial | undefined)?.map ?? WHITE;
     const anyHair = [...hairMap.values()][0];
     library = {
       bodies,
       hair: hairMap,
       clips: new Map(anims.animations.map((c) => [c.name, c])),
       textures: {
-        body: { male: tex(bodies.male.body)!, female: tex(bodies.female.body)! },
-        eyes: tex(bodies.male.eyes)!,
-        hair: tex(anyHair) ?? tex(bodies.male.brows)!,
+        body: { male: tex(bodies.male.body), female: tex(bodies.female.body) },
+        eyes: tex(bodies.male.eyes),
+        hair: tex(anyHair),
       },
     };
     return library;

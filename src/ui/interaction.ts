@@ -441,7 +441,8 @@ export class Interaction {
     uz /= ul;
     const sinEl = Math.max(0.25, Math.sin((this.d.rig.view.elevationDeg * Math.PI) / 180));
     const along = (dy * perCss) / sinEl;
-    this.d.rig.pan(-rx * dx * perCss - ux * along, -rz * dx * perCss - uz * along, immediate);
+    // Both axes grab the ground: drag left and the city moves left, drag up and it moves up.
+    this.d.rig.pan(-rx * dx * perCss + ux * along, -rz * dx * perCss + uz * along, immediate);
   }
 
   /** A tap or click: select what is under it; a second one on the same thing zooms in. */

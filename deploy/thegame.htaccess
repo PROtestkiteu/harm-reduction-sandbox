@@ -1,0 +1,57 @@
+# Harm reduction sandbox (https://github.com/PROtestkiteu/harm-reduction-sandbox)
+# Static files only. Basic firewall rules, security headers and caching.
+
+Options -Indexes -MultiViews
+DirectoryIndex index.html
+LimitRequestBody 1024
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # The web root is shared with the shop domains: the game lives on protestkit.eu only.
+  RewriteCond %{HTTP_HOST} !^(www\.)?protestkit\.eu$ [NC]
+  RewriteRule ^ https://protestkit.eu/thegame/ [R=301,L]
+
+  # A static site: reading only.
+  RewriteCond %{REQUEST_METHOD} !^(GET|HEAD)$
+  RewriteRule ^ - [R=405,L]
+
+  # Query strings: short, and no injection or traversal patterns.
+  RewriteCond %{QUERY_STRING} ^.{600,} [OR]
+  RewriteCond %{QUERY_STRING} (<|>|%3C|%3E|\.\./|%2e%2e|%00|union.+select|base64_|eval\(|javascript:) [NC]
+  RewriteRule ^ - [F,L]
+
+  # Scanners and requests with no user agent.
+  RewriteCond %{HTTP_USER_AGENT} (sqlmap|nikto|nmap|masscan|zgrab|acunetix|nessus|wpscan|dirbuster|gobuster|ffuf|nuclei) [NC,OR]
+  RewriteCond %{HTTP_USER_AGENT} ^$
+  RewriteRule ^ - [F,L]
+
+  # Probes for things this folder never has.
+  RewriteRule (^|/)\. - [F,L]
+  RewriteRule \.(php\d?|phtml|asp|aspx|jsp|cgi|pl|env|ini|log|sql|bak|old|orig|swp|map|ts|md|json|yml|yaml|sh)$ - [F,L,NC]
+</IfModule>
+
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  Header always set X-Frame-Options "SAMEORIGIN"
+  Header always set Cross-Origin-Opener-Policy "same-origin"
+  Header always set Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+  Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' blob:; worker-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'self'"
+
+  # Hashed build files never change; the page itself is always checked.
+  <FilesMatch "\.(js|css|woff2?)$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+  <FilesMatch "\.(glb|txt)$">
+    Header set Cache-Control "public, max-age=86400"
+  </FilesMatch>
+  # Private: Cloudflare must not keep its own copy of the page (or its headers).
+  <FilesMatch "^index\.html$">
+    Header set Cache-Control "private, no-cache"
+  </FilesMatch>
+</IfModule>
+
+<IfModule mod_mime.c>
+  AddType model/gltf-binary .glb
+</IfModule>
