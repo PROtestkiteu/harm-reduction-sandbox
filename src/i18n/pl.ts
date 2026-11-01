@@ -28,7 +28,7 @@ export const PL: Record<string, string> = {
   'Scene clock': 'Zegar sceny',
   'Fold the panel away': 'Zwiń panel',
   'Open the panel': 'Rozwiń panel',
-  'Nothing selected. Click or tap a place or a person.': 'Nic nie wybrano. Kliknij lub dotknij miejsca albo osoby.',
+  'Pick a place or a person.': 'Wybierz miejsce albo osobę.',
   'Rename': 'Zmień nazwę',
   'New name (leave empty for the original)': 'Nowa nazwa (zostaw puste, by przywrócić pierwotną)',
   'Lines: last {min} min. Illustrative counts.': 'Wykresy: ostatnie {min} min. Liczby poglądowe.',

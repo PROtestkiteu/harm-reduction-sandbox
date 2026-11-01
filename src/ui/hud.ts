@@ -35,6 +35,8 @@ export interface HudCallbacks {
   onFavour(id: FavourId): void;
   /** Starts a donation drive. */
   onDrive(): void;
+  /** Opens the Configure menu (phones reach it from the replies). */
+  onConfigure(): void;
   /** Start or stop this season's aid: the warming bus, or water and shade. */
   onAid(kind: 'cold' | 'heat'): void;
 }
@@ -232,6 +234,7 @@ export class Hud {
   private readonly reviewOpt: HTMLElement;
   private readonly aidOpt: HTMLElement;
   private readonly driveOpt: HTMLElement;
+  private readonly configureOpt: HTMLElement;
   private readonly favourOpt: HTMLElement;
   private readonly favourBtn: HTMLButtonElement;
   private readonly favourLong: HTMLElement;
@@ -350,7 +353,7 @@ export class Hud {
     // The conversation: who or what is selected, speaking in plain sentences.
     this.log = el('div', 'log');
     this.log.setAttribute('aria-live', 'polite');
-    this.idle = el('p', 'idle', t('Nothing selected. Click or tap a place or a person.'));
+    this.idle = el('p', 'idle', t('Pick a place or a person.'));
     const line = el('p', 'line');
     this.speaker = el('span', 'speaker');
     this.said = el('span', 'said');
@@ -538,6 +541,7 @@ export class Hud {
     this.driveBtn.append(this.driveLong, driveShort);
     this.driveBtn.addEventListener('click', () => cb.onDrive());
     this.driveOpt = opt(this.driveBtn);
+
     // A favour with city hall: one reply that opens the favours on offer.
     this.favourBtn = button('opt group');
     this.favourLong = el('span', 'long');
@@ -560,6 +564,11 @@ export class Hud {
       b.addEventListener('click', () => { if (o.id) cb.onFavour(o.id as FavourId); this.favourOpen = false; });
       this.favourOpts.push(o);
     }
+    // Phones: Configure is the last reply here (with a gear, not a number) instead of a button over the scene.
+    const configure = button('opt configure-opt', t('Configure'));
+    configure.addEventListener('click', () => cb.onConfigure());
+    this.configureOpt = opt(configure);
+    this.configureOpt.classList.add('phone-only');
     const back = button('opt', t('Back.'));
     back.addEventListener('click', () => this.setServicesOpen(false));
     this.backOpt = opt(back);
@@ -1171,6 +1180,7 @@ export class Hud {
     this.reviewOpt.hidden = open || m !== null;
     this.aidOpt.hidden = open || m !== null || !this.lastSnapshot?.aid;
     this.driveOpt.hidden = open || m !== null || !this.lastSnapshot?.drive;
+    this.configureOpt.hidden = open || m !== null;
     this.favourOpt.hidden = open || m !== null || !this.lastSnapshot?.favours;
     this.backOpt.hidden = !open;
     const own = m?.kind === 'location' ? serviceAt(m.id) : null;

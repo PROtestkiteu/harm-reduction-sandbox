@@ -4,6 +4,9 @@
  * its own chunk. So the phrases turn while the game downloads, which on a
  * slow connection takes a while. Stops itself once the loading screen is gone.
  */
+// The stylesheet comes with this first, tiny script, so the loading screen is styled (and themed) at once.
+import './style.css';
+
 const EN = [
   'Teaching pigeons to read the timetable',
   'Pouring concrete for tomorrow’s puddles',

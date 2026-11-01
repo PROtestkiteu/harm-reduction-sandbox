@@ -1,6 +1,5 @@
 import { QUALITY } from './render/quality';
 import { Vector3, WebGLRenderer } from 'three';
-import './style.css';
 import { LANG, t } from './i18n';
 import { ILLUSTRATIVE } from './config/illustrative';
 import { combineEffects, decodeContext, defaultContext, encodeContext, type ContextSelection } from './config/contextFactors';
@@ -172,6 +171,7 @@ const hud = new Hud(hudRoot, {
   onMix: (service, activity, weight) => queueOrg(() => { sim.setMix(service, activity, weight); refreshHud(); }),
   onMixSetUp: (service, activity) => queueOrg(() => { sim.setUpMix(service, activity); refreshHud(); }),
   onDrive: () => queueOrg(() => { sim.startDonationDrive(); refreshHud(); }),
+  onConfigure: () => sandbox.setOpen(true),
   onFavour: (id) => queueOrg(() => { sim.askFavour(id); syncContextProps(); refreshHud(); }),
   onAid: (kind) => queueOrg(() => {
     if (kind === 'cold') sim.warmingBus = !sim.warmingBus;

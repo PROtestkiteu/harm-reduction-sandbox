@@ -16,6 +16,10 @@
   --fade: 10, 9, 8;
   --text: #ece4d4;
   --muted: #aaa093;
+  /* Loading skeleton: base, highlight band and its glint. */
+  --skeleton: #2a231e;
+  --skeleton-hi: #4a3f33;
+  --skeleton-glint: #8a7350;
   /* PROtestkit brand: gold #edb300 for fills and for text on dark; text on a
      gold fill is ink #090a0c, as on the site's dark-mode primary button. */
   --reply: #edb300;
@@ -50,6 +54,10 @@
 @media (prefers-color-scheme: light) {
   :root {
     --fade: 236, 229, 216;
+    --bg: #ece5d8;
+    --skeleton: #d6ccbb;
+    --skeleton-hi: #e9e1d2;
+    --skeleton-glint: #f8f1e2;
     --text: #1f1b17;
     --muted: #574f45;
     /* On light: brand gold text #b78711 (hover #8f6a0b), gold fill with ink text. */
@@ -156,7 +164,7 @@ button:focus-visible {
   place-content: center;
   justify-items: center;
   gap: 16px;
-  color: #958c7e;
+  color: var(--muted);
   background: var(--bg);
   font-family: var(--body);
   font-size: 16px;
@@ -166,10 +174,12 @@ button:focus-visible {
 .skeleton-diamond {
   width: 200px;
   height: 116px;
-  background: #2a231e;
+  /* A bright band sweeping across, in the theme's skeleton colours. */
+  background: linear-gradient(105deg, var(--skeleton) 30%, var(--skeleton-hi) 48%, var(--skeleton-glint) 50%, var(--skeleton-hi) 52%, var(--skeleton) 70%) 0 0 / 300% 100%;
   clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
-  animation: pulse 1.2s ease-in-out infinite alternate;
+  animation: shimmer 1.3s linear infinite;
 }
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
 
 @keyframes pulse { from { opacity: 0.5; } to { opacity: 1; } }
 
@@ -1545,7 +1555,7 @@ body:has(.sandbox-toggle[aria-expanded='true']) .portrait { display: none; }
 
 /* Loading screen: the PROtestkit logo, breathing gently, over the skeleton diamond. */
 .loading-logo { width: 110px; height: auto; animation: logo-breathe 2.4s ease-in-out infinite; }
-@keyframes logo-breathe { 50% { opacity: 0.65; transform: scale(0.97); } }
+@keyframes logo-breathe { 50% { opacity: 0.45; transform: scale(0.95); } }
 .loading-line { min-height: 1.4em; margin: 0; text-align: center; padding: 0 16px; }
 @media (prefers-reduced-motion: reduce) { .loading-logo { animation: none; } }
 
@@ -1622,4 +1632,49 @@ body:has(.sandbox-toggle[aria-expanded='true']) .portrait { display: none; }
   .top-bar .stress-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0 6px; margin-top: 5px; padding-top: 4px; border-top: 1px solid color-mix(in srgb, var(--muted) 25%, transparent); }
   .top-bar .stress { gap: 3px; }
   .top-bar .stress-bar { min-width: 0; }
+}
+
+/* Configure: a button over the scene on wide screens, a reply in the bottom menu on phones. */
+.options > li.phone-only { display: none; }
+@media (max-width: 760px) {
+  .options > li.phone-only:not([hidden]) { display: list-item; }
+  .sandbox-toggle { display: none; }
+  .sandbox { top: max(10px, env(safe-area-inset-top)); }
+
+  /* A tighter bottom sheet: less fade above, shorter rows, a shorter Pause bar. */
+  .column {
+    max-height: 62vh;
+    max-height: 62dvh;
+    padding-top: 34px;
+    background:
+      var(--grain),
+      linear-gradient(180deg, rgba(var(--fade), 0) 0, rgba(var(--fade), 0.92) 26px, rgba(var(--fade), 0.98) 60px);
+  }
+  .sheet-handle { min-height: 30px; margin-top: -30px; }
+  .column .opt { min-height: 34px; }
+  .column .options { margin: 0 0 4px; row-gap: 0; }
+  .column .log { max-height: 28dvh; padding: 2px 0; }
+  .column .column-events { margin-top: 4px; }
+  .continue { min-height: 40px; }
+}
+@media (max-width: 760px) {
+  /* Money and 'turned away' never touch: a gap, and the count shrinks first. */
+  .top-bar .column-right { gap: 8px; }
+  .top-bar .money { flex: none; }
+  .top-bar .column-sub { min-width: 0; overflow: hidden; }
+}
+/* Configure: no number, a gear instead. */
+.options > li.phone-only { counter-increment: none; }
+.configure-opt::before {
+  content: '';
+  width: 1em;
+  height: 1em;
+  min-width: 1.4em;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='-1.5 -1.5 27 27'><path d='M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.6 7.6 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.6 7.6 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1c.5.4 1.1.7 1.7 1l.4 2.6h4l.4-2.6c.6-.3 1.2-.6 1.7-1l2.5 1 2-3.5zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z'/></svg>") left center / 1em 1em no-repeat;
+  mask: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='-1.5 -1.5 27 27'><path d='M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.6 7.6 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.6 7.6 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1c.5.4 1.1.7 1.7 1l.4 2.6h4l.4-2.6c.6-.3 1.2-.6 1.7-1l2.5 1 2-3.5zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z'/></svg>") left center / 1em 1em no-repeat;
+}
+@media (prefers-color-scheme: light) {
+  /* The gold logo reads faintly on the light loading screen: a shade deeper. */
+  .loading-logo { filter: brightness(0.72) saturate(1.25); }
 }
