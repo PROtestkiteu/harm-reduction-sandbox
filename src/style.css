@@ -461,13 +461,15 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
   background: var(--muted); box-shadow: 0 1px 2px rgb(0 0 0 / 0.4); transition: transform 0.15s, background 0.15s;
 }
 .svc-toggle[aria-checked='true'] .state { justify-content: flex-start; background: var(--open); border-color: var(--open); color: var(--bg); }
-.svc-toggle[aria-checked='true'] .state::after { transform: translateX(30px); background: var(--bg); }
+.svc-toggle[aria-checked='true'] .state::after { transform: translateX(30px); background: #fffaf0; box-shadow: 0 1px 3px rgb(0 0 0 / 0.45); }
 .svc-toggle:hover .state { border-color: var(--text); }
 .svc-toggle:focus-visible { outline: none; }
 .svc-toggle:focus-visible .state { outline: 2px solid var(--focus); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) {
   .svc-toggle .state, .svc-toggle .state::after { transition: none; }
 }
+/* A service switched off: the whole row grey and struck through; the switch still reads OFF beside it. */
+.svc-row[data-on='false'] .opt { color: var(--muted); }
 .svc-row[data-on='false'] .name { text-decoration: line-through; text-decoration-thickness: 2px; }
 
 .speeds { color: var(--reply); }
@@ -1882,4 +1884,30 @@ body:has(.sandbox-toggle[aria-expanded='true']) .portrait { display: none; }
   .org .org-summary { font-size: 11px !important; margin-top: 4px; }
   .org .btn.org-action { min-height: 36px; font-size: 13px; }
   .org p { font-size: 13px; }
+}
+
+/*
+ * Phones held upright. The bottom sheet lists replies one per row, full width, so every label fits
+ * on one line; it scrolls inside itself with Pause pinned to its foot, so a long list (an open
+ * budget mix) never pushes Pause off the screen, and it may grow taller while a group is open.
+ * The top bar is set at readable sizes.
+ */
+@media (max-width: 760px) and (orientation: portrait) {
+  .column { max-height: 72dvh; overflow-y: auto; overscroll-behavior: contain; }
+  .column:has(.options[data-drill]) { max-height: 86dvh; }
+  /* The sheet scrolls as one: its parts keep their size instead of squeezing each other. */
+  .column > * { flex-shrink: 0; }
+  .options { grid-template-columns: 1fr; }
+  .options > li.nested { padding-left: 0; }
+  .opt { min-height: 40px; }
+  .svc-row .opt { min-height: 40px; }
+  /* Pinned to the foot: a soft fade above it and solid sheet colour below, so rows scroll out of sight. */
+  .continue { position: sticky; bottom: 0; flex: none; z-index: 1; box-shadow: 0 -8px 12px rgba(var(--fade), 0.95), 0 24px 0 12px rgb(var(--fade)); }
+  .top-bar { width: min(58vw, 250px); padding: 6px 9px 7px; border-top-width: 2px; }
+  .top-bar .clock, .top-bar .money { font-size: 15px; }
+  .top-bar .column-sub { font-size: 12px; gap: 6px; }
+  .top-bar .speed-toggle { padding: 2px 7px; font-size: 13px; }
+  .top-bar .stress-row { font-size: 11px; gap: 2px 10px; margin-top: 4px; }
+  .top-bar .stress-icon { width: 15px; height: 15px; }
+  .top-bar .stress-bar { height: 5px; min-width: 20px; }
 }
