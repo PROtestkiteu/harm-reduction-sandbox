@@ -1370,4 +1370,5 @@ export const PL: Record<string, string> = {
   "Send the warming bus.": "Wyślij autobus grzewczy.",
   "Stop water and shade.": "Zabierz wodę i cień.",
   "Put out water and shade.": "Wystaw wodę i cień.",
+  "Switch the service on to invest in it.": "Włącz usługę, żeby w nią inwestować.",
 };

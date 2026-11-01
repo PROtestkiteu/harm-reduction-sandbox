@@ -448,10 +448,26 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
 .svc-row { display: flex; align-items: center; }
 .svc-row > .opt { flex: 1; min-width: 0; }
 /* The ON/OFF switch at the row's end: its own target, separate from the name that picks the place. */
-.svc-toggle { flex: none; min-width: 52px; min-height: 34px; padding: 0 4px 0 10px; margin: 0; background: none; border: 0; text-align: right; cursor: pointer; }
-.svc-toggle .state { font-family: var(--body); font-weight: 500; font-size: 16px; text-transform: uppercase; color: var(--muted); }
-.svc-toggle[aria-checked='true'] .state { color: var(--open); }
-.svc-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+/* ON/OFF is a physical switch: a track with a knob that slides right when on; the word sits on the free side. */
+.svc-toggle { flex: none; min-height: 34px; padding: 3px 0 3px 10px; margin: 0; background: none; border: 0; cursor: pointer; }
+.svc-toggle .state {
+  position: relative; display: inline-flex; align-items: center; justify-content: flex-end; box-sizing: border-box;
+  width: 58px; height: 28px; padding: 0 8px; border: 2px solid var(--muted); border-radius: 999px; background: transparent;
+  font-family: var(--body); font-weight: 700; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted);
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.svc-toggle .state::after {
+  content: ''; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%;
+  background: var(--muted); box-shadow: 0 1px 2px rgb(0 0 0 / 0.4); transition: transform 0.15s, background 0.15s;
+}
+.svc-toggle[aria-checked='true'] .state { justify-content: flex-start; background: var(--open); border-color: var(--open); color: var(--bg); }
+.svc-toggle[aria-checked='true'] .state::after { transform: translateX(30px); background: var(--bg); }
+.svc-toggle:hover .state { border-color: var(--text); }
+.svc-toggle:focus-visible { outline: none; }
+.svc-toggle:focus-visible .state { outline: 2px solid var(--focus); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .svc-toggle .state, .svc-toggle .state::after { transition: none; }
+}
 .svc-row[data-on='false'] .name { text-decoration: line-through; text-decoration-thickness: 2px; }
 
 .speeds { color: var(--reply); }

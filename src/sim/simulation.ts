@@ -719,6 +719,7 @@ export class Simulation {
   invest(id: ServiceId): boolean {
     const u = this.upgrades[id];
     if (u.level >= INVEST.maxLevel && u.progress >= 1) return false;
+    if (!this.services[id].switchedOn) return false;
     if (!this.org.spend(INVEST.cost, false)) {
       this.org.notice(this.clockMinutes, t('Not enough money to invest.'));
       return false;

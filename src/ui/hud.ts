@@ -656,7 +656,8 @@ export class Hud {
     this.backOpt = opt(back);
     this.backOpt.classList.add('zero');
     for (const id of SERVICE_IDS) {
-      // The name picks the place (the camera goes there); only the ON/OFF switch at the end turns it on or off.
+      // In the services list the name picks the place (the camera goes there). On the place's own card,
+      // where it is already picked, the name switches the service on or off like the ON/OFF button.
       const b = button('opt switch');
       b.dataset.service = id;
       const name = el('span', 'name');
@@ -664,7 +665,14 @@ export class Hud {
       short.setAttribute('aria-hidden', 'true');
       name.append(el('span', 'long', SERVICE_TEXT[id].label), short);
       b.append(name);
-      b.addEventListener('click', () => { this.servicesOpen = false; cb.onSelect(id === 'clubHr' ? 'club' : id); });
+      b.addEventListener('click', () => {
+        if (!this.servicesOpen && this.mode?.kind === 'location' && serviceAt(this.mode.id) === id) {
+          cb.onService(id, this.switches[id].getAttribute('aria-checked') !== 'true');
+          return;
+        }
+        this.servicesOpen = false;
+        cb.onSelect(id === 'clubHr' ? 'club' : id);
+      });
       const toggle = button('svc-toggle');
       toggle.setAttribute('role', 'switch');
       toggle.setAttribute('aria-label', SERVICE_TEXT[id].label);
@@ -1222,8 +1230,9 @@ export class Hud {
     show('move', !!c && !a.closedDown, c ? (c.moving ? t('Camper on the move') : t('Move the camper')) : '', !!c && !c.moving, t('Pick a free kerb spot on the map; it reopens there once parked.'));
     const inv = a.invest;
     const full = inv.level >= inv.max && inv.progress >= 1;
-    // Building work goes on whether or not the place is open tonight.
-    show('invest', !a.closedDown, full ? t('Fully upgraded') : t('Invest {price}', { price: price(inv.cost) }), !full && afford(inv.cost), t('Build on: more places here once the work is done.'));
+    // Building work goes on whether or not the place is open tonight, but not into a service switched off.
+    const switchedOn = this.lastSnapshot?.enabled[a.service] ?? true;
+    show('invest', !a.closedDown, full ? t('Fully upgraded') : t('Invest {price}', { price: price(inv.cost) }), !full && switchedOn && afford(inv.cost), switchedOn ? t('Build on: more places here once the work is done.') : t('Switch the service on to invest in it.'));
     if (a.hustle) {
       setText(this.actionOpts.hustle.short, a.hustle.short);
       setAttr(this.actionOpts.hustle.button, 'aria-pressed', String(a.hustle.on));
