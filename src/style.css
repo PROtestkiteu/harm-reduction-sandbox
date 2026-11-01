@@ -164,14 +164,13 @@ html, body {
 }
 
 /*
- * Installed on the Home Screen (no browser bars), iPhones report a window a status bar short,
- * so 'inset: 0' stops above the home bar and leaves a band. The large viewport is the whole
- * screen there; in a browser tab it would run under the toolbar, so only here.
+ * Installed on the Home Screen (no browser bars), iPhones report a window one status bar short:
+ * 'inset: 0' stops that much above the bottom and leaves a band. The fixed layers add the status
+ * bar's height back. Only the fixed layers: a taller page itself scrolls under the status bar,
+ * and iOS then blurs a tall band at the top.
  */
 @media (display-mode: standalone), (display-mode: fullscreen) {
-  /* Only the fixed layers: a taller page itself scrolls under the status bar, and iOS then
-     blurs and darkens a tall band at the top. */
-  #scene, #hud { bottom: auto; height: 100lvh; }
+  #scene, #hud { bottom: auto; height: calc(100% + env(safe-area-inset-top)); }
 }
 
 #hud button, .column { pointer-events: auto; }
