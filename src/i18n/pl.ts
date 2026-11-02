@@ -1786,4 +1786,7 @@ export const PL: Record<string, string> = {
   "Someone in acute crisis on the street": "Osoba w ostrym kryzysie na ulicy",
   "Paused. Press to play at 1x (Space)": "Pauza. Naciśnij, żeby grać w 1x (Spacja)",
   "Speed {speed}x. Press to pause (Space)": "Prędkość {speed}x. Naciśnij, żeby zatrzymać (Spacja)",
+  "Edit your name and look": "Zmień swoje imię i wygląd",
+  "You: edit your name and look": "Ty: zmień swoje imię i wygląd",
+  "What you can do for {name}": "Co możesz zrobić dla: {name}",
 };

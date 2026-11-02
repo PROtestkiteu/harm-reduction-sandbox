@@ -2329,3 +2329,8 @@ button.event-card:focus-visible { outline: 2px solid var(--focus); outline-offse
   overflow-wrap: anywhere;
 }
 .portrait figcaption .portrait-sub { color: #cdbfa6; }
+
+/* The portrait opens a menu: tap, right-click or long press (src/main.ts portraitMenu). */
+.portrait { pointer-events: auto; cursor: pointer; -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
+.portrait:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+@media (hover: hover) { .portrait:hover .portrait-view { outline-color: rgba(233, 214, 180, 0.6); } }

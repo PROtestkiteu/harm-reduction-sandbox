@@ -111,7 +111,11 @@ portraitView.width = PORTRAIT_W;
 portraitView.height = PORTRAIT_H;
 const portraitCaption = document.createElement('figcaption');
 portraitBox.append(portraitView, portraitCaption);
-portraitBox.setAttribute('aria-hidden', 'true');
+// The portrait is a button: a tap, a right-click or a long press opens what can be done for whoever it
+// shows (their action menu), or, on your own, editing your name and look.
+portraitBox.tabIndex = 0;
+portraitBox.setAttribute('role', 'button');
+portraitBox.setAttribute('aria-haspopup', 'menu');
 hudRoot.append(portraitBox);
 
 // Version counter in the corner: small, quiet, never in the way of input.
@@ -475,6 +479,46 @@ const interaction = new Interaction({
     actionMenu.show(x, y, title, items);
   },
 });
+
+/** Opens the portrait's menu at (x, y): the selected person's actions, or yours. */
+function portraitMenu(x: number, y: number): void {
+  if (portraitBox.dataset.who === 'player') {
+    actionMenu.show(x, y, t('You'), [
+      { label: t('Edit your name and look'), disabled: false, run: () => welcome.show() },
+      { label: t('My organisation: team, money and grants.'), disabled: false, run: () => openOrg() },
+    ]);
+    return;
+  }
+  refreshHud();
+  const { title, items } = hud.menuEntries();
+  actionMenu.show(x, y, title, items);
+}
+{
+  // A long press (about half a second, the finger held still) opens the menu on touch screens;
+  // the click that follows the lift is swallowed so the menu stays open.
+  let press: { id: number; x: number; y: number; timer: number } | null = null;
+  let swallowClick = false;
+  const cancel = () => { if (press) clearTimeout(press.timer); press = null; };
+  portraitBox.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse') return;
+    cancel();
+    press = { id: e.pointerId, x: e.clientX, y: e.clientY, timer: window.setTimeout(() => { swallowClick = true; portraitMenu(e.clientX, e.clientY); press = null; }, 500) };
+  });
+  portraitBox.addEventListener('pointermove', (e) => { if (press && e.pointerId === press.id && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 10) cancel(); });
+  portraitBox.addEventListener('pointerup', cancel);
+  portraitBox.addEventListener('pointercancel', cancel);
+  portraitBox.addEventListener('contextmenu', (e) => { e.preventDefault(); cancel(); portraitMenu(e.clientX, e.clientY); });
+  portraitBox.addEventListener('click', (e) => {
+    if (swallowClick) { swallowClick = false; return; }
+    portraitMenu(e.clientX, e.clientY);
+  });
+  portraitBox.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'ContextMenu') return;
+    e.preventDefault();
+    const r = portraitBox.getBoundingClientRect();
+    portraitMenu(r.right, r.top + r.height / 2);
+  });
+}
 
 // Ordinary buildings' and emergency vehicles' cards, and what the city shows of the property.
 const cards = new CityCards(sim, world);
@@ -1337,6 +1381,7 @@ function syncPortrait(): boolean {
   if (portraitCaption.dataset.text !== caption + sub) {
     portraitCaption.dataset.text = caption + sub;
     portraitCaption.replaceChildren(caption, ...(sub ? [Object.assign(document.createElement('span'), { className: 'portrait-sub', textContent: sub })] : []));
+    portraitBox.setAttribute('aria-label', you ? t('You: edit your name and look') : t('What you can do for {name}', { name: caption }));
   }
   if (key === portraitKey) return false;
   portraitKey = key;
