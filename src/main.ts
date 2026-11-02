@@ -1161,6 +1161,13 @@ function placeDaemonTag(): void {
  */
 const overlays = new MapOverlays(world.scene);
 const peopleByRole = new Map<PersonRole, number>();
+/** The views that show people as dots, and whom: everyone, or some roles only. */
+const DOTS: Partial<Record<OverlayKind, 'all' | ReadonlySet<PersonRole>>> = {
+  people: 'all',
+  police: new Set(['police']),
+  street: new Set(['seller', 'sleeper']),
+  residents: new Set(['resident']),
+};
 function refreshOverlay(kind: OverlayKind): void {
   overlays.visible = kind !== 'off';
   if (kind === 'off') return;
@@ -1170,20 +1177,19 @@ function refreshOverlay(kind: OverlayKind): void {
   dirty = true;
 }
 function updatePeopleOverlay(): void {
-  const kind = mapLayers.kind;
-  if (kind !== 'people' && kind !== 'police') return;
+  const shown = DOTS[mapLayers.kind];
+  if (!shown) return;
   peopleByRole.clear();
   overlays.beginPeople();
   crowd.forEachVisiblePosition((x, z, role) => {
     peopleByRole.set(role, (peopleByRole.get(role) ?? 0) + 1);
-    // The police view shows the officers only.
-    if (kind === 'police' && role !== 'police') return;
+    if (shown !== 'all' && !shown.has(role)) return;
     overlays.person(x, z, ROLE_COLOUR[role] ?? OTHER_COLOUR);
   });
   overlays.endPeople();
 }
 const mapLayers = new MapLayers(hudRoot, (kind) => {
-  if (kind !== 'people' && kind !== 'police') overlays.clearPeople();
+  if (!DOTS[kind]) overlays.clearPeople();
   else updatePeopleOverlay();
   refreshOverlay(kind);
 }, (x, y, title, items) => actionMenu.show(x, y, title, items), (x, z) => {

@@ -2,7 +2,7 @@ import { t } from '../i18n';
 import type { MenuItem } from './actionMenu';
 
 /** The map overlays: off, or one of the views of the district's numbers. */
-export type OverlayKind = 'off' | 'load' | 'staff' | 'people' | 'police' | 'street' | 'shops' | 'city' | 'reach';
+export type OverlayKind = 'off' | 'load' | 'staff' | 'people' | 'police' | 'crime' | 'street' | 'residents' | 'commerce' | 'shops' | 'city' | 'reach';
 
 const LABEL: Record<OverlayKind, string> = {
   off: t('No overlay'),
@@ -10,7 +10,10 @@ const LABEL: Record<OverlayKind, string> = {
   staff: t('Staffing'),
   people: t('Who is where'),
   police: t('Police'),
+  crime: t('Crime'),
   street: t('Street scene'),
+  residents: t('Residents'),
+  commerce: t('Commerce and nightlife'),
   shops: t('Shops and property'),
   city: t('City institutions'),
   reach: t('Reach'),
