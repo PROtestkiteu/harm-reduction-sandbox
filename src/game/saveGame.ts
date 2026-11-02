@@ -82,6 +82,8 @@ export interface SaveMore {
   visitors?: Partial<ReturnType<Simulation['visitors']['snapshot']>>;
   /** Someone in acute crisis on the street, if they are (sim/chaosDaemon.ts); checked there on restore. */
   daemon?: { since?: number | null; fails?: number; quietUntil?: number };
+  /** The foot patrol out at a spot, if it is (sim/patrol.ts); checked there on restore. */
+  patrol?: Partial<ReturnType<Simulation['patrol']['snapshot']>>;
   /** Standing, supplies, the big crisis and the run's end (sim/stakes.ts); checked there on restore. */
   stakes?: Partial<ReturnType<Simulation['stakes']['snapshot']>>;
   /** Nightly goals, stars and the scenario (sim/goals.ts); checked there on restore. */
@@ -195,6 +197,7 @@ function captureMore(sim: Simulation): SaveMore {
     visitors: sim.visitors.snapshot(),
     daemon: sim.daemon.snapshot(),
     stakes: sim.stakes.snapshot(),
+    patrol: sim.patrol.snapshot(),
     goals: sim.goals.snapshot(),
     turnedAway: sim.turnedAwayTotal,
     org: {
@@ -299,6 +302,7 @@ function parseMore(raw: unknown): SaveMore | undefined {
     visitors: obj(m.visitors) as SaveMore['visitors'],
     daemon: obj(m.daemon) as SaveMore['daemon'],
     stakes: obj(m.stakes) as SaveMore['stakes'],
+    patrol: obj(m.patrol) as SaveMore['patrol'],
     goals: obj(m.goals) as SaveMore['goals'],
     turnedAway: count(m.turnedAway),
     now: num(m.now, 0, 1e9, 0),
@@ -376,6 +380,7 @@ function applyMore(sim: Simulation, m: SaveMore): void {
   if (m.visitors) sim.visitors.restore(m.visitors);
   sim.daemon.restore(m.daemon);
   sim.stakes.restore(m.stakes);
+  sim.patrol.restore(m.patrol);
   sim.restoreGoals(m.goals);
   sim.turnedAwayTotal = m.turnedAway ?? 0;
   o.broke = m.org.broke;

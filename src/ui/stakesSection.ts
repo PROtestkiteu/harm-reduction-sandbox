@@ -1,5 +1,6 @@
 import { NEED_IDS, NEEDS } from '../config/matching';
 import { MORALE } from '../config/morale';
+import { PATROL, PATROL_SPOTS, type PatrolSpot } from '../config/patrol';
 import { ORG } from '../config/organisation';
 import { STANDING, TIER_NAMES, UNLOCK_NAMES, UNLOCK_TIER, type Unlock } from '../config/standing';
 import { STORM, STORM_TEXT, type StormPrep } from '../config/storm';
@@ -15,6 +16,8 @@ export interface StakesCallbacks {
   onOrder(id: SupplyId): void;
   onStandingOrder(id: SupplyId, on: boolean): void;
   onPrepare(p: StormPrep): void;
+  /** Sends the foot patrol from its table to a spot. */
+  onPatrol(spot: PatrolSpot): void;
 }
 
 export interface StakesView {
@@ -26,6 +29,8 @@ export interface StakesView {
   clock: number;
   /** Nights survived: the storm is tonight on its own night, tomorrow before it. */
   nights: number;
+  /** The foot patrol: whether it runs at all, can go now, where it can go, and where it is. */
+  patrol: { running: boolean; ready: boolean; spots: readonly PatrolSpot[]; out: PatrolSpot | null; until: number; reached: number };
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -66,6 +71,9 @@ export class StakesSection {
   private readonly moraleLine: HTMLElement;
   private readonly needsLine: HTMLElement;
   private readonly hardcoreLine: HTMLElement;
+  private readonly patrolBox: HTMLElement;
+  private readonly patrolLine: HTMLElement;
+  private readonly patrolBtns = {} as Record<PatrolSpot, HTMLButtonElement>;
   private readonly standingBox: HTMLElement;
   private readonly standingSummary: HTMLElement;
   private readonly suppliesSummary: HTMLElement;
@@ -89,6 +97,24 @@ export class StakesSection {
       this.prep[p] = b;
     }
     this.stormBox.append(this.stormHead, this.stormLine, prepRow);
+
+    // The foot patrol: a reply per spot it can walk to; only the ones open now show.
+    this.patrolBox = el('div', 'stakes-patrol');
+    this.patrolBox.hidden = true;
+    this.patrolBox.append(el('h3', 'level', t('Foot patrol')));
+    this.patrolLine = el('p', 'factor-summary');
+    const patrolRow = el('div', 'org-actions');
+    for (const spot of PATROL_SPOTS) {
+      const b = el('button', 'btn org-action', t('Send to {spot} ({price})', { spot: PATROL.spots[spot].label, price: price(PATROL.cost) }));
+      b.type = 'button';
+      b.id = `stakes-patrol-${spot}`;
+      b.title = PATROL.spots[spot].does;
+      b.hidden = true;
+      b.addEventListener('click', () => cb.onPatrol(spot));
+      patrolRow.append(b);
+      this.patrolBtns[spot] = b;
+    }
+    this.patrolBox.append(this.patrolLine, patrolRow);
 
     // Standing and supplies fold behind one line each, so the sheet stays short.
     const standing = el('details', 'sandbox-sub stakes-standing');
@@ -135,7 +161,7 @@ export class StakesSection {
       this.rows[id] = { stock, order, standing: box };
     }
     supplies.append(el('p', 'factor-summary', t('Bought ahead in batches and used up per visit. An empty shelf means people go without.')), list);
-    this.root.append(this.stormBox, standing, morale, supplies);
+    this.root.append(this.stormBox, this.patrolBox, standing, morale, supplies);
   }
 
   update(v: StakesView): void {
@@ -157,6 +183,22 @@ export class StakesSection {
         const b = this.prep[p];
         setText(b, done ? t('Ready: {what}', { what: PREP_LABEL[p]().replace(/ \(.*$/, '') }) : PREP_LABEL[p]());
         setDisabled(b, done || (p === 'warn' ? !stakes.supplies.has('leaflets', STORM.prepare.warn.leaflets) : v.budget < STORM.prepare[p].cost));
+      }
+    }
+
+    const p = v.patrol;
+    if (this.patrolBox.hidden === p.running) this.patrolBox.hidden = !p.running;
+    if (p.running) {
+      setText(this.patrolLine, p.out
+        ? t('Out at {spot} until {time}: {n} reached so far. The table is shut meanwhile.', { spot: PATROL.spots[p.out].label, time: formatClock(v.clock + p.until - v.now), n: p.reached })
+        : p.ready
+          ? t('At its table. Send it out for {hours} hours to reach people where they are; the table shuts meanwhile.', { hours: PATROL.hours })
+          : t('Needs its table open and someone on shift there before it can go out.'));
+      for (const spot of PATROL_SPOTS) {
+        const b = this.patrolBtns[spot];
+        const show = !p.out && p.ready && p.spots.includes(spot);
+        if (b.hidden === show) b.hidden = !show;
+        setDisabled(b, v.budget < PATROL.cost);
       }
     }
 

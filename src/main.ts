@@ -858,6 +858,7 @@ const stakesSection = new StakesSection({
   onOrder: (id) => queueOrg(() => sim.orderSupply(id)),
   onStandingOrder: (id, on) => queueOrg(() => sim.setStandingOrder(id, on)),
   onPrepare: (p) => queueOrg(() => sim.prepareStorm(p)),
+  onPatrol: (spot) => queueOrg(() => { sim.sendPatrol(spot); refreshHud(); }),
 });
 org.section.insertBefore(stakesSection.root, org.section.querySelector('.org-team'));
 // The storm warning and the run's end wait for the pop-up to be free, ahead of other big events.
@@ -1373,7 +1374,10 @@ watchForUpdates(() => {
 
 function refreshOrg(): void {
   savePanel.sync();
-  stakesSection.update({ stakes: sim.stakes, team: sim.team, budget: sim.org.budget, now: sim.org.now, clock: sim.clockMinutes, nights: sim.totals.nights });
+  stakesSection.update({
+    stakes: sim.stakes, team: sim.team, budget: sim.org.budget, now: sim.org.now, clock: sim.clockMinutes, nights: sim.totals.nights,
+    patrol: { running: sim.services.footPatrol.switchedOn, ready: sim.patrolReady, spots: sim.patrolSpots(), out: sim.patrol.spot, until: sim.patrol.until, reached: sim.patrol.reached },
+  });
   org.update({ org: sim.org, stress: { police: sim.cityStress.police, medics: sim.cityStress.medics, sobering: sim.cityStress.sobering, district: sim.vitality.level }, services: sim.services, clock: sim.clockMinutes, incomePerHour: sim.fundingIncome, runningPerHour: sim.runningPerHour, payroll: sim.payroll, applicationContext: sim.applicationContext(), team: sim.team, drive: driveView(sim), favours: { held: sim.favours, owed: sim.concessionAt !== null, items: (Object.keys(FAVOURS) as FavourId[]).map((id) => ({ id, label: FAVOURS[id].label })) } });
 }
 

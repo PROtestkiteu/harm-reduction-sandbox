@@ -77,6 +77,11 @@ export class CityStress {
     this.clamp();
   }
 
+  /** Load taken off `meter` by work on the street (the foot patrol out among people). */
+  relieve(meter: StressMeter, amount: number): void {
+    if (amount > 0) this[meter] = Math.max(0, this[meter] - amount);
+  }
+
   /** What is pushing `meter` up now, largest first, as shares of the recent total (0..1). */
   causesOf(meter: StressMeter): { cause: StressCause; share: number }[] {
     const m = this.recent[meter];

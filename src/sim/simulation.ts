@@ -14,6 +14,8 @@ import { VENUE_KINDS, VITALITY, Vitality, type VenueKind } from './vitality';
 import { ACTIVITY, type Activity } from '../config/serviceMix';
 import { Team, type Assignment, type Member } from './team';
 import { Stakes, type RunOverCause } from './stakes';
+import { Patrol } from './patrol';
+import { PATROL, type PatrolSpot } from '../config/patrol';
 import type { IntroId } from '../config/intro';
 import type { StormReport } from './storm';
 import { STORM, type StormPrep } from '../config/storm';
@@ -161,7 +163,7 @@ const emptyMetrics = (): Metrics => ({ demand: 0, attended: 0, unmetNeed: 0, adv
 interface Waiting { visitor: VisitorId; waited: number }
 
 /** Why a service is closed, when it is. */
-export type ClosedReason = 'switchedOff' | 'closedDown' | 'hours' | 'notPermitted' | 'outOfService' | 'noStaff';
+export type ClosedReason = 'switchedOff' | 'closedDown' | 'hours' | 'notPermitted' | 'outOfService' | 'noStaff' | 'onPatrol';
 
 /** What the app knows about the chosen context that the combined effects do not carry. */
 export interface PolicyInfo {
@@ -429,6 +431,8 @@ export class Simulation {
   readonly team: Team;
   /** Morale's consequences, standing, supplies, the big crisis, matching and the run's end (sim/stakes.ts). */
   readonly stakes: Stakes;
+  /** The foot patrol at its table or out at a spot (sim/patrol.ts). */
+  readonly patrol = new Patrol();
   /** This game so far, for saves and the leaderboard: people served and nights run. */
   readonly totals = { helped: 0, nights: 0 };
   /** How far funders trust the project, from the last day's results (multiplies project funding, grant odds and drives). */
@@ -652,10 +656,12 @@ export class Simulation {
       reasons[id] = this.closedReason(id);
       crew[id] = [];
     }
-    for (const m of pool) if (m.assignment !== 'auto' && m.assignment !== 'rest' && !reasons[m.assignment]) crew[m.assignment].push(m);
+    // A foot patrol out on the street keeps its crew: the table is shut, the work goes on.
+    const crewed = (id: ServiceId) => !reasons[id] || reasons[id] === 'onPatrol';
+    for (const m of pool) if (m.assignment !== 'auto' && m.assignment !== 'rest' && crewed(m.assignment)) crew[m.assignment].push(m);
     const free = pool.filter((m) => m.assignment === 'auto');
     for (const id of SERVICE_IDS) {
-      if (reasons[id]) continue;
+      if (!crewed(id)) continue;
       const s = this.services[id];
       while (crew[id].length < s.requested && free.length) {
         free.sort((a, b) => Number(b.paid) - Number(a.paid) || Team.fit(b, id) - Team.fit(a, id));
@@ -803,6 +809,65 @@ export class Simulation {
     if (this.stakes.allows(u)) return true;
     this.org.notice(this.clockMinutes, t('Not yet: {what} needs a standing of {tier}.', { what: UNLOCK_NAMES[u], tier: TIER_NAMES[UNLOCK_TIER[u]] }));
     return false;
+  }
+
+  /** Where the foot patrol can go now (config/patrol.ts): a camp, a party, the club's exit, the longest queue, the person in crisis. */
+  patrolSpots(): PatrolSpot[] {
+    const out: PatrolSpot[] = [];
+    if (this.camp.size > 0.05) out.push('camp');
+    if (this.mods.party) out.push('party');
+    out.push('busiest');
+    if (this.clockMinutes < CLUB_CLOSES) out.push('club');
+    if (this.daemon.active) out.push('daemon');
+    return out;
+  }
+
+  /** Whether the foot patrol can be sent out now: open, staffed, at its table. */
+  get patrolReady(): boolean {
+    const s = this.services.footPatrol;
+    return !this.patrol.out && s.enabled && s.assigned > 0;
+  }
+
+  /** Sends the foot patrol from its table to `spot` for a few hours. */
+  sendPatrol(spot: PatrolSpot): boolean {
+    if (!this.patrolReady || !this.patrolSpots().includes(spot)) return false;
+    if (!this.org.spend(PATROL.cost, false)) {
+      this.org.notice(this.clockMinutes, t('Not enough money to send the foot patrol out.'));
+      return false;
+    }
+    for (const m of this.team.members) if (m.workingAt === 'footPatrol') m.energy = Math.max(0, m.energy - PATROL.walk);
+    this.patrol.send(spot, this.org.now);
+    this.org.notice(this.clockMinutes, t('The foot patrol is out at {spot} for {hours} hours.', { spot: PATROL.spots[spot].label, hours: PATROL.hours }));
+    // Reaching the person in crisis: two streetworkers walk up and talk.
+    if (spot === 'daemon' && this.daemon.active) {
+      const ok = this.daemon.answer('talk', this.org.now);
+      this.org.notice(this.clockMinutes, ok ? t('The foot patrol talked the person in crisis down and walked them to the clinic.') : t('The person in crisis would not listen to the patrol and ran off.'));
+    }
+    this.reallocate();
+    return true;
+  }
+
+  /** The foot patrol's hour out: people reached, kits and leaflets handed out, load off the city's meters. */
+  private tickPatrol(dtMinutes: number): void {
+    if (!this.patrol.out) return;
+    const spot = this.patrol.spot!;
+    const workers = this.team.members.filter((m) => m.workingAt === 'footPatrol').length;
+    const { contacts, back } = this.patrol.tick(dtMinutes, this.org.now, workers);
+    for (let i = 0; i < contacts; i++) {
+      this.totals.helped++;
+      this.funders.helped();
+      this.services.footPatrol.metrics.attended++;
+      this.stakes.admitted('footPatrol', this.crisis);
+      this.neighbourhood.note('attended');
+      if (this.stakes.supplies.use('kits')) this.health.sterileKits++;
+      this.stakes.supplies.use('leaflets');
+    }
+    const eases = PATROL.spots[spot].eases as Partial<Record<'police' | 'medics' | 'sobering', number>>;
+    for (const meter of ['police', 'medics', 'sobering'] as const) this.cityStress.relieve(meter, (eases[meter] ?? 0) * (dtMinutes / 60));
+    if (back) {
+      this.org.notice(this.clockMinutes, plural(this.patrol.reached, ['The foot patrol is back at its table: it reached {n} person out there.', 'The foot patrol is back at its table: it reached {n} people out there.'], ['Patrol pieszy wrócił do stolika: dotarł do {n} osoby.', 'Patrol pieszy wrócił do stolika: dotarł do {n} osób.', 'Patrol pieszy wrócił do stolika: dotarł do {n} osób.']));
+      this.reallocate();
+    }
   }
 
   /** Prepares for the coming storm (config/storm.ts). */
@@ -1525,6 +1590,8 @@ export class Simulation {
     if (!this.services[id].switchedOn) return 'switchedOff';
     if (this.org.closedDown.has(id)) return 'closedDown';
     if (this.mods.outOfService.has(id)) return 'outOfService';
+    // Out on the street: the table is shut, the same people are at work elsewhere.
+    if (id === 'footPatrol' && this.patrol.out) return 'onPatrol';
     if ((id === 'outreach' && !c.outreachPermitted) || (id === 'clubHr' && !c.standPermitted)) return 'notPermitted';
     // Where lab checking is not allowed the checking service stays open: test kits and advice (its mix locks checking).
     if (this.outsideHours(id)) return 'hours';
@@ -1795,12 +1862,13 @@ export class Simulation {
       this.org.notice(this.clockMinutes, t('The outreach camper has parked at its new spot.'));
     }
     const late = this.clockMinutes >= 24 * 60 && this.clockMinutes < MORNING;
+    this.tickPatrol(dt * this.minuteRate);
     const stormOn = this.stakes.storm.phase === 'peak';
     let rota = this.team.tick((dt * this.minuteRate) / 60, late, { unpaid: this.org.broke && this.org.paid > 0, steadier: this.org.steadierVolunteers, drain: stormOn ? STORM.drain : 1 });
     const outreach = this.services.outreach;
     const stakes = this.stakes.tick(dt * this.minuteRate, {
       nights: this.totals.nights, clock: this.clockMinutes, season: this.season, shut: this.org.closedDown.size >= ORG.closeDownAfter.length,
-      outreachOnStreet: (outreach.enabled && outreach.staffOnSite > 0) || this.services.footPatrol.staffOnSite > 0,
+      outreachOnStreet: (outreach.enabled && outreach.staffOnSite > 0) || this.services.footPatrol.staffOnSite > 0 || this.patrol.out,
     });
     rota ||= stakes.rota;
     if (stakes.extraPlaces) this.syncExtraPlaces();
@@ -2043,7 +2111,7 @@ export class Simulation {
     const profile = this.profiles.get(visitor);
     if (s.id !== 'clubHr' && profile?.injects) this.unsafeInjecting();
     // Using alone in a hidden spot during a supply event: outreach may find the person in time.
-    const reach = ACUTE.reachedByStaff.hidden + (this.camperPath === 'health' ? CAMPER_PATH_EFFECT.healthReach : 0);
+    const reach = ACUTE.reachedByStaff.hidden + (this.camperPath === 'health' ? CAMPER_PATH_EFFECT.healthReach : 0) + (this.patrol.out ? PATROL.reach : 0);
     const acute = hiddenUse ? this.acuteFor(profile, true, 'outreach', reach) : null;
     if (notify) this.emit({ type: 'leftUnserved', service: s.id, visitor });
     this.emit({ type: 'aftermath', service: s.id, visitor, hiddenUse, adverse, acute });

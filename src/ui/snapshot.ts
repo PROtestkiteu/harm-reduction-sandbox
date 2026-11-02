@@ -36,6 +36,8 @@ function closedNote(s: ServiceModel): LocationSnapshot['closed'] {
     case 'switchedOff': return { text: t('Switched off'), lasting: true, ownChoice: true };
     case 'closedDown': return { text: t('Shut down'), lasting: true };
     case 'notPermitted': return { text: t('Not permitted'), lasting: true };
+    // The foot patrol walked off to a spot (sim/patrol.ts): back at its table in a few hours.
+    case 'onPatrol': return { text: t('Out on patrol'), lasting: false };
   }
 }
 
