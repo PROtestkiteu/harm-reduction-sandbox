@@ -45,7 +45,7 @@ export class MeterCauses {
   private open: { key: MeterKey; anchor: HTMLElement } | null = null;
   private timer = 0;
 
-  constructor(row: HTMLElement, private readonly causes: (m: StressMeter) => { cause: StressCause; share: number }[]) {
+  constructor(private readonly row: HTMLElement, private readonly causes: (m: StressMeter) => { cause: StressCause; share: number }[]) {
     this.card = Object.assign(document.createElement('div'), { className: 'meter-causes', hidden: true });
     this.card.id = 'meter-causes';
     this.card.setAttribute('role', 'dialog');
@@ -68,6 +68,13 @@ export class MeterCauses {
     document.addEventListener('pointerdown', (e) => {
       if (this.open && !this.card.contains(e.target as Node) && !row.contains(e.target as Node)) this.close(false);
     });
+  }
+
+  /** Opens the card for one meter (the coordinator's guide points here). */
+  show(key: MeterKey): void {
+    const m = this.row.querySelector<HTMLElement>(`[data-key="${key}"]`);
+    if (m && this.open?.key !== key) this.toggle(m);
+    m?.focus({ preventScroll: true });
   }
 
   private toggle(m: HTMLElement): void {

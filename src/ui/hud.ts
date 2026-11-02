@@ -1,3 +1,4 @@
+import type { GuideAct, GuideStep } from '../game/guide';
 import { CAMPER_PATH, CAMPER_PATH_IDS, type CamperPath } from '../config/camperPaths';
 import { ACTIVITY, type Activity } from '../config/serviceMix';
 import type { FavourId } from '../config/favours';
@@ -52,6 +53,8 @@ export interface HudCallbacks {
   onSettings(): void;
   /** Start or stop this season's aid: the warming bus, or water and shade. */
   onAid(kind: 'cold' | 'heat'): void;
+  /** The coordinator's next step was chosen (the services list opens here; the rest is the app's). */
+  onGuide(act: GuideAct): void;
 }
 
 /** What can be done at a place, free or paid from the organisation's budget. */
@@ -237,6 +240,12 @@ export class Hud {
   private readonly clock: HTMLElement;
   private readonly log: HTMLElement;
   private readonly idle: HTMLElement;
+  /** With nothing selected the organisation speaks: its name and your next step. */
+  private guide: { who: string; step: GuideStep } | null = null;
+  private readonly guideOpt: HTMLElement;
+  private readonly guideLong: HTMLElement;
+  private readonly guideShort: HTMLElement;
+  private readonly orgOpt: HTMLElement;
   private readonly speaker: HTMLElement;
   private readonly said: HTMLElement;
   private readonly aside: HTMLElement;
@@ -423,7 +432,7 @@ export class Hud {
     // The conversation: who or what is selected, speaking in plain sentences.
     this.log = el('div', 'log');
     this.log.setAttribute('aria-live', 'polite');
-    this.idle = el('p', 'idle', t('Pick a place, a person or an action.'));
+    this.idle = el('p', 'idle', t('Or pick a place or a person on the map.'));
     const line = el('p', 'line');
     this.speaker = el('span', 'speaker');
     this.said = el('span', 'said');
@@ -465,7 +474,7 @@ export class Hud {
     this.buildingView = el('dl', 'facts building-facts');
     this.buildingChips = el('ul', 'chips building-chips');
     this.buildingChips.setAttribute('role', 'list');
-    this.log.append(this.idle, line, this.aside, this.locationView, this.buildingChips, this.buildingView, this.profileView, this.personNote);
+    this.log.append(line, this.idle, this.aside, this.locationView, this.buildingChips, this.buildingView, this.profileView, this.personNote);
 
     // Replies: every control is a numbered option; number keys choose them.
     this.options = el('ol', 'options');
@@ -630,6 +639,25 @@ export class Hud {
     this.renameBtn.addEventListener('click', () => this.startRename(cb));
     // Services sit behind one reply so the list stays short; the selected
     // place's own switch is offered directly.
+    // Nothing selected: the coordinator's next step leads the replies, then the organisation itself.
+    const guideBtn = button('opt guide-opt');
+    this.guideLong = el('span', 'long');
+    this.guideShort = el('span', 'short');
+    this.guideShort.setAttribute('aria-hidden', 'true');
+    guideBtn.append(this.guideLong, this.guideShort);
+    guideBtn.addEventListener('click', () => {
+      const act = this.guide?.step.act;
+      if (!act) return;
+      if (act.kind === 'services') this.setServicesOpen(true);
+      else cb.onGuide(act);
+    });
+    this.guideOpt = opt(guideBtn);
+    const orgBtn = button('opt');
+    const orgShort = el('span', 'short', t('My organisation.'));
+    orgShort.setAttribute('aria-hidden', 'true');
+    orgBtn.append(el('span', 'long', t('My organisation: team, money and grants.')), orgShort);
+    orgBtn.addEventListener('click', () => cb.onMoney());
+    this.orgOpt = opt(orgBtn);
     const review = button('opt');
     this.reviewName = el('span', 'long');
     this.reviewShort = el('span', 'short');
@@ -855,6 +883,32 @@ export class Hud {
   /** Label button for a location, for keyboard focus moves. */
   labelFor(id: LocationId): HTMLButtonElement {
     return this.labels[id];
+  }
+
+  /**
+   * The organisation, as the default selection: `who` speaks `step` whenever
+   * nothing else is selected. Cheap to call every refresh: text is written only
+   * when it changed.
+   */
+  setGuide(who: string, step: GuideStep): void {
+    const before = this.guide?.step;
+    this.guide = { who, step };
+    if (this.mode !== null) return;
+    if (!before || before.id !== step.id || !!before.act !== !!step.act) this.render();
+    else this.showGuide();
+  }
+
+  private showGuide(): void {
+    const g = this.guide;
+    if (!g) return;
+    setText(this.speaker, g.who);
+    setText(this.said, g.step.said);
+    const alert = String(!!g.step.urgent);
+    if (this.said.dataset.alert !== alert) this.said.dataset.alert = alert;
+    if (g.step.act) {
+      setText(this.guideLong, g.step.act.label);
+      setText(this.guideShort, g.step.act.short);
+    }
   }
 
   showLocation(id: LocationId | null): void {
@@ -1368,7 +1422,8 @@ export class Hud {
     if (m?.kind !== 'person') delete this.column.dataset.role;
     if (m?.kind !== 'location') delete this.column.dataset.status;
     this.idle.hidden = m !== null;
-    (this.speaker.parentElement as HTMLElement).hidden = m === null;
+    (this.speaker.parentElement as HTMLElement).hidden = m === null && !this.guide;
+    if (m === null) this.showGuide();
     this.aside.hidden = m?.kind !== 'person';
     this.buildingView.hidden = m?.kind !== 'building';
     this.buildingChips.hidden = m?.kind !== 'building' || !this.buildingChips.childElementCount;
@@ -1393,6 +1448,8 @@ export class Hud {
     this.renameBtn.hidden = !m || (m.kind === 'building' && !this.renamable);
     // The services review is for when nothing is selected.
     this.reviewOpt.hidden = open || m !== null;
+    this.orgOpt.hidden = open || m !== null;
+    this.guideOpt.hidden = open || m !== null || !this.guide?.step.act;
     this.aidOpt.hidden = open || m !== null || !this.lastSnapshot?.aid;
     this.configureOpt.hidden = open || m !== null;
     this.favourOpt.hidden = open || m !== null || !this.lastSnapshot?.favours;

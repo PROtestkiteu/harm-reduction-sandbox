@@ -2109,3 +2109,28 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
 .scenario-btn { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; width: 100%; margin-top: 6px; }
 .scenario-btn .scenario-blurb { font-weight: 400; font-size: 12px; color: var(--muted); }
 .scenario-btn[aria-current='true'] { border-color: var(--reply); }
+
+/* Nothing selected: your organisation speaks, and its next step leads the replies. */
+.column[data-mode='idle'] .speaker { color: var(--reply); }
+.opt.guide-opt { font-weight: 600; }
+.opt.guide-opt::after { content: '→'; margin-left: auto; padding-left: 8px; }
+
+/* You, at the head of the welcome box, a guide or the morning report. */
+.player-badge { display: flex; align-items: center; gap: 12px; margin: 0 0 12px; }
+.player-face {
+  flex: none;
+  width: 60px;
+  height: 75px;
+  object-fit: cover;
+  border: 2px solid #2a201a;
+  outline: 1px solid rgba(233, 214, 180, 0.28);
+  outline-offset: 2px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+}
+.player-said { margin: 0; font-style: italic; }
+.player-who { display: block; font-style: normal; font-size: 13px; font-weight: 500; color: var(--muted); }
+@media (max-width: 760px) {
+  /* Phones: you are a small face under the title; your organisation speaks in the sheet below. */
+  .portrait[data-who='player'] { width: 60px; }
+  .portrait[data-who='player'] .portrait-sub { display: none; }
+}

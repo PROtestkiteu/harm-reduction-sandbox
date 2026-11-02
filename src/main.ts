@@ -1,3 +1,6 @@
+import { paintPlayer } from './render/playerPortrait';
+import { TIRED } from './sim/team';
+import { locationOf, nextStep, type GuideView } from './game/guide';
 import { QUALITY } from './render/quality';
 import { Vector3, WebGLRenderer } from 'three';
 import { cityBuilding } from './world/cityBuildings';
@@ -345,6 +348,11 @@ const hud = new Hud(hudRoot, {
     refreshHud();
   }),
   onHelp: () => welcome.show(),
+  onGuide: (act) => {
+    if (act.kind === 'org') openOrg();
+    else if (act.kind === 'meter') meterCauses?.show(act.need);
+    else if (act.kind === 'place') { interaction.selectLocation(act.id); focusPlace(act.id); }
+  },
   onRename: (name) => {
     const sel = interaction.selected;
     if (sel?.kind === 'location') rename('location', sel.id, name);
@@ -421,10 +429,12 @@ function updateFlavour(dt: number): void {
 const actionMenu = new ActionMenu(hudRoot);
 // The welcome box pauses the city while it is open, and leaves a pause the player chose alone.
 let pausedBeforeWelcome = false;
+/** You, for the boxes that show your portrait; painted on the first box that needs it. */
+const playerPicture = () => ({ url: playerPortrait().url, org: orgName() });
 const welcome = new Welcome(document.body, (open) => {
   if (open) { pausedBeforeWelcome = paused; setPaused(true); }
   else if (!pausedBeforeWelcome) setPaused(false);
-});
+}, playerPicture);
 const interaction = new Interaction({
   canvas,
   overlay: hudRoot,
@@ -601,6 +611,7 @@ function refreshHud(): void {
   sandbox.syncLive('clock', sim.clockMinutes);
   feed.refresh(sim.clockMinutes);
   refreshGoals();
+  refreshGuide();
   syncStreet();
   sandbox.syncLive('orgBudget', sim.org.budget);
   refreshOrg();
@@ -743,6 +754,7 @@ const org = new OrgPanel({
 const orgSheet = new Sheet(hudRoot, org.section, { label: t('Organisation'), onOpen: () => sandbox.setOpen(false) });
 function openOrg(): void {
   orgSheet.setOpen(true);
+  markTried('org');
 }
 
 // Saves, shared links and the leaderboard.
@@ -870,7 +882,7 @@ function buildingDecision(action: string): Decision | null {
 const eventPopup = new EventPopup(document.body, (open) => {
   if (open) { pausedBeforeEvent = paused; setPaused(true); }
   else { if (!pausedBeforeEvent) setPaused(false); refreshOrg(); refreshHud(); }
-});
+}, playerPicture);
 const eventWorld: EventWorld = {
   sim,
   random: eventRandom,
@@ -1035,7 +1047,7 @@ let pausedBeforeReport = false;
 const nightBox = new NightReportBox(document.body, (open) => {
   if (open) { pausedBeforeReport = paused; setPaused(true); }
   else if (!pausedBeforeReport) setPaused(false);
-});
+}, playerPicture);
 /** The morning's report waits until no other box is open. */
 let pendingReport: NightReport | null = null;
 sim.on((e) => {
@@ -1043,6 +1055,49 @@ sim.on((e) => {
   else if (e.type === 'nightReport') pendingReport = e.report;
 });
 /** Four times a second with the HUD: tonight's goals, the news strip, and a waiting report. */
+/** First steps the guide asks for once, remembered per viewer so a returning player is not walked through them again. */
+const TRIED_KEY = 'hrp-guide-tried';
+const tried = ((): GuideView['tried'] => {
+  try { return { place: false, person: false, org: false, ...JSON.parse(localStorage.getItem(TRIED_KEY) ?? '{}') }; } catch { return { place: false, person: false, org: false }; }
+})();
+function markTried(k: keyof GuideView['tried']): void {
+  if (tried[k]) return;
+  tried[k] = true;
+  try { localStorage.setItem(TRIED_KEY, JSON.stringify(tried)); } catch { /* storage blocked */ }
+}
+
+/** The organisation, selected whenever nothing else is: it names your next step (src/game/guide). */
+function refreshGuide(): void {
+  const sel = interaction.selected;
+  if (sel?.kind === 'location') markTried('place');
+  else if (sel?.kind === 'person') markTried('person');
+  const values: Record<Need, number> = { police: sim.cityStress.police, medics: sim.cityStress.medics, sobering: sim.cityStress.sobering, district: sim.vitality.level };
+  const red = METER_ORDER.filter((n) => meterState(n, values[n]) === 'high')
+    .sort((a, b) => (b === 'district' ? 1 - values[b] : values[b]) - (a === 'district' ? 1 - values[a] : values[a]))
+    .map((need) => {
+      const top = need === 'district' ? undefined : sim.cityStress.causesOf(need)[0]?.cause;
+      return { need, place: top?.startsWith('turnedAway:') ? locationOf(top.slice(11) as ServiceId) : undefined };
+    });
+  const busy = sim.busiest;
+  const worn = sim.team.members.find((m) => m.workingAt && m.assignment !== 'rest' && m.energy < TIRED + 0.1);
+  hud.setGuide(orgName(), nextStep({
+    budget: sim.org.budget,
+    netPerHour: sim.org.netPerHour,
+    closedDown: SERVICE_IDS.filter((id) => sim.org.closedDown.has(id) && !sim.org.reopening.some((r) => r.id === id)),
+    red,
+    busiest: { ...busy, room: sim.services[busy.service].waitingRoom },
+    goals: sim.goals.progress(sim.totals.nights, sim.totals.helped, sim.org.budget),
+    // Daytime (08:00 to 20:00) counts as the night not yet begun: no pace to be behind on.
+    nightMinutes: ((m) => (m > 720 ? 0 : m))((sim.clockMinutes - 20 * 60 + 2880) % 1440),
+    nights: sim.totals.nights,
+    tired: worn?.name ?? null,
+    trust: sim.funders.band,
+    canOpenMore: SERVICE_IDS.some((id) => !sim.services[id].switchedOn && sim.services[id].enabled && !sim.org.closedDown.has(id)),
+    placeName: (id) => displayName('location', id, LOCATION_NAMES[id]),
+    tried,
+  }));
+}
+
 function refreshGoals(): void {
   const s = sim.goals.scenario;
   goalsStrip.set(sim.goals.progress(sim.totals.nights, sim.totals.helped, sim.org.budget), s
@@ -1171,15 +1226,23 @@ let portraitKey = '';
 /** Painted from each person's own model in a separate studio; made on first selection. */
 let studio: PortraitStudio | null = null;
 
-/** Keeps the portrait on the selected person; true when it changed. */
+/** You, painted once on first need (config/player): the portrait when nothing is selected, and beside reports and guides. */
+let player: { image: ImageData; url: string } | null = null;
+function playerPortrait(): { image: ImageData; url: string } {
+  studio ??= new PortraitStudio(renderer);
+  player ??= paintPlayer(studio, sim.season);
+  return player;
+}
+
+/** Keeps the portrait on the selected person, or on you when nothing is selected; true when it changed. */
 function syncPortrait(): boolean {
   const sel = interaction.selected;
   const person = sel?.kind === 'person' ? crowd.person(sel.id) : undefined;
-  // Only people have portraits; one who has left clears it.
-  const key = person ? `person:${sel!.id}` : '';
+  // People have portraits, and you do; a place or building has none. One who has left clears it.
+  const key = person ? `person:${sel!.id}` : sel ? '' : 'player';
   const card = person ? describePerson(person) : null;
-  const caption = card ? card.profile?.name ?? card.title : '';
-  const sub = card ? card.subtitle : '';
+  const caption = card ? card.profile?.name ?? card.title : key ? t('You') : '';
+  const sub = card ? card.subtitle : key ? t('Coordinator, {org}', { org: orgName() }) : '';
   if (portraitCaption.dataset.text !== caption + sub) {
     portraitCaption.dataset.text = caption + sub;
     portraitCaption.replaceChildren(caption, ...(sub ? [Object.assign(document.createElement('span'), { className: 'portrait-sub', textContent: sub })] : []));
@@ -1187,7 +1250,12 @@ function syncPortrait(): boolean {
   if (key === portraitKey) return false;
   portraitKey = key;
   portraitBox.hidden = !key;
+  portraitBox.dataset.who = key === 'player' ? 'player' : 'person';
   if (!key) return false;
+  if (key === 'player') {
+    portraitView.getContext('2d')!.putImageData(playerPortrait().image, 0, 0);
+    return false;
+  }
   let image = portraits.get(key);
   if (!image) {
     const ctx = portraitView.getContext('2d')!;
@@ -1471,5 +1539,5 @@ requestAnimationFrame(frame);
 
 if (import.meta.env.DEV) {
   // Diagnostics for local profiling only; stripped from production builds.
-  Object.assign(window, { __sandbox: { renderer, pipeline, world, camera, sim, crowd, rig, interaction, actionMenu, props, street, cityProps, flavour, syncEvents: () => { eventsDirty = true; syncEvents(); refreshOrg(); syncStreet(); } } });
+  Object.assign(window, { __sandbox: { renderer, pipeline, world, camera, sim, crowd, rig, interaction, actionMenu, props, street, cityProps, flavour, hud, nightBox, eventPopup, syncEvents: () => { eventsDirty = true; syncEvents(); refreshOrg(); syncStreet(); } } });
 }

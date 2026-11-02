@@ -2,6 +2,7 @@ import { needsFor } from './needIcons';
 import type { Choice, MajorEvent } from '../game/majorEvents';
 import { price } from './money';
 import { t } from '../i18n';
+import { playerBadge, type PlayerPicture } from './playerBadge';
 
 /**
  * A big event as a modal box that stops the clock: what is happening, the
@@ -13,7 +14,7 @@ export class EventPopup {
   private readonly body: HTMLElement;
   private readonly choices: HTMLElement;
 
-  constructor(parent: HTMLElement, private readonly onChange: (open: boolean) => void) {
+  constructor(parent: HTMLElement, private readonly onChange: (open: boolean) => void, private readonly picture?: PlayerPicture) {
     this.dialog = document.createElement('dialog');
     this.dialog.className = 'welcome event-popup';
     this.dialog.setAttribute('aria-labelledby', 'event-title');
@@ -34,6 +35,9 @@ export class EventPopup {
 
   show(event: MajorEvent, budget: number, choose: (c: Choice) => string | void): void {
     this.title.textContent = event.title;
+    // You head the box: a guide is your own notes, anything else is yours to decide.
+    this.dialog.querySelector('.player-badge')?.remove();
+    if (this.picture) this.title.before(playerBadge(this.picture, event.id.startsWith('guide-') ? t('What I know about this.') : t('Your call.')));
     this.body.replaceChildren(...event.lines.map((line, i) => Object.assign(document.createElement('p'), { className: i === 0 ? 'welcome-lead' : 'welcome-controls', textContent: line })));
     this.choices.replaceChildren(...event.choices.map((c) => {
       const b = document.createElement('button');

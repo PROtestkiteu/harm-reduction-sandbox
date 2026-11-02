@@ -1,4 +1,5 @@
 import { t } from '../i18n';
+import { playerBadge, type PlayerPicture } from './playerBadge';
 
 const SEEN_KEY = 'hrp-welcome-seen';
 
@@ -16,7 +17,7 @@ const POINTS = [
 export class Welcome {
   private readonly dialog: HTMLDialogElement;
 
-  constructor(parent: HTMLElement, private readonly onChange: (open: boolean) => void) {
+  constructor(parent: HTMLElement, private readonly onChange: (open: boolean) => void, private readonly picture?: PlayerPicture) {
     this.dialog = document.createElement('dialog');
     this.dialog.className = 'welcome';
     this.dialog.setAttribute('aria-labelledby', 'welcome-title');
@@ -62,6 +63,10 @@ export class Welcome {
 
   show(): void {
     if (this.dialog.open) return;
+    // You, introduced on the first page: the panel speaks for you whenever nothing is selected.
+    if (this.picture && !this.dialog.querySelector('.player-badge')) {
+      this.dialog.prepend(playerBadge(this.picture, t('I run this project. When nothing is selected, the side panel is us: it says what needs doing next.')));
+    }
     this.dialog.showModal();
     this.onChange(true);
   }

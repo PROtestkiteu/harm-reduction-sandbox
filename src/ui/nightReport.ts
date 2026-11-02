@@ -3,6 +3,7 @@ import type { Scenario } from '../config/scenarios';
 import type { NightReport } from '../sim/goals';
 import { plural, t } from '../i18n';
 import { price } from './money';
+import { playerBadge, type PlayerPicture } from './playerBadge';
 
 /**
  * The night report at 08:00: how the night went, its three goals with a star
@@ -13,7 +14,7 @@ import { price } from './money';
 export class NightReportBox {
   private readonly dialog: HTMLDialogElement;
 
-  constructor(parent: HTMLElement, private readonly onChange: (open: boolean) => void) {
+  constructor(parent: HTMLElement, private readonly onChange: (open: boolean) => void, private readonly picture?: PlayerPicture) {
     this.dialog = document.createElement('dialog');
     this.dialog.className = 'welcome event-popup night-report';
     this.dialog.setAttribute('aria-labelledby', 'night-report-title');
@@ -49,7 +50,10 @@ export class NightReportBox {
       li.setAttribute('aria-label', `${g.met ? t('Met') : t('Missed')}: ${GOAL_TEXT[g.id](g.target)}`);
       goals.append(li);
     }
-    const body: HTMLElement[] = [title, stars, facts, p('welcome-controls', t('Tonight\'s goals')), goals];
+    // Your own read of the night, by the stars it earned.
+    const verdict = r.won ? t('We did it. This city has a harm reduction service that works.')
+      : [t('We lost the night. Before dusk, look at what to change.'), t('A hard night. Let us see what went wrong.'), t('Not bad. Tomorrow we fix what slipped.'), t('A good night. The funders will hear about this.')][r.stars];
+    const body: HTMLElement[] = [...(this.picture ? [playerBadge(this.picture, verdict)] : []), title, stars, facts, p('welcome-controls', t('Tonight\'s goals')), goals];
     if (scenario) {
       body.push(r.won
         ? p('welcome-lead night-won', t('Scenario won: {title}. The city carries on; play on as long as you like.', { title: scenario.title }))
