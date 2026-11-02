@@ -137,6 +137,10 @@ export class ScenePipeline {
         out vec4 outColor;
 
         float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+        // The scene is drawn into half floats: on some phone GPUs a hot emissive or a near-zero divide
+        // leaves an infinite or not-a-number texel, which the tone curve then turns into a random
+        // purple or green speck. Every read is held to a finite range (clamp sends NaN to a bound).
+        vec3 sceneAt(vec2 uv) { return clamp(texture(tColor, uv).rgb, vec3(0.0), vec3(64.0)); }
         float rawDepth(vec2 uv) { return texture(tDepth, uv).r; }
         float depthAt(vec2 uv) { return near + rawDepth(uv) * (far - near); }
         vec3 aces(vec3 x) { return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0); }
@@ -176,7 +180,7 @@ export class ScenePipeline {
             return;
           }
 
-          vec3 c = texture(tColor, uv).rgb;
+          vec3 c = sceneAt(uv);
 
           // Crease shading: a pixel nearer than the average of opposite
           // neighbours sits in a concave corner (wall foot, under eaves).
@@ -210,7 +214,7 @@ export class ScenePipeline {
               float fk = float(k);
               // Per-pixel jitter along the streak, so samples blend into a smear instead of dashes.
               vec2 o = vec2(sin(p.y * 0.37 + fk) * 0.6, (fk + hash(p + fk)) * 7.0) * dpr * texel;
-              vec3 s = texture(tColor, uv + o).rgb;
+              vec3 s = sceneAt(uv + o);
               // Threshold on brightness, not per channel, so warm light keeps its hue.
               float lum = dot(s, vec3(0.299, 0.587, 0.114));
               refl += s * (max(lum - 0.7, 0.0) / max(lum, 1e-3)) * (1.0 - fk / 7.0);
@@ -226,7 +230,7 @@ export class ScenePipeline {
             float a = float(k) * 0.785398 + 0.2;
             for (int ring = 1; ring <= 2; ring++) {
               vec2 o = vec2(cos(a), sin(a)) * float(ring) * 7.0 * dpr * texel;
-              vec3 s = texture(tColor, uv + o).rgb;
+              vec3 s = sceneAt(uv + o);
               float sl = dot(s, vec3(0.299, 0.587, 0.114));
               glow += s * (max(sl - 0.85, 0.0) / max(sl, 1e-3)) * (ring == 1 ? 1.0 : 0.6);
             }
