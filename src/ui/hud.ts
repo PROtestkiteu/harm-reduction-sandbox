@@ -46,8 +46,6 @@ export interface HudCallbacks {
   onFavour(id: FavourId): void;
   /** Specialise the outreach camper (or change its path). */
   onCamperPath(path: CamperPath): void;
-  /** Starts a donation drive. */
-  onDrive(): void;
   /** Opens the Settings menu (phones reach it from the replies). */
   onSettings(): void;
   /** Start or stop this season's aid: the warming bus, or water and shade. */
@@ -126,8 +124,6 @@ export interface HudSnapshot {
   stress?: { police: number; medics: number; sobering: number; district: number };
   /** Favours with city hall: held (0 or 1), whether city hall is owed one, and what can be asked. */
   favours?: { held: number; owed: boolean; items: { id: FavourId; label: string; short: string }[] };
-  /** A donation drive: running until a clock time, resting until one (`again`), or what starting one costs. */
-  drive?: { until: string | null; again: string | null; cost: number; hours: number };
   /** In winter (or on a cold night) the warming bus, in summer water and shade: on or off, and the running cost. */
   aid?: { kind: 'cold' | 'heat'; on: boolean; perHour: number };
 }
@@ -277,15 +273,12 @@ export class Hud {
   private readonly switchOpts = {} as Record<ServiceId, HTMLElement>;
   private readonly reviewOpt: HTMLElement;
   private readonly aidOpt: HTMLElement;
-  private readonly driveOpt: HTMLElement;
   private readonly configureOpt: HTMLElement;
   private readonly favourOpt: HTMLElement;
   private readonly favourBtn: HTMLButtonElement;
   private readonly favourLong: HTMLElement;
   private readonly favourOpts: { li: HTMLLIElement; long: HTMLElement; short: HTMLElement; id: string }[] = [];
   private favourOpen = false;
-  private readonly driveBtn: HTMLButtonElement;
-  private readonly driveLong: HTMLElement;
   private readonly aidBtn: HTMLButtonElement;
   private readonly staffGroupNeeds: HTMLElement;
   private readonly aidLong: HTMLElement;
@@ -652,14 +645,6 @@ export class Hud {
     this.aidBtn.append(this.aidLong, this.aidShort, needsFor(AID_NEEDS));
     this.aidBtn.addEventListener('click', () => { const k = this.lastSnapshot?.aid?.kind; if (k) cb.onAid(k); });
     this.aidOpt = opt(this.aidBtn);
-    // A donation drive, offered when nothing is selected.
-    this.driveBtn = button('opt');
-    this.driveLong = el('span', 'long');
-    const driveShort = el('span', 'short', t('Donation drive.'));
-    driveShort.setAttribute('aria-hidden', 'true');
-    this.driveBtn.append(this.driveLong, driveShort);
-    this.driveBtn.addEventListener('click', () => cb.onDrive());
-    this.driveOpt = opt(this.driveBtn);
 
     // A favour with city hall: one reply that opens the favours on offer.
     this.favourBtn = button('opt group');
@@ -1156,13 +1141,6 @@ export class Hud {
       this.aidBtn.title = aid.kind === 'cold' ? t('A warming bus on cold nights: fewer people harmed outdoors.') : t('Water and shade on hot days: fewer people harmed outdoors.');
       setAttr(this.aidBtn, 'aria-pressed', String(aid.on));
     }
-    const d = s.drive;
-    if (d) {
-      setText(this.driveLong, d.until ? t('Donation drive until {time}', { time: d.until }) : d.again ? t('Next donation drive from {time}', { time: d.again }) : t('Donation drive {price}', { price: price(d.cost) }));
-      this.driveBtn.title = plural(d.hours, ['{n} hour of collecting on the street; donation boxes doubled meanwhile.', '{n} hours of collecting on the street; donation boxes doubled meanwhile.'], ['{n} godzina zbiórki na ulicy; w tym czasie puszki zbierają podwójnie.', '{n} godziny zbiórki na ulicy; w tym czasie puszki zbierają podwójnie.', '{n} godzin zbiórki na ulicy; w tym czasie puszki zbierają podwójnie.']);
-      const off = d.until !== null || d.again !== null || (s.money?.budget ?? 0) < d.cost;
-      if (this.driveBtn.disabled !== off) this.driveBtn.disabled = off;
-    }
     const f = s.favours;
     if (f) {
       setText(this.favourNum, String(f.held));
@@ -1186,8 +1164,6 @@ export class Hud {
     const favourHidden = !f || this.servicesOpen || this.mode !== null;
     if (this.favourOpt.hidden !== favourHidden) this.favourOpt.hidden = favourHidden;
     this.favourOpts.forEach((o) => { const h = favourHidden || !this.favourOpen || !o.id; if (o.li.hidden !== h) o.li.hidden = h; });
-    const driveHidden = !d || this.servicesOpen || this.mode !== null;
-    if (this.driveOpt.hidden !== driveHidden) this.driveOpt.hidden = driveHidden;
     const aidHidden = !aid || this.servicesOpen || this.mode !== null;
     if (this.aidOpt.hidden !== aidHidden) this.aidOpt.hidden = aidHidden;
     const on = SERVICE_IDS.filter((id) => s.enabled[id]).length;
@@ -1408,7 +1384,6 @@ export class Hud {
     // The services review is for when nothing is selected.
     this.reviewOpt.hidden = open || m !== null;
     this.aidOpt.hidden = open || m !== null || !this.lastSnapshot?.aid;
-    this.driveOpt.hidden = open || m !== null || !this.lastSnapshot?.drive;
     this.configureOpt.hidden = open || m !== null;
     this.favourOpt.hidden = open || m !== null || !this.lastSnapshot?.favours;
     this.backOpt.hidden = !open;

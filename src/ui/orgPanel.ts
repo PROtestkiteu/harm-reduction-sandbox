@@ -2,6 +2,7 @@ import { serviceNeeds, type Need } from '../config/needs';
 import { METER_ORDER, NEED_ICONS, meterState, needsFor } from './needIcons';
 import { GRANT_IDS, GRANTS, ORG, RECRUIT, recruitChance, type ApplicationContext, type GrantId, type RecruitId } from '../config/organisation';
 import { price } from './money';
+import type { DriveView } from './snapshot';
 import { LOCALE, plural, t } from '../i18n';
 import type { Organisation } from '../sim/organisation';
 import type { ServiceModel } from '../sim/simulation';
@@ -20,6 +21,8 @@ export interface OrgPanelCallbacks {
   onAssign(member: number, to: Assignment): void;
   /** Open the organisation's sheet. */
   onOpen(): void;
+  /** Starts a donation drive. */
+  onDrive(): void;
 }
 
 export interface OrgView {
@@ -35,6 +38,7 @@ export interface OrgView {
   payroll: number;
   applicationContext: ApplicationContext;
   team: Team;
+  drive: DriveView;
 }
 
 interface MemberRow {
@@ -109,6 +113,8 @@ export class OrgPanel {
   private readonly meters = {} as Record<Need, { root: HTMLElement; fill: HTMLElement }>;
   private readonly meterRow: HTMLElement;
   private readonly nameRow: HTMLElement;
+  private readonly driveBtn: HTMLButtonElement;
+  private readonly driveNote: HTMLElement;
 
   constructor(cb: OrgPanelCallbacks) {
     this.cb = cb;
@@ -197,6 +203,12 @@ export class OrgPanel {
     letGo.id = 'org-letGo';
     letGo.addEventListener('click', () => cb.onLetGo());
     actions.append(letGo);
+    // A donation drive: what it costs, what it brings and when, said on the reply itself.
+    this.driveBtn = el('button', 'btn org-action org-drive');
+    this.driveBtn.type = 'button';
+    this.driveBtn.addEventListener('click', () => cb.onDrive());
+    this.driveNote = el('p', 'org-drive-note');
+    actions.append(this.driveBtn);
 
     // Services closed down when the money ran out: relaunch for a cost.
     this.closed = el('div', 'org-closed');
@@ -257,12 +269,19 @@ export class OrgPanel {
       sub.append(el('summary', undefined, label), part);
       return sub;
     };
-    this.section.append(this.nameRow, this.meterRow, stats, this.summary, this.recruiting, actions, team, this.closed, fold(t('Funding applications'), grants), fold(t('What has happened'), this.log), note);
+    this.section.append(this.nameRow, this.meterRow, stats, this.summary, this.recruiting, actions, this.driveNote, team, this.closed, fold(t('Funding applications'), grants), fold(t('What has happened'), this.log), note);
   }
 
   /** Per-refresh update; text-only writes. */
   update(v: OrgView): void {
     const o = v.org;
+    const d = v.drive;
+    setText(this.driveBtn, d.until ? t('Donation drive on till {time}', { time: d.until }) : d.again ? t('Next donation drive from {time}', { time: d.again }) : t('Donation drive ({price})', { price: price(d.cost) }));
+    const driveOff = d.until !== null || d.again !== null || o.budget < d.cost;
+    if (this.driveBtn.disabled !== driveOff) this.driveBtn.disabled = driveOff;
+    setText(this.driveNote, d.until
+      ? t('Collecting on the street: donation boxes bring in double, and the tins come back at {time} with {min} to {max}.', { time: d.until, min: price(d.min), max: price(d.max) })
+      : t('Donation drive: {hours} h of collecting on the street, donation boxes double meanwhile, then {min} to {max} at the end (more with a good name, less in a crisis).', { hours: d.hours, min: price(d.min), max: price(d.max) }));
     for (const key of METER_ORDER) {
       const { root, fill } = this.meters[key];
       const w = `${Math.round(v.stress[key] * 100)}%`;

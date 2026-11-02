@@ -153,10 +153,15 @@ export function buildSnapshot(sim: Simulation, people: number): HudSnapshot {
   };
   return { clock: `${formatDate(date)} · ${formatClock(sim.clockMinutes)}`, clockMinutes: sim.clockMinutes, people, enabled, locations, money: { budget: sim.org.budget, perHour: sim.org.netPerHour }, aid: aid || undefined, unmet: { day: sim.unmet24, crisis: sim.crisis },
     stress: { police: sim.cityStress.police, medics: sim.cityStress.medics, sobering: sim.cityStress.sobering, district: sim.vitality.level },
-    favours: { held: sim.favours, owed: sim.concessionAt !== null, items: (Object.keys(FAVOURS) as FavourId[]).map((id) => ({ id, label: FAVOURS[id].label, short: FAVOURS[id].short })) },
-    drive: {
-      until: sim.driveUntil === null ? null : formatClock(sim.org.clockAt(sim.driveUntil, sim.clockMinutes)),
-      again: sim.driveUntil === null && sim.org.now < sim.driveAgainAt ? formatClock(sim.org.clockAt(sim.driveAgainAt, sim.clockMinutes)) : null,
-      cost: HUSTLE.driveCost, hours: HUSTLE.driveHours,
-    } };
+    favours: { held: sim.favours, owed: sim.concessionAt !== null, items: (Object.keys(FAVOURS) as FavourId[]).map((id) => ({ id, label: FAVOURS[id].label, short: FAVOURS[id].short })) } };
+}
+
+/** A donation drive, for the organisation sheet: running until a time, resting until one, or ready. */
+export interface DriveView { until: string | null; again: string | null; cost: number; hours: number; min: number; max: number }
+export function driveView(sim: Simulation): DriveView {
+  return {
+    until: sim.driveUntil === null ? null : formatClock(sim.org.clockAt(sim.driveUntil, sim.clockMinutes)),
+    again: sim.driveUntil === null && sim.org.now < sim.driveAgainAt ? formatClock(sim.org.clockAt(sim.driveAgainAt, sim.clockMinutes)) : null,
+    cost: HUSTLE.driveCost, hours: HUSTLE.driveHours, min: HUSTLE.driveMin, max: HUSTLE.driveMax,
+  };
 }

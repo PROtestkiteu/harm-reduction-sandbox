@@ -63,7 +63,7 @@ import { FACTOR_BY_ID } from './config/contextFactors';
 import type { PolicyInfo } from './sim/simulation';
 import { EVENTS, type EventId } from './config/randomEvents';
 import { SandboxPanel } from './ui/sandboxPanel';
-import { buildSnapshot } from './ui/snapshot';
+import { buildSnapshot, driveView } from './ui/snapshot';
 import { aboutSection, applyShuffle, homeScreenNote, languageSection, randomSection } from './ui/sandboxTopics';
 import { CityCards, PropertyView, SHOPS_FOR } from './game/cityState';
 import { SelectionMarker } from './ui/selection';
@@ -302,7 +302,6 @@ const hud = new Hud(hudRoot, {
   onPersonCamper: () => queueOrg(() => sendCamperToSelected()),
   onMix: (service, activity, weight) => queueOrg(() => { sim.setMix(service, activity, weight); refreshHud(); }),
   onMixSetUp: (service, activity) => queueOrg(() => { sim.setUpMix(service, activity); refreshHud(); }),
-  onDrive: () => queueOrg(() => { sim.startDonationDrive(); refreshHud(); }),
   onSettings: () => sandbox.setOpen(true),
   onCamperPath: (path) => { if (sim.setCamperPath(path)) { refreshOrg(); refreshHud(); } },
   onFavour: (id) => queueOrg(() => { sim.askFavour(id); syncContextProps(); refreshHud(); }),
@@ -629,6 +628,7 @@ const org = new OrgPanel({
   onApply: (id) => queueOrg(() => sim.applyFor(id)),
   onReopen: (id) => queueOrg(() => { sim.reopen(id); syncContextProps(); }),
   onAssign: (member, to) => queueOrg(() => sim.assignMember(member, to)),
+  onDrive: () => queueOrg(() => { sim.startDonationDrive(); refreshOrg(); refreshHud(); }),
   onOpen: () => openOrg(),
 });
 // The organisation has its own sheet, opened from the money in the top bar or the organisation bar.
@@ -863,7 +863,7 @@ watchForUpdates(() => {
 
 function refreshOrg(): void {
   savePanel.sync();
-  org.update({ org: sim.org, stress: { police: sim.cityStress.police, medics: sim.cityStress.medics, sobering: sim.cityStress.sobering, district: sim.vitality.level }, services: sim.services, clock: sim.clockMinutes, incomePerHour: sim.fundingIncome, runningPerHour: sim.runningPerHour, payroll: sim.payroll, applicationContext: sim.applicationContext(), team: sim.team });
+  org.update({ org: sim.org, stress: { police: sim.cityStress.police, medics: sim.cityStress.medics, sobering: sim.cityStress.sobering, district: sim.vitality.level }, services: sim.services, clock: sim.clockMinutes, incomePerHour: sim.fundingIncome, runningPerHour: sim.runningPerHour, payroll: sim.payroll, applicationContext: sim.applicationContext(), team: sim.team, drive: driveView(sim) });
 }
 
 function syncEvents(): void {

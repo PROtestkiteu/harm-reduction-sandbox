@@ -989,6 +989,8 @@ export class Simulation {
     const raised = Math.round((HUSTLE.driveMin + this.random() * (HUSTLE.driveMax - HUSTLE.driveMin)) * Math.max(0.3, Math.min(1.5, pull)));
     this.org.budget += raised;
     this.org.notice(this.clockMinutes, t('The donation drive raised {amount}.', { amount: raised }));
+    // The tins come back to the drop-in: a shower of coins there, one per 40 raised (at most ten).
+    for (let i = 0; i < Math.min(10, Math.ceil(raised / 40)); i++) this.emit({ type: 'money', service: 'dropIn', amount: 1 });
   }
 
   /** The camper drives to a new spot: outreach closes for `minutes`, then opens again if it was on. */
