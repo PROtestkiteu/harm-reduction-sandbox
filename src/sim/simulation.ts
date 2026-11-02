@@ -13,6 +13,12 @@ import { CityStress, STRESS } from './cityStress';
 import { VENUE_KINDS, VITALITY, Vitality, type VenueKind } from './vitality';
 import { ACTIVITY, type Activity } from '../config/serviceMix';
 import { Team, type Assignment, type Member } from './team';
+import { Stakes, type RunOverCause } from './stakes';
+import type { IntroId } from '../config/intro';
+import type { StormReport } from './storm';
+import { STORM, type StormPrep } from '../config/storm';
+import { GRANT_TIER, TIER_NAMES, UNLOCK_NAMES, UNLOCK_TIER, type Unlock } from '../config/standing';
+import type { SupplyId } from '../config/supplies';
 
 /** What a donation box brings in, per staff member on shift per clock hour. ILLUSTRATIVE. */
 export const DONATION_PER_STAFF_HOUR = 3;
@@ -32,6 +38,13 @@ export const INVEST = {
   decayPerHour: 0.12,
   /** Wear and tear per person served: busy places need investment to hold their level. */
   wearPerVisit: 0.003,
+};
+
+/** What each newly introduced system is, in one notice (config/intro.ts). */
+const INTRO_NOTICE: Record<IntroId, string> = {
+  supplies: t('New: supplies. Naloxone, kits, leaflets and blankets are now on a shelf in the Organisation sheet. Order ahead; an empty shelf means people go without.'),
+  standing: t('New: standing in the city. Every person helped raises it, every person turned away and every death lowers it. Higher standing brings more donations and opens grants and new places.'),
+  matching: t('New: matching. Some people need a particular skill: another language, housing help, wound care, a peer, calm. With the right worker on shift there it goes quicker; the Organisation sheet lists what was missing.'),
 };
 
 const SERVICE_LABEL: Record<ServiceId, string> = { dropIn: t('Drop-in centre'), outreach: t('Outreach camper'), clubHr: t('Club stand'), footPatrol: t('Foot patrol'), drugChecking: t('Drug checking'), shelter: t('Shelter'), clinic: t('Clinic') };
@@ -108,6 +121,11 @@ export type SimEvent =
   | { type: 'theft'; theft: Theft }
   /** A picket, priest or nun arrives at a service or leaves (sim/streetVisitors.ts). */
   | { type: 'visit'; what: 'arrive' | 'leave'; visit: Visit }
+  /** The big crisis: warned of, begun, or over with its report (sim/storm.ts). */
+  | { type: 'storm'; what: 'warned' | 'started' }
+  | { type: 'storm'; what: 'ended'; report: StormReport }
+  /** The project has folded: the team is gone or every starting service is shut. */
+  | { type: 'runOver'; cause: RunOverCause }
   /** Money moved at a place: in (positive) or out (negative), one unit at a time, for the coins over it. */
   | { type: 'money'; service: ServiceId; amount: number };
 
@@ -287,6 +305,14 @@ export class Simulation {
     return this.cycle ? this.clockRate / ILLUSTRATIVE.clockMinutesPerSecond : 1;
   }
 
+  /**
+   * How fast people on the street should move against the usual: the same pace as arrivals and
+   * service (`timeScale`), so a faster clock brings the same visits per clock hour, walking included.
+   */
+  get pace(): number {
+    return this.timeScale;
+  }
+
   /** Clock minutes per real second right now: zero while the cycle is held. */
   private get minuteRate(): number {
     return this.cycle ? this.clockRate : 0;
@@ -399,8 +425,10 @@ export class Simulation {
   /** The outreach camper is driving to a new spot: closed until then (in `org.now` minutes). */
   private movingUntil: number | null = null;
   private movingWasOn = true;
-  /** The people behind the staff numbers: qualities, energy and who works where. */
+  /** The people behind the staff numbers: qualities, energy, morale and who works where. */
   readonly team: Team;
+  /** Morale's consequences, standing, supplies, the big crisis, matching and the run's end (sim/stakes.ts). */
+  readonly stakes: Stakes;
   /** This game so far, for saves and the leaderboard: people served and nights run. */
   readonly totals = { helped: 0, nights: 0 };
   /** How far funders trust the project, from the last day's results (multiplies project funding, grant odds and drives). */
@@ -448,6 +476,7 @@ export class Simulation {
     this.neighbourhood = new Neighbourhood(this.random);
     this.property = new Property(this.random);
     this.team = new Team(seed);
+    this.stakes = new Stakes(seed, this.team, this.org, (text) => this.org.notice(this.clockMinutes, text));
     this.city = new CityLife(this.random);
     const p = ILLUSTRATIVE.services;
     this.services = {
@@ -594,7 +623,10 @@ export class Simulation {
     // more of them in a crisis and while the city is stretched.
     const grown = id === 'passerby' || id === 'club' || id === 'party' || id === 'drugChecking' ? this.growth.size : this.growth.streetNeed;
     const need = id === 'passerby' || id === 'club' || id === 'party' ? 1 : this.surge;
-    return this.rates[id] * boost * street * seasonal * squat * fee * v * grown * need;
+    // The big crisis brings far more people in trouble to the low-threshold doors.
+    const storm = this.stakes.storm.phase === 'peak' && (id === 'dropIn' || id === 'outreach' || id === 'footPatrol' || id === 'shelter' || id === 'clinic')
+      ? 1 + STORM.demand * this.stakes.storm.severity : 1;
+    return this.rates[id] * boost * street * seasonal * squat * fee * v * grown * need * storm;
   }
 
   private setStaff(id: ServiceId, staff: number): void {
@@ -712,6 +744,7 @@ export class Simulation {
   /** Rents a vacant shop unit and opens a satellite of `service` in it. */
   rentUnit(unit: number, service: SatelliteService): boolean {
     if (this.property.units[unit]?.kind !== 'vacant' || !this.services[service].switchedOn) return false;
+    if (!this.unlocked('rentUnit')) return false;
     if (!this.org.spend(PROPERTY.fitOut, false)) {
       this.org.notice(this.clockMinutes, t('Not enough money to fit out the unit.'));
       return false;
@@ -732,6 +765,7 @@ export class Simulation {
   openPoint(building: number, service: SatelliteService): boolean {
     // A point adds places to a service; while that service is switched off they would stand empty.
     if (!this.services[service].switchedOn) return false;
+    if (!this.unlocked('openPoint')) return false;
     if (service === 'drugChecking' && !this.context.checkingAllowed) {
       this.org.notice(this.clockMinutes, t('The law does not allow drug checking here.'));
       return false;
@@ -764,10 +798,39 @@ export class Simulation {
     this.syncExtraPlaces();
   }
 
+  /** Whether the project's standing opens `u`; says what is needed when it does not. */
+  unlocked(u: Unlock): boolean {
+    if (this.stakes.allows(u)) return true;
+    this.org.notice(this.clockMinutes, t('Not yet: {what} needs a standing of {tier}.', { what: UNLOCK_NAMES[u], tier: TIER_NAMES[UNLOCK_TIER[u]] }));
+    return false;
+  }
+
+  /** Prepares for the coming storm (config/storm.ts). */
+  prepareStorm(p: StormPrep): boolean {
+    const ok = this.stakes.prepare(p);
+    if (ok && p === 'standby' && this.stakes.storm.phase === 'peak') this.reallocate();
+    return ok;
+  }
+
+  /** Orders a batch of supplies. */
+  orderSupply(id: SupplyId): boolean {
+    return this.stakes.order(id);
+  }
+
+  setStandingOrder(id: SupplyId, on: boolean): void {
+    this.stakes.supplies.standing[id] = on;
+  }
+
+  /** Every death this run: the weather, and people turned away in a storm. */
+  get deaths(): number {
+    return this.exposure.deaths + this.stakes.deaths;
+  }
+
   /** Sends another outreach camper out to spot `spot` (an index the world defines). */
   sendCamper(spot: number): boolean {
     if (this.property.extraCampers >= PROPERTY.maxExtraCampers || this.property.campers.includes(spot)) return false;
     if (!this.services.outreach.switchedOn) return false;
+    if (!this.unlocked('extraCamper')) return false;
     if (!this.org.spend(PROPERTY.camperCost, false)) {
       this.org.notice(this.clockMinutes, t('Not enough money for another camper.'));
       return false;
@@ -781,7 +844,9 @@ export class Simulation {
   private syncExtraPlaces(): void {
     for (const id of Object.keys(this.services) as ServiceId[]) {
       const stage = stageOf(id, this.upgrades[id].level);
-      this.services[id].extraPlaces = this.property.extraPlaces(id) + stage.places;
+      // Emergency beds at the drop-in while a storm is on.
+      const beds = id === 'dropIn' && this.stakes.storm.phase === 'peak' && this.stakes.storm.prepared.has('beds') ? STORM.prepare.beds.places : 0;
+      this.services[id].extraPlaces = this.property.extraPlaces(id) + stage.places + beds;
       // A bigger place has room for more to wait; a small first stage less.
       this.services[id].stageWaiting = stage.places;
     }
@@ -969,6 +1034,7 @@ export class Simulation {
   /** Partners with a new venue: harm reduction info and water there; the venue pays by the hour. */
   partnerVenue(i: number): boolean {
     if (i >= this.vitality.venues || this.vitality.partners.has(i)) return false;
+    if (!this.unlocked('partnerVenue')) return false;
     if (!this.org.spend(VITALITY.partnerCost, false)) {
       this.org.notice(this.clockMinutes, t('Not enough money to set up the partnership.'));
       return false;
@@ -1022,6 +1088,7 @@ export class Simulation {
       return false;
     }
     this.neighbourhood.sweep(RESIDENTS.sweepShare);
+    this.vitality.lift(RESIDENTS.sweepDistrict);
     this.sweepAgainAt = this.org.now + RESIDENTS.sweepCooldownHours * 60;
     this.org.notice(this.clockMinutes, t('The team swept courtyards and stairwells for used kit.'));
     return true;
@@ -1035,6 +1102,7 @@ export class Simulation {
       return false;
     }
     this.residentsMetUntil = this.org.now + RESIDENTS.meetHours * 60;
+    this.vitality.lift(RESIDENTS.meetDistrict);
     this.meetAgainAt = this.org.now + RESIDENTS.meetCooldownHours * 60;
     this.org.notice(this.clockMinutes, t('The team knocked on doors in the blocks: residents now know whom to call.'));
     return true;
@@ -1056,7 +1124,7 @@ export class Simulation {
     this.driveUntil = null;
     this.driveAgainAt = this.org.now + HUSTLE.driveCooldownHours * 60;
     // A good name brings more in; a crisis on the street brings less.
-    const pull = this.neighbourhood.reputationPull * (1 - 0.6 * this.crisis) * this.funders.trust;
+    const pull = this.neighbourhood.reputationPull * (1 - 0.6 * this.crisis) * this.funders.trust * this.stakes.giving;
     const raised = Math.round((HUSTLE.driveMin + this.random() * (HUSTLE.driveMax - HUSTLE.driveMin)) * Math.max(0.3, Math.min(1.5, pull)));
     this.org.budget += raised;
     this.org.notice(this.clockMinutes, t('The donation drive raised {amount}.', { amount: raised }));
@@ -1094,6 +1162,7 @@ export class Simulation {
       mixFactor: Math.max(0.5, 1.2 - 0.2 * this.mixAverage('basics', 0, 1)) * (1 + CRISIS.harmBoost * this.crisis) * (1 + CAMP.harm * this.camp.outdoors),
     });
     if (!harm) return;
+    if (harm.died) this.stakes.death();
     const found = harm.kind === 'cold'
       ? harm.reached ? t('Outreach staff found someone too cold to wake.') : t('A passer-by found someone too cold to wake.')
       : harm.reached ? t('Outreach staff found someone collapsed in the heat, badly dehydrated.') : t('A passer-by found someone collapsed in the heat, badly dehydrated.');
@@ -1153,8 +1222,13 @@ export class Simulation {
     this.org.reopen(id, this.clockMinutes);
   }
 
-  applyFor(id: GrantId): void {
-    this.org.apply(id, this.clockMinutes);
+  applyFor(id: GrantId): boolean {
+    const tier = GRANT_TIER[id] ?? 0;
+    if (this.stakes.needsTier(tier)) {
+      this.org.notice(this.clockMinutes, t('Funders will not read this application yet: it needs a standing of {tier}.', { tier: TIER_NAMES[tier] }));
+      return false;
+    }
+    return this.org.apply(id, this.clockMinutes);
   }
 
   /** The party on in the park, if any. */
@@ -1203,7 +1277,7 @@ export class Simulation {
   private boxPerHour(id: ServiceId): number {
     const s = this.services[id];
     if (s.status !== 'open') return 0;
-    return s.staffOnSite * DONATION_PER_STAFF_HOUR * this.footfallNow;
+    return s.staffOnSite * DONATION_PER_STAFF_HOUR * this.footfallNow * this.stakes.giving;
   }
 
   /** How many people are out on the street now: a thriving district at a busy hour (1 is ordinary). */
@@ -1424,7 +1498,9 @@ export class Simulation {
     // More naloxone and first aid in the place's mix, more people reached in time.
     const nalox = this.mix.relative(responder, 'naloxone', this.context.checkingAllowed);
     const mixReach = nalox === null ? 1 : Math.min(1.4, 0.4 + 0.6 * nalox);
-    const helped = canReach && this.random() < reach * mixReach * (this.mods.kitsOut ? 0.5 : 1) && this.org.spend(ORG.costs.overdoseResponse);
+    // Reaching someone in time takes a dose of naloxone from the shelf (config/supplies.ts).
+    const helped = canReach && this.random() < reach * mixReach * (this.mods.kitsOut ? 0.5 : 1) && this.stakes.supplies.use('naloxone');
+    if (!helped) this.stakes.overdoseAlone();
     event.acuteHarms++;
     this.health.acuteHarms++;
     if (helped) { event.helped++; this.health.helped++; } else { event.alone++; this.health.alone++; }
@@ -1540,12 +1616,13 @@ export class Simulation {
     // A night is done in the morning: it counts for the leaderboard then, not at the next evening.
     if (!this.goalsBegun) {
       this.goalsBegun = true;
-      this.goals.begin(this.totals.helped, this.turnedAwayTotal, this.exposure.deaths, this.org.budget);
+      this.goals.begin(this.totals.helped, this.turnedAwayTotal, this.deaths, this.org.budget);
     }
     const stretched = Math.max(this.cityStress.police, this.cityStress.medics, this.cityStress.sobering) >= 0.7;
     this.goals.tick(dt * this.minuteRate, stretched);
     if (before < MORNING && this.clockMinutes >= MORNING) {
-      const report = this.goals.end(this.totals.nights, this.totals.helped, this.turnedAwayTotal, this.exposure.deaths, this.org.budget, this.totals.helped);
+      const report = this.goals.end(this.totals.nights, this.totals.helped, this.turnedAwayTotal, this.deaths, this.org.budget, this.totals.helped);
+      this.stakes.nightBegins();
       report.district = { size: this.growth.size, street: this.growth.street };
       this.totals.nights++;
       this.emit({ type: 'nightReport', report });
@@ -1686,7 +1763,7 @@ export class Simulation {
     const allShut = this.org.closedDown.size >= ORG.closeDownAfter.length;
     if (allShut && !this.allShutSaid) this.org.notice(this.clockMinutes, t('Everything is shut for lack of money. The street scene grows while you rebuild: funding still comes in, so relaunch once it allows.'));
     this.allShutSaid = allShut;
-    const venueChange = this.vitality.tick(dt * this.minuteRate, { crisis: this.crisis, unmet24: this.unmet24, stress: (s.police + s.medics + s.sobering) / 3 });
+    const venueChange = this.vitality.tick(dt * this.minuteRate, { crisis: this.crisis, unmet24: this.unmet24, stress: (s.police + s.medics + s.sobering) / 3, safety: this.neighbourhood.state.safety });
     if (venueChange) {
       const kind = VENUE_KINDS[venueChange > 0 ? this.vitality.venues - 1 : this.vitality.venues];
       this.org.notice(this.clockMinutes, venueChange > 0
@@ -1718,7 +1795,40 @@ export class Simulation {
       this.org.notice(this.clockMinutes, t('The outreach camper has parked at its new spot.'));
     }
     const late = this.clockMinutes >= 24 * 60 && this.clockMinutes < MORNING;
-    if (this.team.tick((dt * this.minuteRate) / 60, late)) this.reallocate();
+    const stormOn = this.stakes.storm.phase === 'peak';
+    let rota = this.team.tick((dt * this.minuteRate) / 60, late, { unpaid: this.org.broke && this.org.paid > 0, steadier: this.org.steadierVolunteers, drain: stormOn ? STORM.drain : 1 });
+    const outreach = this.services.outreach;
+    const stakes = this.stakes.tick(dt * this.minuteRate, {
+      nights: this.totals.nights, clock: this.clockMinutes, season: this.season, shut: this.org.closedDown.size >= ORG.closeDownAfter.length,
+      outreachOnStreet: (outreach.enabled && outreach.staffOnSite > 0) || this.services.footPatrol.staffOnSite > 0,
+    });
+    rota ||= stakes.rota;
+    if (stakes.extraPlaces) this.syncExtraPlaces();
+    for (const n of stakes.news) {
+      if (n.kind === 'stormWarned') this.emit({ type: 'storm', what: 'warned' });
+      else if (n.kind === 'stormStarted') {
+        this.org.notice(this.clockMinutes, this.stakes.storm.kind === 'badBatch'
+          ? t('The bad batch is on the street. People in trouble are coming to every door.')
+          : t('The deep freeze has set in. People are coming in from the cold to every door.'));
+        this.emit({ type: 'storm', what: 'started' });
+        for (const id of ['dropIn', 'outreach', 'footPatrol', 'shelter', 'clinic'] as const) this.timers[id] = nextArrival(this.random, this.rate(id));
+      } else if (n.kind === 'stormEnded') {
+        const r = n.report;
+        this.org.notice(this.clockMinutes, t('The storm is over: {helped} helped, {away} turned away, {deaths} died, {saved} caught in time by outreach.', { helped: r.helped, away: r.turnedAway, deaths: r.deaths, saved: r.saved }));
+        this.emit({ type: 'storm', what: 'ended', report: r });
+        for (const id of ['dropIn', 'outreach', 'footPatrol', 'shelter', 'clinic'] as const) this.timers[id] = nextArrival(this.random, this.rate(id));
+      }
+      else if (n.kind === 'stormDeaths') {
+        const bad = this.stakes.storm.kind === 'badBatch';
+        if (n.died) this.org.notice(this.clockMinutes, bad
+          ? plural(n.died, ['Someone the services could not reach overdosed alone on the bad batch and died.', '{n} people the services could not reach overdosed alone on the bad batch and died.'], ['Osoba, do której nie dotarły służby, przedawkowała w samotności złą partię i zmarła.', '{n} osoby, do których nie dotarły służby, przedawkowały w samotności złą partię i zmarły.', '{n} osób, do których nie dotarły służby, przedawkowało w samotności złą partię i zmarło.'])
+          : plural(n.died, ['Someone with nowhere warm to go died in the freeze.', '{n} people with nowhere warm to go died in the freeze.'], ['Osoba bez ciepłego schronienia zmarła na mrozie.', '{n} osoby bez ciepłego schronienia zmarły na mrozie.', '{n} osób bez ciepłego schronienia zmarło na mrozie.']));
+        if (n.saved) this.org.notice(this.clockMinutes, plural(n.saved, ['Outreach reached someone in time with the supplies it carried.', 'Outreach reached {n} people in time with the supplies it carried.'], ['Streetworkerzy dotarli na czas do jednej osoby z zapasami, które mieli przy sobie.', 'Streetworkerzy dotarli na czas do {n} osób z zapasami, które mieli przy sobie.', 'Streetworkerzy dotarli na czas do {n} osób z zapasami, które mieli przy sobie.']));
+      } else if (n.kind === 'gift') for (let i = 0; i < Math.min(8, Math.ceil(n.amount / 40)); i++) this.emit({ type: 'money', service: 'dropIn', amount: 1 });
+      else if (n.kind === 'introduced') this.org.notice(this.clockMinutes, INTRO_NOTICE[n.what]);
+      else this.emit({ type: 'runOver', cause: n.cause });
+    }
+    if (rota) this.reallocate();
     else this.updateSkill();
     if (this.openingChanged()) this.reallocate();
     const band = this.funders.tick(dt * this.minuteRate, this.neighbourhood.state.reputation, this.servicesClosedByPlayer, this.growth.size);
@@ -1803,12 +1913,15 @@ export class Simulation {
         if (c.checkingAllowed && checks && this.random() < Math.min(1, ILLUSTRATIVE.checkingShare[s.id] * this.mods.checkingBoost * (checkMix ?? 1) * (night ? CAMPER_PATH_EFFECT.nightlifeChecking : 1))) this.recordCheck(s.id, visitor);
         // Test strips and reagent kits: legal or not, people can test their own.
         const kitsMix = this.mix.relative(s.id, 'kits', c.checkingAllowed);
-        if (kitsMix && this.random() < Math.min(1, 0.5 * kitsMix * (night ? CAMPER_PATH_EFFECT.nightlifeKits : 1)) && this.org.spend(ORG.costs.sterileKit)) this.selfTest(visitor);
+        if (kitsMix && this.random() < Math.min(1, 0.5 * kitsMix * (night ? CAMPER_PATH_EFFECT.nightlifeKits : 1)) && this.stakes.supplies.use('kits')) this.selfTest(visitor);
+        // Leaflets go out on the street and at the stand while there are any.
+        if (s.id === 'outreach' || s.id === 'footPatrol' || s.id === 'clubHr') this.stakes.supplies.use('leaflets');
         if (s.id !== 'clubHr' && this.profiles.get(visitor)?.injects) {
           // Kits cost money; with none in stock, no money, or kits not in this place's mix, the person leaves without them.
           const kitMix = this.mix.relative(s.id, 'needles', c.checkingAllowed);
-          const kitCost = ORG.costs.sterileKit * (s.id === 'outreach' && this.camperPath === 'health' ? CAMPER_PATH_EFFECT.healthKitCost : 1);
-          if (this.mods.kitsOut || (kitMix !== null && this.random() >= kitMix) || !this.org.spend(kitCost)) this.unsafeInjecting();
+          // A health camper makes its kits go further: only some visits take one from the shelf.
+          const spares = s.id === 'outreach' && this.camperPath === 'health' && this.random() >= CAMPER_PATH_EFFECT.healthKitCost;
+          if (this.mods.kitsOut || (kitMix !== null && this.random() >= kitMix) || !(spares || this.stakes.supplies.use('kits'))) this.unsafeInjecting();
           else {
             this.health.sterileKits++;
             this.neighbourhood.note('kits');
@@ -1899,7 +2012,9 @@ export class Simulation {
       this.neighbourhood.note('attended');
       this.neighbourhood.note('demand');
     }
-    s.inService.set(visitor, range(this.random, s.params.serviceSeconds) * this.mods.serviceTime[s.id] * mix.time);
+    // Someone who needs a particular skill is quicker with the right worker, much slower without.
+    const match = this.stakes.admitted(s.id, this.crisis);
+    s.inService.set(visitor, range(this.random, s.params.serviceSeconds) * this.mods.serviceTime[s.id] * mix.time * match);
     if (notify) this.emit({ type: 'admitted', service: s.id, visitor });
   }
 
@@ -1911,6 +2026,7 @@ export class Simulation {
       // In a crisis nobody is simply gone: they come back worse off, and the team patches them up at the door.
       const doorstep = CRISIS.doorstepCost * this.crisis;
       if (doorstep > 0 && this.org.spend(doorstep)) this.flow(s.id, -doorstep);
+      this.stakes.turnedAway(s.id);
     }
     const adverse = this.random() < ILLUSTRATIVE.adverse.perUnmetNeed * ILLUSTRATIVE.adverse.serviceContactMultiplier;
     if (adverse) s.metrics.adverse++;

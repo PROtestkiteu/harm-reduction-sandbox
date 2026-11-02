@@ -295,6 +295,12 @@ export class OrgPanel {
     this.section.append(this.nameRow, this.meterRow, stats, this.summary, actions, this.favourBox, team, this.closed, fold(t('Funding applications'), grants), fold(t('What has happened'), this.log), note);
   }
 
+  /** The name was changed elsewhere (the welcome): show it here too. */
+  refreshName(): void {
+    this.nameInput.value = displayName('org', 'name', t('Your organisation'));
+    this.nameInput.style.setProperty('--chars', String(Math.max(4, this.nameInput.value.length + 1)));
+  }
+
   /** Per-refresh update; text-only writes. */
   update(v: OrgView): void {
     const o = v.org;
@@ -388,7 +394,8 @@ export class OrgPanel {
 
   /** Rows are rebuilt only when people join or leave; otherwise only their text changes. */
   private updateTeam(team: Team): void {
-    const key = team.members.map((m) => m.id).join(',');
+    // Rebuilt too when someone's qualities change (no longer new, specialised): the fit percentages move.
+    const key = team.members.map((m) => `${m.id}:${m.traits.join('+')}:${m.special ?? ''}`).join(',');
     if (key !== this.teamKey) {
       this.teamKey = key;
       this.memberRows.clear();
@@ -429,7 +436,11 @@ export class OrgPanel {
         ? t('{place} {fit}%', { place: PICK_NAMES[m.workingAt], fit: Math.round(Team.fit(m, m.workingAt) * 100) })
         : m.assignment === 'rest' ? t('resting') : m.worn ? t('gone home tired') : t('off shift');
       const pct = Math.round(m.energy * 100);
-      setText(r.status, `${kind[0].toUpperCase()}${kind.slice(1)} · ${where}`);
+      // Morale in words and numbers, and where they have specialised.
+      const heart = Team.shaken(m) ? t('shaken, morale {pct}%', { pct: Math.round(m.morale * 100) }) : t('morale {pct}%', { pct: Math.round(m.morale * 100) });
+      const special = m.special ? ` · ${t('specialist: {place}', { place: PICK_NAMES[m.special] })}` : '';
+      setText(r.status, `${kind[0].toUpperCase()}${kind.slice(1)} · ${where} · ${heart}${special}`);
+      r.status.dataset.state = Team.shaken(m) ? 'short' : 'ok';
       setAttr(r.energy, 'aria-label', t('Energy {pct}%', { pct }));
       r.energy.style.setProperty('--energy', String(m.energy));
       r.energy.dataset.low = String(m.energy < TIRED + 0.1);

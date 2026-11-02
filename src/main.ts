@@ -30,7 +30,7 @@ import { SEASON_PROFILES } from './config/seasons';
 import { LOCATION_IDS, SERVICE_IDS, serviceAt, type LocationId, type ServiceId, type ServiceStatus } from './sim/types';
 import { ContextSection } from './ui/contextSection';
 import { COMPACT, Hud, type PersonCamperOffer, type PlaceAction } from './ui/hud';
-import { PORTRAIT_H, PORTRAIT_W, PortraitLibrary, playerPortraitId, playerPortraitUrl, portraitId, portraitUrl } from './render/portraitLibrary';
+import { COORDINATOR_IDS, PORTRAIT_H, PORTRAIT_W, PortraitLibrary, playerPortraitId, playerPortraitUrl, portraitId, portraitUrl, setPlayerPortrait } from './render/portraitLibrary';
 import { describePerson } from './ui/personInfo';
 import { ActionMenu } from './ui/actionMenu';
 import { HumanFigure, peopleLibrary } from './agents/humanFigure';
@@ -55,7 +55,7 @@ import { QueueBox } from './ui/queueBox';
 import { startPresence } from './game/presence';
 import { applySave, captureSave, parseSave, takeLoadedCamperSpot, unpackSave, type SaveData } from './game/saveGame';
 import { hasFreeSettings, isFreeLever, isSandboxed, markSandboxed } from './game/sandboxed';
-import { LiveGame, fetchGame, linkedGame } from './game/liveGame';
+import { LiveGame, fetchGame, linkedGame, newGameAddress as freshGameAddress } from './game/liveGame';
 import { GUIDE_AGAIN_MINUTES, needGuide } from './game/needGuides';
 import { METER_ORDER, meterState } from './ui/needIcons';
 import type { Need } from './config/needs';
@@ -96,6 +96,9 @@ import { Sound, type SoundState } from './audio';
 import { soundSection } from './ui/soundSection';
 import { SPOTS } from './world/layout';
 import { RAIN } from './config/flavour/weather';
+import { StakesSection } from './ui/stakesSection';
+import { runOver, stormWarning } from './game/stakesEvents';
+import type { MajorEvent } from './game/majorEvents';
 
 document.documentElement.lang = LANG;
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
@@ -455,7 +458,19 @@ const playerPicture = () => ({ url: playerPortraitUrl(), org: orgName() });
 const welcome = new Welcome(document.body, (open) => {
   if (open) { pausedBeforeWelcome = paused; setPaused(true); }
   else if (!pausedBeforeWelcome) setPaused(false);
-}, playerPicture);
+}, playerPicture, {
+  name: () => orgName(),
+  rename: (name) => { rename('org', 'name', name); org.refreshName(); portraitKey = ''; },
+  looks: COORDINATOR_IDS.length,
+  look: () => Math.max(0, COORDINATOR_IDS.indexOf(playerPortraitId())),
+  setLook: (i) => {
+    const id = COORDINATOR_IDS[i] ?? COORDINATOR_IDS[0];
+    setPlayerPortrait(id);
+    try { localStorage.setItem(LOOK_KEY, id); } catch { /* storage blocked: this visit only */ }
+    portraitKey = '';
+  },
+  picture: () => playerPortraitUrl(),
+});
 const interaction = new Interaction({
   canvas,
   overlay: hudRoot,
@@ -821,6 +836,15 @@ const org = new OrgPanel({
   onDrive: () => confirmSpend(driveDecision(), () => queueOrg(() => { sim.startDonationDrive(); refreshOrg(); refreshHud(); })),
   onOpen: () => openOrg(),
 });
+// What is at stake (the storm, standing, morale, supplies), inside the organisation's sheet before the team.
+const stakesSection = new StakesSection({
+  onOrder: (id) => queueOrg(() => sim.orderSupply(id)),
+  onStandingOrder: (id, on) => queueOrg(() => sim.setStandingOrder(id, on)),
+  onPrepare: (p) => queueOrg(() => sim.prepareStorm(p)),
+});
+org.section.insertBefore(stakesSection.root, org.section.querySelector('.org-team'));
+// The storm warning and the run's end wait for the pop-up to be free, ahead of other big events.
+const stakesBoxes: MajorEvent[] = [];
 // The organisation has its own sheet, opened from the money in the top bar or the organisation bar.
 const orgSheet = new Sheet(hudRoot, org.section, { label: t('Organisation'), onOpen: () => sandbox.setOpen(false) });
 function openOrg(): void {
@@ -1036,8 +1060,30 @@ const eventWorld: EventWorld = {
 };
 /** When each meter's guide last showed (org minutes). */
 const guidedAt: Partial<Record<Need, number>> = {};
+/** After a box closes, the next waits this long (clock minutes), so boxes never come one after another. */
+const QUIET_AFTER_BOX = 30;
+let boxWasOpen = false;
+/** Whether this page has put the end-of-run box up (from the event or from a loaded save). */
+let runOverShown = false;
+let quietUntil = 0;
 function checkBigEvent(): void {
-  if (eventPopup.open) return;
+  // Any box counts: a big event, the morning report, the welcome.
+  if (eventPopup.open || document.querySelector('dialog[open]')) { boxWasOpen = true; return; }
+  if (boxWasOpen) { boxWasOpen = false; quietUntil = sim.org.now + QUIET_AFTER_BOX; }
+  // A save of a project that had already folded (any load path) brings its end box back, once.
+  if (sim.stakes.runOver && !runOverShown && !isSandboxed()) {
+    runOverShown = true;
+    stakesBoxes.unshift(runOver(sim.stakes.runOver.cause, sim.totals.nights, sim.totals.helped, sim.deaths, () => { location.href = freshGameAddress(); }, () => markSandboxed()));
+  }
+  // The end of the run is the one box that does not wait.
+  if (sim.org.now < quietUntil && stakesBoxes[0]?.id !== 'runOver') return;
+  const box = stakesBoxes.shift();
+  if (box) {
+    sound.ui('warn');
+    focusPlace(box.place);
+    eventPopup.show(box, sim.org.budget, (choice) => choice.apply(eventWorld));
+    return;
+  }
   // City hall's concession comes as soon as it is due.
   if (sim.concessionDue) {
     const ids = ['postedOfficer', 'cleanUp', 'camperOff'] as const;
@@ -1194,6 +1240,11 @@ let pendingReport: NightReport | null = null;
 sim.on((e) => {
   if (e.type === 'orgNotice') notices.push(e.notice.text, e.notice.at, sim.org.now);
   else if (e.type === 'nightReport') pendingReport = e.report;
+  else if (e.type === 'storm' && e.what === 'warned' && sim.stakes.storm.kind) stakesBoxes.push(stormWarning(sim.stakes.storm.kind, () => openOrg()));
+  else if (e.type === 'runOver' && !isSandboxed() && !runOverShown) {
+    runOverShown = true;
+    stakesBoxes.push(runOver(e.cause, sim.totals.nights, sim.totals.helped, sim.deaths, () => { location.href = freshGameAddress(); }, () => markSandboxed()));
+  }
 });
 /** Four times a second with the HUD: tonight's goals, the news strip, and a waiting report. */
 /** First steps the guide asks for once, remembered per viewer so a returning player is not walked through them again. */
@@ -1246,7 +1297,7 @@ function refreshGoals(): void {
       title: s.title, nights: sim.totals.nights, needNights: s.nights, helped: sim.totals.helped, needHelped: s.helped, stars: sim.goals.stars, needStars: s.stars,
     }))
     : null);
-  notices.refresh(sim.org.now, sim.exposure.deaths);
+  notices.refresh(sim.org.now, sim.deaths);
   if (pendingReport && !document.querySelector('dialog[open]')) {
     const r = pendingReport;
     pendingReport = null;
@@ -1269,6 +1320,7 @@ watchForUpdates(() => {
 
 function refreshOrg(): void {
   savePanel.sync();
+  stakesSection.update({ stakes: sim.stakes, team: sim.team, budget: sim.org.budget, now: sim.org.now, clock: sim.clockMinutes, nights: sim.totals.nights });
   org.update({ org: sim.org, stress: { police: sim.cityStress.police, medics: sim.cityStress.medics, sobering: sim.cityStress.sobering, district: sim.vitality.level }, services: sim.services, clock: sim.clockMinutes, incomePerHour: sim.fundingIncome, runningPerHour: sim.runningPerHour, payroll: sim.payroll, applicationContext: sim.applicationContext(), team: sim.team, drive: driveView(sim), favours: { held: sim.favours, owed: sim.concessionAt !== null, items: (Object.keys(FAVOURS) as FavourId[]).map((id) => ({ id, label: FAVOURS[id].label })) } });
 }
 
@@ -1366,6 +1418,9 @@ let urlTimer = 0;
 /** AI-painted cast art loads only when selected; superseded loads cannot publish. */
 const portraitLibrary = new PortraitLibrary(portraitView);
 let portraitKey = '';
+/** Where the coordinator portrait you chose on the welcome's first page is kept (per device). */
+const LOOK_KEY = 'hrp-player-look';
+try { const kept = localStorage.getItem(LOOK_KEY); if (kept) setPlayerPortrait(kept); } catch { /* storage blocked: the first look */ }
 
 /** Keeps the portrait on the selected person, or on you when nothing is selected; true when it changed. */
 function syncPortrait(): boolean {
@@ -1579,7 +1634,11 @@ function frame(now: number): void {
       const dt = Math.min(STEP, remaining);
       remaining -= dt;
       sim.tick(dt);
-      crowd.update(dt);
+      // People walk at the clock's pace, so a faster clock (the Sandbox slider) changes nothing per clock hour;
+      // a pace above 1 is split into steps no longer than this one, so nobody overshoots a door.
+      const pace = sim.pace;
+      const parts = Math.max(1, Math.ceil(pace));
+      for (let i = 0; i < parts; i++) crowd.update((dt * pace) / parts);
       syncServiceVisuals();
       world.update(dt, sceneTime);
       sceneTime += dt;
@@ -1651,7 +1710,7 @@ applyView();
 // Warm the scene briefly so the first frame already shows staff at work.
 for (let i = 0; i < 90 * 30; i++) {
   sim.tick(STEP);
-  crowd.update(STEP);
+  for (let i = 0, parts = Math.max(1, Math.ceil(sim.pace)); i < parts; i++) crowd.update((STEP * sim.pace) / parts);
   syncServiceVisuals();
   world.update(STEP, sceneTime);
   sceneTime += STEP;

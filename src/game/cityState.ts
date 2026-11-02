@@ -35,13 +35,13 @@ const percent = (v: number) => `${Math.round(v * 100)}%`;
 
 /** What the law's shops are, on their building card. */
 const SHOP_SAID: Record<ShopKind, string> = {
-  medical: t('A medical cannabis dispensary: cannabis on prescription.'),
-  smart: t('A smart shop selling legal highs: new substances not yet controlled, sold without testing or dosing advice.'),
-  coffeeshop: t('A coffeeshop: cannabis sold to adults under a tolerance policy.'),
-  cannabis: t('A licensed cannabis store: regulated retail to adults.'),
-  liquor: t('A liquor store, open all night. People who have had too much hang about outside.'),
-  betting: t('A betting shop: sports bets and slot machines.'),
-  casino: t('A casino. Late at night the pavement outside fills with people who have had too much.'),
+  medical: t('Cannabis on prescription.'),
+  smart: t('Legal highs, sold untested.'),
+  coffeeshop: t('Cannabis for adults, tolerated.'),
+  cannabis: t('Licensed cannabis for adults.'),
+  liquor: t('Open all night; drunk people outside.'),
+  betting: t('Sports bets and slot machines.'),
+  casino: t('Drunk crowds outside late at night.'),
 };
 
 /** Which shops each option of the cannabis and new-substances law puts on the street. */
@@ -121,7 +121,7 @@ export class CityCards {
     if (id === world.landmarks.hospital) {
       return {
         title: displayName('building', id, t('Public hospital')),
-        said: t('The city hospital and its A&E. Overdoses nobody reached in time and people harmed by cold or heat end up here; harm reduction staff who reach people first keep beds free.') + this.questPart('hospital').said,
+        said: t('Unreached overdoses end up here; reaching people first keeps beds free.') + this.questPart('hospital').said,
         facts: [[t('Ambulances and A&E under pressure'), pct(sim.cityStress.medics)], ...this.questPart('hospital').facts],
         actions: this.questPart('hospital').actions,
         renamable: true,
@@ -134,8 +134,8 @@ export class CityCards {
       return {
         title: displayName('building', id, VENUE_TITLES[kind]),
         said: partnered
-          ? t('It opened as the street got safer. Your team keeps harm reduction info and water here; the venue pays {fee} an hour.', { fee: price(VITALITY.partnerFeePerHour) })
-          : t('It opened as the street got safer, and brings more people out at night. A partnership would put harm reduction info and water here.'),
+          ? t('Your partner: water and info here, {fee} an hour to you.', { fee: price(VITALITY.partnerFeePerHour) })
+          : t('New since the street got safer. Partner up to put water and info here.'),
         facts: [['District doing well', pct(sim.vitality.level)]],
         actions: partnered ? [] : [{
           id: 'partner',
@@ -151,7 +151,7 @@ export class CityCards {
     if (id === world.fastFood) {
       return {
         title: displayName('building', id, t('Fast food')),
-        said: t('A fast food joint, open late: burgers, kebabs and chips. Bright and warm at night, so people coming out of the club and people with nowhere to go end up here.'),
+        said: t('Open late, bright and warm: club leavers and people with nowhere to go.'),
         facts: [],
         renamable: true,
       };
@@ -159,7 +159,7 @@ export class CityCards {
     if (world.zabkas.includes(id)) {
       return {
         title: displayName('building', id, t('Żabka')),
-        said: t('A Żabka convenience store, open late: snacks, drinks, coffee, and a parcel locker by the door. People out at night drift in and out.'),
+        said: t('Open late: snacks, coffee, a parcel locker.'),
         facts: [],
         renamable: true,
       };
@@ -167,7 +167,7 @@ export class CityCards {
     if (id === world.pharmacyShop) {
       return {
         title: displayName('building', id, t('Pharmacy')),
-        said: t('A community pharmacy, one of the district\'s businesses. It sells syringes and naloxone, at a price few people who inject can pay: your foot patrol at the squat hands them out free.'),
+        said: t('Sells syringes and naloxone few can afford; your foot patrol gives them free.'),
         facts: [],
         renamable: true,
       };
@@ -178,9 +178,9 @@ export class CityCards {
       const count = plural(people, ['{n} person', '{n} people'], ['{n} osoba', '{n} osoby', '{n} osób']);
       return {
         title: park ? t('Camp in the park') : t('Camp by the railway station'),
-        said: `${people ? t('About {people} live here in tents: people with nowhere else to go.', { people: count }) : t('No tents here right now.')} ${park
-          ? t('It grows when the shelter is shut or full and in a crisis; in winter people move to the squat. An open shelter and outreach shrink it.')
-          : t('It grows with the same causes, and in winter too, as the station gives a little shelter. An open shelter and outreach shrink it.')}`,
+        said: `${people ? t('About {people} in tents.', { people: count }) : t('No tents here right now.')} ${park
+          ? t('An open shelter and outreach shrink it.')
+          : t('Grows in winter too. An open shelter and outreach shrink it.')}`,
         facts: [[t('Police under pressure'), pct(sim.cityStress.police)]],
         renamable: true,
       };
@@ -188,7 +188,7 @@ export class CityCards {
     if (id === world.landmarks.cityHall) {
       return {
         title: displayName('building', id, t('City hall')),
-        said: t('City hall: the mayor and the council. Permits, curfews and local strategy are decided here.') + this.questPart('cityHall').said,
+        said: t('Permits, curfews and local strategy.') + this.questPart('cityHall').said,
         facts: this.questPart('cityHall').facts,
         actions: this.questPart('cityHall').actions,
         renamable: true,
@@ -197,7 +197,7 @@ export class CityCards {
     if (id === world.landmarks.police) {
       return {
         title: displayName('building', id, t('Police station')),
-        said: t('The police station, just past the district. Patrols, stops and raids set out from here; when officers are stretched, the council leans on your funders.') + this.questPart('police').said,
+        said: t('Patrols and raids set out from here.') + this.questPart('police').said,
         facts: [[t('Police under pressure'), pct(sim.cityStress.police)], ...this.questPart('police').facts],
         actions: this.questPart('police').actions,
         renamable: true,
@@ -206,7 +206,7 @@ export class CityCards {
     if (id === world.landmarks.sobering) {
       return {
         title: displayName('building', id, t('Sobering-up centre')),
-        said: t("Izba wytrzeźwień: the city's sobering-up centre. Police bring in people who have had too much, most of them from the club at closing time.") + this.questPart('sobering').said,
+        said: t('Police bring in the very drunk, mostly at club closing.') + this.questPart('sobering').said,
         facts: [[t('How full it is'), pct(sim.cityStress.sobering)], [t('Police under pressure'), pct(sim.cityStress.police)], ...this.questPart('sobering').facts],
         actions: this.questPart('sobering').actions,
       };
@@ -218,18 +218,18 @@ export class CityCards {
     const point = this.unitOf(id) >= 0 || shopKindOf(world, id) || id === world.squat ? {} : this.pointPart(id);
     const shop = world.shopAt(id);
     const reach = () => (camperBy(world, sim, id) || (id === world.squat && (camperSpot() === SQUAT_SPOT || sim.property.campers.includes(SQUAT_SPOT)))
-      ? t('A camper parked outside reaches them.')
+      ? t('A camper outside reaches them.')
       : t('Park a camper outside to reach them.'));
     const squat = id === world.squat
-      ? `${t('A squat: about {n} people live here without a tenancy, some of them use drugs. In winter more move in from the street.', { n: sim.camp.squatPeople })} ${reach()}`
+      ? `${t('A squat: about {n} people, more in winter.', { n: sim.camp.squatPeople })} ${reach()}`
       : sim.property.units[this.unitOf(id)]?.kind === 'squatted'
-        ? `${t('A squat: the shop stood empty, and people with nowhere else to go moved in. A new business would move them on.')} ${reach()}`
+        ? `${t('Squatted: people moved into the empty shop.')} ${reach()}`
         : undefined;
     const said = squat ?? (shop ? SHOP_SAID[shop] : undefined) ?? unit.said ?? (b.households ? t('{storeys}, {households}, about {residents}.', {
       storeys: plural(b.storeys, ['{n} storey', '{n} storeys'], ['{n} kondygnacja', '{n} kondygnacje', '{n} kondygnacji']),
       households: plural(b.households, ['{n} household', '{n} households'], ['{n} gospodarstwo domowe', '{n} gospodarstwa domowe', '{n} gospodarstw domowych']),
       residents: plural(residents, ['{n} person', '{n} people'], ['{n} osoba', '{n} osoby', '{n} osób']),
-    }) : t('A shop on the street, nobody lives here.'));
+    }) : '');
     // Where people live, the project can work with them: residents' actions come first.
     const homes = b.households > 0 && id !== world.squat ? this.residentActions() : [];
     // Good, middling or bad, as the meters at the top colour them.
@@ -363,7 +363,7 @@ export class CityCards {
     const cost = t('{fitOut}, then {rent} an hour', { fitOut: price(PROPERTY.fitOut), rent: price(PROPERTY.rentPerHour) });
     if (u.kind === 'vacant') {
       return {
-        said: t('The shop has closed. The unit is to let.'),
+        said: t('Closed, to let.'),
         fact: [t('Shop'), t('Closed, to let')],
         actions: SATELLITE_SERVICES.map((s) => ({
           id: `rent:${s}`,
@@ -377,7 +377,7 @@ export class CityCards {
       };
     }
     return {
-      said: t('Rented by the project: a {unit}, {rent} an hour.', { unit: UNIT_NAME[u.service], rent: price(PROPERTY.rentPerHour) }),
+      said: t('Yours: a {unit}, {rent} an hour.', { unit: UNIT_NAME[u.service], rent: price(PROPERTY.rentPerHour) }),
       fact: [t('Shop'), t('Rented: {unit}', { unit: UNIT_NAME[u.service] })],
       actions: [{ id: 'release', label: t('Give the unit back.'), short: t('Give the unit back.'), enabled: true }],
     };

@@ -19,6 +19,12 @@ export const VITALITY = {
   declineCrisis: 0.25,
   /** The district grows only with a crisis lighter than this. */
   growCrisis: 0.1,
+  /**
+   * How the street feels pulls the district along every clock hour: up while residents feel safe
+   * (above `safeAbove`), down while they do not, this much per unit of the difference.
+   */
+  safetyPull: 0.03,
+  safeAbove: 0.7,
   /** New venues open at these levels (and close 0.07 below them). */
   venuesAt: [0.4, 0.55, 0.7, 0.85],
   /** Partnering with a venue: one-off cost, then what the venue pays per clock hour. */
@@ -37,6 +43,8 @@ export interface VitalityInput {
   unmet24: number;
   /** Average pressure on the city's services, 0 to 1. */
   stress: number;
+  /** How safe the street feels to residents (sim/neighbourhood.ts), 0 to 1. */
+  safety?: number;
 }
 
 export class Vitality {
@@ -46,11 +54,17 @@ export class Vitality {
   /** Partnered venues, by index in VENUE_KINDS. */
   readonly partners = new Set<number>();
 
+  /** Something the project did for the district shows at once (a sweep, door-knocking). */
+  lift(amount: number): void {
+    this.level = Math.min(1, Math.max(0, this.level + amount));
+  }
+
   /** Advances by `dtMinutes`; returns +1 when a venue opened, -1 when one closed, else 0. */
   tick(dtMinutes: number, inp: VitalityInput): number {
     const hours = dtMinutes / 60;
     if (inp.crisis > VITALITY.declineCrisis || inp.stress > VITALITY.strainedStress) this.level -= VITALITY.decline * hours;
     else if (inp.unmet24 < VITALITY.calmUnmet && inp.stress < VITALITY.calmStress && inp.crisis < VITALITY.growCrisis) this.level += VITALITY.grow * (1 - this.level) * hours;
+    if (inp.safety !== undefined) this.level += VITALITY.safetyPull * (inp.safety - VITALITY.safeAbove) * hours;
     this.level = Math.min(1, Math.max(0, this.level));
     const at = VITALITY.venuesAt;
     if (this.venues < at.length && this.level >= at[this.venues]) { this.venues++; return 1; }

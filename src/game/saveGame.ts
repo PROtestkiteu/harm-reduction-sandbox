@@ -1,7 +1,8 @@
 import type { Simulation } from '../sim/simulation';
 import { BASE_STAGE, stageCount } from '../config/serviceStages';
 import { SERVICE_IDS, type ServiceId } from '../sim/types';
-import { TRAITS, type Assignment, type Member, type TraitId } from '../sim/team';
+import { Team, TRAITS, type Assignment, type Member, type TraitId } from '../sim/team';
+import { MORALE } from '../config/morale';
 import { SATELLITE_SERVICES, type SatelliteService, type UnitState } from '../sim/property';
 import type { NeighbourhoodState } from '../sim/neighbourhood';
 import { CAMPER_PATH_IDS, type CamperPath } from '../config/camperPaths';
@@ -38,7 +39,8 @@ export interface SaveData {
   on?: ServiceId[];
   /** The services ever run this game (older saves: those switched on). */
   ran?: ServiceId[];
-  team: { name: string; paid: boolean; traits: TraitId[]; energy: number; assignment: Assignment; worn?: true }[];
+  /** Morale, hours at each place and a specialism are newer: older saves load at the start values. */
+  team: { name: string; paid: boolean; traits: TraitId[]; energy: number; assignment: Assignment; worn?: true; morale?: number; hours?: Partial<Record<ServiceId, number>>; special?: ServiceId }[];
   /** Each service's stage (see SERVICE_STAGES) and progress; older saves wrote `level` on a scale one lower. */
   upgrades: Record<string, { stage: number; progress: number }>;
   units: UnitState[];
@@ -80,6 +82,8 @@ export interface SaveMore {
   visitors?: Partial<ReturnType<Simulation['visitors']['snapshot']>>;
   /** Someone in acute crisis on the street, if they are (sim/chaosDaemon.ts); checked there on restore. */
   daemon?: { since?: number | null; fails?: number; quietUntil?: number };
+  /** Standing, supplies, the big crisis and the run's end (sim/stakes.ts); checked there on restore. */
+  stakes?: Partial<ReturnType<Simulation['stakes']['snapshot']>>;
   /** Nightly goals, stars and the scenario (sim/goals.ts); checked there on restore. */
   goals?: Partial<ReturnType<Goals['snapshot']>>;
   /** People turned away over the whole run (the night report's count). */
@@ -190,6 +194,7 @@ function captureMore(sim: Simulation): SaveMore {
     petty: sim.petty.snapshot(),
     visitors: sim.visitors.snapshot(),
     daemon: sim.daemon.snapshot(),
+    stakes: sim.stakes.snapshot(),
     goals: sim.goals.snapshot(),
     turnedAway: sim.turnedAwayTotal,
     org: {
@@ -293,6 +298,7 @@ function parseMore(raw: unknown): SaveMore | undefined {
     petty: obj(m.petty) as SaveMore['petty'],
     visitors: obj(m.visitors) as SaveMore['visitors'],
     daemon: obj(m.daemon) as SaveMore['daemon'],
+    stakes: obj(m.stakes) as SaveMore['stakes'],
     goals: obj(m.goals) as SaveMore['goals'],
     turnedAway: count(m.turnedAway),
     now: num(m.now, 0, 1e9, 0),
@@ -369,6 +375,7 @@ function applyMore(sim: Simulation, m: SaveMore): void {
   if (m.petty) sim.petty.restore(m.petty);
   if (m.visitors) sim.visitors.restore(m.visitors);
   sim.daemon.restore(m.daemon);
+  sim.stakes.restore(m.stakes);
   sim.restoreGoals(m.goals);
   sim.turnedAwayTotal = m.turnedAway ?? 0;
   o.broke = m.org.broke;
@@ -452,7 +459,8 @@ export function captureSave(sim: Simulation, name: string, run?: SaveData['run']
     org: { budget: Math.round(o.budget), paid: o.paid, volunteers: o.volunteers, grantIncome: o.grantIncome, closedDown: [...o.closedDown] },
     on: SERVICE_IDS.filter((id) => sim.services[id].switchedOn),
     ran: SERVICE_IDS.filter((id) => sim.services[id].everRun),
-    team: sim.team.members.map((m) => ({ name: m.name, paid: m.paid, traits: [...m.traits], energy: Math.round(m.energy * 100) / 100, assignment: m.assignment, ...(m.worn ? { worn: true as const } : {}) })),
+    team: sim.team.members.map((m) => ({ name: m.name, paid: m.paid, traits: [...m.traits], energy: Math.round(m.energy * 100) / 100, assignment: m.assignment, ...(m.worn ? { worn: true as const } : {}),
+      morale: Math.round(m.morale * 1000) / 1000, hours: Object.fromEntries(Object.entries(m.hours).map(([k, h]) => [k, Math.round((h ?? 0) * 10) / 10])), ...(m.special ? { special: m.special } : {}) })),
     upgrades: Object.fromEntries(SERVICE_IDS.map((id) => [id, { stage: sim.upgrades[id].level, progress: Math.round(sim.upgrades[id].progress * 1000) / 1000 }])),
     units: sim.property.units.map((u) => ({ ...u })),
     campers: [...sim.property.campers],
@@ -502,6 +510,9 @@ export function parseSave(raw: unknown): SaveData | null {
         energy: num(m.energy, 0, 1, 0.8),
         assignment: (typeof m.assignment === 'string' && ASSIGN.has(m.assignment) ? m.assignment : 'auto') as Assignment,
         ...(m.worn === true ? { worn: true as const } : {}),
+        morale: num(m.morale, 0, 1, MORALE.start),
+        hours: Object.fromEntries(SERVICE_IDS.map((id) => [id, num((m.hours as Record<string, unknown> | undefined)?.[id], 0, 1e5, 0)]).filter(([, h]) => (h as number) > 0)),
+        ...(isService(m.special) ? { special: m.special } : {}),
       };
     }),
     upgrades: Object.fromEntries(SERVICE_IDS.map((id) => {
@@ -556,7 +567,10 @@ export function applySave(sim: Simulation, s: SaveData): void {
   const members = sim.team.members;
   members.length = 0;
   s.team.forEach((t, i) => {
-    const m: Member = { id: i + 1, name: t.name, paid: t.paid, traits: t.traits, energy: t.energy, assignment: t.assignment, workingAt: null, worn: t.worn === true };
+    const m: Member = {
+      id: i + 1, name: t.name, paid: t.paid, traits: [...t.traits], energy: t.energy, assignment: t.assignment, workingAt: null, worn: t.worn === true,
+      morale: t.morale ?? MORALE.start, hours: { ...t.hours }, special: t.special ?? null, blows: Team.noBlows(), warned: false,
+    };
     members.push(m);
   });
   (sim.team as unknown as { nextId: number }).nextId = s.team.length + 1;

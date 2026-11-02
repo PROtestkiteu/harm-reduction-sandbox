@@ -87,7 +87,7 @@ export const PARAMS = [
   {
     id: 'clockSpeed', group: 'night', label: t('Clock speed'), min: 0.25, max: 6, step: 0.25, default: ILLUSTRATIVE.clockMinutesPerSecond,
     format: (v: number) => t('{v} clock min / s', { v: fixed(v, 2) }),
-    hint: t('Clock minutes per real second at 1x. Walking stays real time.'),
+    hint: t('Clock minutes per real second at 1x. People on the street keep pace with the clock.'),
   },
   {
     id: 'passersby', group: 'demand', label: t('Passers-by'), min: 0, max: 10, step: 0.2, default: ILLUSTRATIVE.passersbyPerMinute, format: perMin,

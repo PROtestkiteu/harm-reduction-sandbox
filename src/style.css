@@ -2296,6 +2296,35 @@ button.event-card:focus-visible { outline: 2px solid var(--focus); outline-offse
 @keyframes daemon-pulse { 50% { box-shadow: 0 0 0 5px rgba(200, 50, 42, 0.35); } }
 @media (prefers-reduced-motion: reduce) { .daemon-name { animation: none; } }
 
+/* Who you are, on the welcome's first page (src/ui/welcome.ts), and what is at stake (src/ui/stakesSection.ts). */
+.welcome-identity { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; margin: 6px 0 14px; }
+.welcome-identity[hidden] { display: none; }
+.welcome-look-row { display: flex; align-items: center; gap: 6px; }
+.welcome-look {
+  min-width: 44px;
+  min-height: 44px;
+  color: var(--reply);
+  background: rgba(255, 255, 255, 0.06);
+  border: 0;
+  font: 500 22px var(--body);
+  cursor: pointer;
+}
+.welcome-look:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.welcome-name { display: grid; gap: 4px; flex: 1 1 180px; color: var(--muted); font-size: 14px; }
+.welcome-name input {
+  min-height: 44px;
+  padding: 0 10px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+  border: 0;
+  border-bottom: 2px solid var(--bar);
+  font: 500 17px var(--body);
+}
+.welcome-name input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.stakes-storm { margin: 10px 0; padding: 8px 10px; border-left: 4px solid var(--bar); background: rgba(200, 50, 42, 0.12); }
+.stakes-storm[hidden], .stakes-standing[hidden], .stakes-supplies[hidden] { display: none; }
+.stakes-standing-order { display: flex; align-items: center; gap: 6px; min-height: 36px; color: var(--muted); font-size: 13px; }
+.stakes .team-status[data-state='broke'] { color: var(--closing); }
 /* Stable portrait framing during asynchronous image loading and failure. */
 .portrait-view[data-state='loading'], .portrait-view[data-state='error'] {
   background: radial-gradient(ellipse at 50% 40%, rgba(171, 117, 100, 0.3), transparent 48%), #242032;

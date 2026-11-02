@@ -4,8 +4,22 @@ import { playerBadge, type PlayerPicture } from './playerBadge';
 /** Renamed with the three-page welcome, so players who closed the old box see this one once. */
 const SEEN_KEY = 'hrp-welcome-seen-2';
 
+/** Who you are, set on the first page: your organisation's name and your look. */
+export interface Identity {
+  name(): string;
+  rename(name: string): void;
+  /** How many looks there are, which one is yours, and choosing another. */
+  looks: number;
+  look(): number;
+  setLook(i: number): void;
+  /** Your portrait now, as a data URL. */
+  picture(): string;
+}
+
 interface Page {
   title: string;
+  /** This page sets who you are (the name and the look). */
+  identity?: true;
   lead?: string;
   /** Said by you, beside your portrait, in place of a lead. */
   said?: string;
@@ -16,6 +30,7 @@ interface Page {
 const PAGES: Page[] = [
   {
     title: t('Who you are'),
+    identity: true,
     lead: t('You coordinate a small harm reduction non-profit in a city district, working through the night.'),
     points: [
       t('Your team runs a drop-in centre, an outreach camper and a stand at the music club.'),
@@ -28,7 +43,8 @@ const PAGES: Page[] = [
     points: [
       t('Every visit costs money. Funders and grants pay for results, so a busy night can still leave you short.'),
       t('People turned away do not vanish: they end up with the police and the medics. The meters at the top show that strain.'),
-      t('Run out of money and services shut one by one until you can relaunch them, while the street scene grows.'),
+      t('Your team has its own morale. People turned away and deaths wear it down; below a point, people quit. If everyone quits, or every place stays shut, the project folds.'),
+      t('Now and then a big crisis comes, with a day of warning. Prepare for it: the first one unprepared can end the project.'),
     ],
   },
   {
@@ -59,8 +75,9 @@ export class Welcome {
   private readonly back: HTMLButtonElement;
   private readonly next: HTMLButtonElement;
   private page = 0;
+  private readonly identityBox: HTMLElement | null;
 
-  constructor(parent: HTMLElement, private readonly onChange: (open: boolean) => void, private readonly picture?: PlayerPicture) {
+  constructor(parent: HTMLElement, private readonly onChange: (open: boolean) => void, private readonly picture?: PlayerPicture, identity?: Identity) {
     this.dialog = document.createElement('dialog');
     this.dialog.className = 'welcome intro';
     this.dialog.setAttribute('aria-labelledby', 'welcome-title');
@@ -74,7 +91,8 @@ export class Welcome {
     this.back.addEventListener('click', () => this.go(this.page - 1));
     this.next.addEventListener('click', () => (this.page < PAGES.length - 1 ? this.go(this.page + 1) : this.dialog.close()));
     nav.append(this.back, this.next);
-    this.dialog.append(this.step, this.title, this.lead, this.list, nav);
+    this.identityBox = identity ? identityBox(identity) : null;
+    this.dialog.append(this.step, this.title, ...(this.identityBox ? [this.identityBox] : []), this.lead, this.list, nav);
     this.dialog.addEventListener('close', () => {
       try { localStorage.setItem(SEEN_KEY, '1'); } catch { /* private mode: show again next time */ }
       this.onChange(false);
@@ -103,6 +121,10 @@ export class Welcome {
     const p = PAGES[this.page];
     this.step.textContent = t('{n} of {all}', { n: this.page + 1, all: PAGES.length });
     this.title.textContent = p.title;
+    if (this.identityBox) {
+      this.identityBox.hidden = !p.identity;
+      if (p.identity) this.identityBox.dispatchEvent(new Event('refresh'));
+    }
     this.lead.textContent = p.lead ?? '';
     this.lead.hidden = !p.lead;
     this.list.replaceChildren(...p.points.map((text) => Object.assign(document.createElement('li'), { textContent: text })));
@@ -114,4 +136,35 @@ export class Welcome {
     this.next.textContent = last ? t('Start the night') : t('Next');
     this.next.focus();
   }
+}
+
+/**
+ * The name field and the look picker: a portrait with a previous and a next
+ * look beside it. The portrait is painted only when this page is shown or the
+ * look changes.
+ */
+function identityBox(id: Identity): HTMLElement {
+  const box = Object.assign(document.createElement('div'), { className: 'welcome-identity' });
+  const face = Object.assign(document.createElement('img'), { alt: '', width: 60, height: 75, className: 'player-face' });
+  const prev = Object.assign(document.createElement('button'), { type: 'button', className: 'welcome-look', textContent: '‹' });
+  const next = Object.assign(document.createElement('button'), { type: 'button', className: 'welcome-look', textContent: '›' });
+  prev.setAttribute('aria-label', t('Previous look'));
+  next.setAttribute('aria-label', t('Next look'));
+  const look = Object.assign(document.createElement('div'), { className: 'welcome-look-row' });
+  look.append(prev, face, next);
+  const label = Object.assign(document.createElement('label'), { className: 'welcome-name' });
+  const input = Object.assign(document.createElement('input'), { type: 'text', maxLength: 40, spellcheck: false, autocomplete: 'off' });
+  label.append(Object.assign(document.createElement('span'), { textContent: t('Your organisation') }), input);
+  const paint = () => { face.src = id.picture(); };
+  const step = (by: number) => { id.setLook((id.look() + by + id.looks) % id.looks); paint(); };
+  prev.addEventListener('click', () => step(-1));
+  next.addEventListener('click', () => step(1));
+  input.addEventListener('change', () => { id.rename(input.value); input.value = id.name(); });
+  // Enter keeps the name and leaves the field, without closing the box.
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); input.blur(); } });
+  box.addEventListener('refresh', () => { input.value = id.name(); paint(); });
+  // With a single look there is nothing to step through.
+  prev.hidden = next.hidden = id.looks < 2;
+  box.append(look, label);
+  return box;
 }

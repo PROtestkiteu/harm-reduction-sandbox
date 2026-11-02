@@ -64,7 +64,8 @@ const tire = (w: EventWorld, by: number) => {
 export const MAJOR_EVENTS: readonly MajorEvent[] = [
   {
     id: 'hostileGovernment',
-    place: 'dropIn',
+    // Patrols go to wherever the crowd is: the place that varies with the night.
+    place: 'busiest',
     title: t('A new government takes office'),
     lines: [
       t('It won on a tough-on-drugs ticket. Its first order: police to patrol near health services and stop people on their way in.'),
@@ -92,8 +93,9 @@ export const MAJOR_EVENTS: readonly MajorEvent[] = [
   },
   {
     id: 'mediaAttack',
-    place: 'dropIn',
-    opening: (w) => w.show({ kind: 'press', at: 'dropIn', hours: 1 }),
+    // The cameras go where the queue is longest tonight.
+    place: 'busiest',
+    opening: (w) => w.show({ kind: 'press', at: w.sim.busiest.service, hours: 1 }),
     title: t('A politician attacks the project in the media'),
     lines: [
       t('A conservative politician calls your drop-in "a drug den" on television and in the papers.'),
@@ -104,17 +106,17 @@ export const MAJOR_EVENTS: readonly MajorEvent[] = [
       {
         label: t('Answer with your data and a statement'),
         cost: 100,
-        apply: (w) => { w.sim.org.spend(100, false); w.sim.mediaAttack(0.8, 2, 0.1); w.show({ kind: 'press', at: 'dropIn', hours: 2 }); return t('Your answer took the edge off: funders are a little warier for two nights.'); },
+        apply: (w) => { w.sim.org.spend(100, false); w.sim.mediaAttack(0.8, 2, 0.1); w.show({ kind: 'press', at: w.sim.busiest.service, hours: 2 }); return t('Your answer took the edge off: funders are a little warier for two nights.'); },
       },
       {
         label: t('Stay out of it'),
-        apply: (w) => { w.sim.mediaAttack(0.55, 4, 0.25); w.show({ kind: 'press', at: 'dropIn', hours: 4 }); return t('The story ran unanswered: grant chances are down for four nights and the team is drained.'); },
+        apply: (w) => { w.sim.mediaAttack(0.55, 4, 0.25); w.show({ kind: 'press', at: w.sim.busiest.service, hours: 4 }); return t('The story ran unanswered: grant chances are down for four nights and the team is drained.'); },
       },
     ],
   },
   {
     id: 'courtRuling',
-    place: 'dropIn',
+    place: 'busiest',
     title: t('A court rules for the services'),
     lines: [
       t('Judges find that policing the doors of health services breaks patients\' rights.'),
@@ -291,15 +293,21 @@ export const MAJOR_EVENTS: readonly MajorEvent[] = [
       },
     ],
   },
-  {
+];
+
+/** A donation, thanked at one of the places that is open now, picked at random so it is not always the same door. */
+function donation(w: EventWorld): MajorEvent {
+  const open = (Object.keys(w.sim.services) as ServiceId[]).filter((id) => w.sim.services[id].status === 'open');
+  const at: ServiceId = open.length ? open[Math.floor(w.random() * open.length)] : 'dropIn';
+  return {
     id: 'donation',
-    place: 'dropIn',
+    place: at === 'clubHr' ? 'club' : at,
     title: t('A donation'),
     lines: [t('A local business owner, whose brother was helped by your outreach team, sends a donation.')],
     eligible: () => true,
-    choices: [{ label: t('Thank them'), apply: (w) => { w.sim.org.budget += 400; w.show({ kind: 'coins', at: 'dropIn', count: 16 }); return t('400 added to the budget.'); } }],
-  },
-];
+    choices: [{ label: t('Thank them'), apply: (ww) => { ww.sim.org.budget += 400; ww.show({ kind: 'coins', at, count: 16 }); return t('400 added to the budget.'); } }],
+  };
+}
 
 /** Police cars swarm the busiest place, lights on. */
 function raidCars(w: EventWorld): void {
@@ -366,7 +374,7 @@ export function budgetEvent(w: EventWorld, serviceName: (id: ServiceId) => strin
 export function pickEvent(w: EventWorld): MajorEvent | null {
   // Raids are likely whenever they can happen; the raves are rare easter eggs.
   const weights: Record<string, number> = { hostileGovernment: 3, mediaAttack: 3, courtRuling: 2, campSweep: 4, badBatch: 2, raid: 5, wixapol: 0.4, djHazel: 0.3, donation: 1.5 };
-  const open = MAJOR_EVENTS.filter((e) => e.eligible(w));
+  const open = [...MAJOR_EVENTS, donation(w)].filter((e) => e.eligible(w));
   const total = open.reduce((n, e) => n + (weights[e.id] ?? 1), 0);
   let r = w.random() * total;
   for (const e of open) if ((r -= weights[e.id] ?? 1) <= 0) return e;

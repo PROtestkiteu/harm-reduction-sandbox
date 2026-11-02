@@ -21,7 +21,7 @@ const base = opt('url', 'http://localhost:5199/');
 const seed = opt('seed', '777');
 const speed = Number(opt('speed', 1));
 const out = opt('out', join(tmpdir(), 'hrs-bots'));
-const bots = args.length ? args : ['idle', 'hoarder', 'spammer', 'sensible', 'greedy'];
+const bots = args.length ? args : ['idle', 'hoarder', 'spammer', 'sensible', 'greedy', 'naive', 'prepared'];
 mkdirSync(out, { recursive: true });
 
 const url = new URL(base);
@@ -42,11 +42,14 @@ for (const name of bots) {
   summary.push({
     bot: name, money: `${at(0).budget} / ${at(0.5).budget} / ${at(1).budget}`, 'net/h end': at(1).net,
     'first red h': result.firstRedHour ?? '-', 'red h': result.redHours, 'all shut h': result.gameOverHour ?? '-',
-    helped: result.totals.helped, stars: at(1).stars, 'trust end': at(1).trust, 'open end': at(1).open, 'staff end': at(1).staff, acts: JSON.stringify(result.acts),
+    helped: result.totals.helped, away: at(1).turnedAway, deaths: at(1).deaths, 'folded h': result.foldedHour ?? '-', quits: result.quits,
+    storms: (result.storms ?? []).map((x) => `${x.kind}@${x.h}: ${x.deaths}d ${x.turnedAway}a`).join('; ') || '-',
+    stars: at(1).stars, tier: at(1).tier, morale: at(1).morale, 'staff end': at(1).staff, acts: JSON.stringify(result.acts),
   });
-  console.log(`\n${name}: h clock budget net police medics sobering district size street crisis unmet24 helped stars trust`);
-  for (const r of rows.filter((_, i) => i % 6 === 0 || i === rows.length - 1)) {
-    console.log(`  ${[r.h, r.clock, r.budget, r.net, r.police, r.medics, r.sobering, r.district, r.size, r.street, r.crisis, r.unmet24, r.helped, r.stars, r.trust].join(' ')}`);
+  console.log(`\n${name}: morale moved by cause ${JSON.stringify(result.morale)}; overdoses alone ${result.alone}`);
+  console.log(`${name}: h clock budget net medics crisis unmet24 helped away deaths staff morale tier points nalox kits storm`);
+  for (const r of rows.filter((row, i) => i % 6 === 0 || i === rows.length - 1 || row.storm === 'peak')) {
+    console.log(`  ${[r.h, r.clock, r.budget, r.net, r.medics, r.crisis, r.unmet24, r.helped, r.turnedAway, r.deaths, r.staff, r.morale, r.tier, r.points, r.naloxone, r.kits, r.storm].join(' ')}`);
   }
 }
 console.log(`\nseed ${seed}, ${days} game days, clock speed ${speed}`);

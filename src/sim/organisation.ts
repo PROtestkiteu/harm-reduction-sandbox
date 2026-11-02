@@ -53,7 +53,6 @@ export class Organisation {
   brokeMinutes = 0;
   steadierVolunteers = false;
   equipment = false;
-  private churnCarry = 0;
   private flow = 0;
   private flowMinutes = 0;
 
@@ -153,15 +152,7 @@ export class Organisation {
       this.flowMinutes = 0;
     }
 
-    // Volunteers drift away: carry fractional expectation so the rate holds at any step size.
-    this.churnCarry += this.volunteers * ORG.volunteerChurnPerHour * (this.steadierVolunteers ? 0.5 : 1) * hours;
-    if (this.churnCarry >= 1 && this.volunteers > 0) {
-      this.churnCarry -= 1;
-      if (this.random() < 0.8) {
-        this.volunteers--;
-        this.notice(clock, t('A volunteer could not stay on. Look for volunteers under Your team; the peer programme grant keeps them longer.'));
-      }
-    }
+    // Volunteers no longer drift away at a flat rate: they quit when their morale runs out (sim/team.ts).
 
     for (let i = this.recruiting.length - 1; i >= 0; i--) {
       const r = this.recruiting[i];

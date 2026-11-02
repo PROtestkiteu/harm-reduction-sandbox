@@ -53,10 +53,10 @@ export const ORG = {
    * good, in this order. Restoring the budget before a deadline resets the count.
    */
   closeDownAfter: [{ service: 'clubHr', minutes: 180 }, { service: 'outreach', minutes: 300 }, { service: 'dropIn', minutes: 420 }] as const,
+  /** Everything the project started with shut this long (clock minutes) and the project folds: the run ends. */
+  foldAfterShut: 12 * 60,
   /** Relaunching a closed-down service: cost and clock minutes until it can open again. */
   reopen: { cost: 600, minutes: 120 },
-  /** Share of volunteers who drift away per clock hour. */
-  volunteerChurnPerHour: 0.04,
   evidence: [
     cite('EMCDDA 2001', 'guideline', 'Annual budgets around 2000: Energy Control (Spain, NGO with project support) about EUR 50,000; ChEck iT! (Austria, public funding) about EUR 145,000; Techno Plus (France) about EUR 400,000.', '2001_EMCDDA_Pill_Testing_Fact_Files'),
     cite('Hutton 2021', 'survey', 'New Zealand: services often unfunded and volunteer-staffed, with only three spectrometers in the country.', '2021_Hutton_Drug Checking at New Zealand Festivals p9, p53, p64'),

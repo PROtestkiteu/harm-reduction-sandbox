@@ -1,6 +1,7 @@
 import { createRandom, pick, type Random } from './random';
 import { SERVICE_IDS, type ServiceId } from './types';
 import { t } from '../i18n';
+import { GROWTH_IN_JOB, MORALE } from '../config/morale';
 
 /**
  * The people behind the staff numbers. Rendering-free.
@@ -34,6 +35,9 @@ export const TRAITS: Record<TraitId, Trait> = {
   new: { label: t('New to the work'), detail: t('Still learning; a little slower'), bonus: {}, everywhere: -0.15 },
 };
 
+/** What wore a worker's morale down most: named when they quit. */
+export type Blow = 'turnedAway' | 'overdose' | 'death' | 'overwork' | 'unpaid';
+
 /** Where a worker goes: placed automatically, pinned to a service, or resting. */
 export type Assignment = 'auto' | 'rest' | ServiceId;
 
@@ -41,9 +45,20 @@ export interface Member {
   readonly id: number;
   readonly name: string;
   readonly paid: boolean;
-  readonly traits: readonly TraitId[];
+  /** Qualities; "new to the work" wears off with hours on shift (config/morale.ts). */
+  traits: TraitId[];
   /** 0 exhausted, 1 fresh. */
   energy: number;
+  /** 0 ready to quit, 1 full of heart (config/morale.ts). */
+  morale: number;
+  /** Clock hours worked at each place. */
+  hours: Partial<Record<ServiceId, number>>;
+  /** The place they have specialised in, if any. */
+  special: ServiceId | null;
+  /** Morale lost per cause since they joined, to say why they quit. Not saved. */
+  blows: Record<Blow, number>;
+  /** Whether the low-morale warning was given (until they recover). */
+  warned: boolean;
   assignment: Assignment;
   /** Where they work right now (set by the simulation), or null. */
   workingAt: ServiceId | null;
@@ -76,14 +91,19 @@ export class Team {
 
   /** How good `m` is at `service` by their qualities alone: 1 is ordinary. */
   static traitFit(m: Member, service: ServiceId): number {
-    let f = 1;
+    let f = m.special === service ? 1 + GROWTH_IN_JOB.specialBonus : 1;
     for (const t of m.traits) f += (TRAITS[t].bonus[service] ?? 0) + (TRAITS[t].everywhere ?? 0);
     return Math.max(0.4, f);
   }
 
-  /** How good `m` is at `service` right now: their qualities, dragged down by tiredness. */
+  /** How good `m` is at `service` right now: their qualities, dragged down by tiredness and low morale. */
   static fit(m: Member, service: ServiceId): number {
-    return Math.max(0.4, Team.traitFit(m, service) - (m.energy < 0.35 ? 0.25 : 0));
+    return Math.max(0.4, Team.traitFit(m, service) - (m.energy < 0.35 ? 0.25 : 0) - (m.morale < MORALE.shakenBelow ? MORALE.shakenFit : 0));
+  }
+
+  /** Whether `m` is shaken: low morale, working slower. */
+  static shaken(m: Member): boolean {
+    return m.morale < MORALE.shakenBelow;
   }
 
   /** Grows or shrinks the team to the organisation's head counts. */
@@ -112,7 +132,43 @@ export class Team {
       const second = pick(this.random, pool);
       if (second !== first && !(second === 'new' && paid)) traits.push(second);
     }
-    return { id: this.nextId++, name, paid, traits, energy: 0.75 + this.random() * 0.25, assignment: 'auto', workingAt: null, worn: false };
+    const morale = MORALE.start + (this.random() * 2 - 1) * MORALE.startSpread;
+    return { id: this.nextId++, name, paid, traits, energy: 0.75 + this.random() * 0.25, morale, hours: {}, special: null, blows: Team.noBlows(), warned: false, assignment: 'auto', workingAt: null, worn: false };
+  }
+
+  static noBlows(): Record<Blow, number> {
+    return { turnedAway: 0, overdose: 0, death: 0, overwork: 0, unpaid: 0 };
+  }
+
+  /**
+   * Morale moves for one member: `amount` up or down, with the cause of a
+   * fall remembered. Volunteers feel falls more (`steadier` halves the extra).
+   */
+  private static move(m: Member, amount: number, cause: Blow | null, steadier: boolean): void {
+    if (amount < 0 && !m.paid) amount *= steadier ? 1 + (MORALE.volunteerFragility - 1) / 2 : MORALE.volunteerFragility;
+    m.morale = Math.min(1, Math.max(0, m.morale + amount));
+    if (amount < 0 && cause) m.blows[cause] -= amount;
+  }
+
+  /** Someone was helped at `service`: those on shift there feel it. */
+  helpedAt(service: ServiceId): void {
+    for (const m of this.members) if (m.workingAt === service) Team.move(m, MORALE.helped, null, false);
+  }
+
+  /** Someone was turned away at `service`: those there most, the rest a little. */
+  turnedAwayAt(service: ServiceId, steadier: boolean, factor = 1): void {
+    for (const m of this.members) Team.move(m, -(m.workingAt === service ? MORALE.turnedAway : MORALE.turnedAwayTeam) * factor, 'turnedAway', steadier);
+  }
+
+  /** A blow to the whole team: an overdose nobody reached, or a death. */
+  blow(cause: 'overdose' | 'death', steadier: boolean): void {
+    const amount = cause === 'death' ? MORALE.death : MORALE.overdoseAlone;
+    for (const m of this.members) Team.move(m, -amount, cause, steadier);
+  }
+
+  /** A worker met a need their skill fits. */
+  matched(m: Member): void {
+    Team.move(m, MORALE.matched, null, false);
   }
 
   /** Who can be placed: not resting by choice, not worn out, and paid only when wages can be paid. */
@@ -125,18 +181,64 @@ export class Team {
    * automatically placed worker just tired out or recovered, so the rota
    * should be drawn up again.
    */
-  tick(hours: number, lateNight: boolean): boolean {
+  tick(hours: number, lateNight: boolean, ctx: { unpaid: boolean; steadier: boolean; drain?: number } = { unpaid: false, steadier: false }): boolean {
     let changed = false;
     for (const m of this.members) {
       const before = m.energy;
-      if (m.workingAt) m.energy -= hours * (lateNight && m.traits.includes('nightOwl') ? 0.04 : 0.08);
-      else m.energy += hours * 0.12;
+      if (m.workingAt) {
+        m.energy -= hours * (lateNight && m.traits.includes('nightOwl') ? 0.04 : 0.08) * (ctx.drain ?? 1);
+        m.hours[m.workingAt] = (m.hours[m.workingAt] ?? 0) + hours;
+        if (m.energy < TIRED + 0.1) Team.move(m, -MORALE.overworkedPerHour * hours, 'overwork', ctx.steadier);
+      } else {
+        m.energy += hours * 0.12;
+        if (m.morale < MORALE.restTo) m.morale = Math.min(MORALE.restTo, m.morale + MORALE.restPerHour * hours);
+      }
+      if (m.paid && ctx.unpaid) Team.move(m, -MORALE.unpaidPerHour * hours, 'unpaid', ctx.steadier);
       m.energy = Math.min(1, Math.max(0, m.energy));
       if (m.assignment !== 'auto') continue;
       if (!m.worn && before >= TIRED && m.energy < TIRED) { m.worn = true; changed = true; }
       else if (m.worn && m.energy >= RESTED) { m.worn = false; changed = true; }
     }
     return changed;
+  }
+
+  /**
+   * Growing into the job and quitting, checked once a clock hour. Returns who
+   * grew (lost "new", or specialised) and who quits now, already removed from
+   * the team; the caller lowers the head counts and says so.
+   */
+  review(): { grew: { m: Member; what: 'experienced' | ServiceId }[]; quit: { m: Member; why: Blow }[]; low: Member[] } {
+    const grew: { m: Member; what: 'experienced' | ServiceId }[] = [];
+    const quit: { m: Member; why: Blow }[] = [];
+    const low: Member[] = [];
+    for (const m of this.members) {
+      const total = Object.values(m.hours).reduce((n, h) => n + (h ?? 0), 0);
+      if (m.traits.includes('new') && total >= GROWTH_IN_JOB.newWearsOffHours) {
+        m.traits = m.traits.filter((x) => x !== 'new');
+        grew.push({ m, what: 'experienced' });
+      }
+      if (!m.special) {
+        const best = (Object.entries(m.hours) as [ServiceId, number][]).sort((a, b) => b[1] - a[1])[0];
+        if (best && best[1] >= GROWTH_IN_JOB.specialiseHours) {
+          m.special = best[0];
+          grew.push({ m, what: best[0] });
+        }
+      }
+      if (m.morale < MORALE.leaveBelow) {
+        const why = (Object.entries(m.blows) as [Blow, number][]).sort((a, b) => b[1] - a[1])[0][0];
+        quit.push({ m, why });
+      } else if (!m.warned && m.morale < MORALE.warnBelow) {
+        m.warned = true;
+        low.push(m);
+      } else if (m.warned && m.morale >= MORALE.shakenBelow) m.warned = false;
+    }
+    for (const { m } of quit) this.members.splice(this.members.indexOf(m), 1);
+    return { grew, quit, low };
+  }
+
+  /** Team morale: the average, or 0 with nobody left. */
+  get morale(): number {
+    return this.members.length ? this.members.reduce((n, m) => n + m.morale, 0) / this.members.length : 0;
   }
 
   assign(id: number, to: Assignment): boolean {
