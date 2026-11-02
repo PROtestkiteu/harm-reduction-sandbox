@@ -2314,3 +2314,18 @@ button.event-card:focus-visible { outline: 2px solid var(--focus); outline-offse
 }
 .meter-delta[data-good='true'] { color: #7fd89a; }
 .meter-delta[data-good='false'] { color: #ff7a6a; }
+
+/*
+ * The portrait's caption sits over the scene, which is pale by day: a dark band of its own and light
+ * type in every theme, so the name never sinks into the pavement behind it.
+ */
+.portrait figcaption {
+  margin-top: 4px;
+  padding: 3px 7px 4px;
+  background: rgba(14, 11, 9, 0.82);
+  color: #f2ead8;
+  text-shadow: none;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.portrait figcaption .portrait-sub { color: #cdbfa6; }
