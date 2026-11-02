@@ -968,7 +968,6 @@ export const ES: Record<string, string> = {
   'Back to the overview.': 'Volver a la vista general.',
   'Back to the overview': 'Volver a la vista general',
   'R. Right-drag or two-finger drag to orbit.': 'R. Arrastra con el botón derecho o con dos dedos para girar.',
-  'Pause': 'Pausa',
   'City services under pressure': 'Servicios municipales bajo presión',
   'Police': 'Policía',
   'Incidents, stops, the camp and people turned away from a bed keep police busy; an overstretched force makes the council lean on funders.': 'Los incidentes, las paradas, el campamento y las personas sin cama mantienen ocupada a la policía; una policía desbordada hace que el ayuntamiento presione a los financiadores.',
@@ -1012,8 +1011,6 @@ export const ES: Record<string, string> = {
   'Eases: {needs}': 'Alivia: {needs}',
   'Full screen on iPhone: Share, then Add to Home Screen.': 'Pantalla completa en iPhone: Compartir y luego Añadir a pantalla de inicio.',
   'Drunk club leavers taken to the sobering-up centre (izba wytrzeźwień), more of them when the club service turns people away.': 'Personas ebrias que salen del club llevadas al centro de desintoxicación etílica (izba wytrzeźwień), más cuando el servicio del club rechaza a gente.',
-  'Continue the simulation (Space)': 'Reanudar la simulación (Espacio)',
-  'Pause the simulation (Space)': 'Pausar la simulación (Espacio)',
   'Extending: {name}, {pct}% (+{more} more)': 'Ampliando: {name}, {pct}% (+{more} más)',
   'Scaling down: {name}, {pct}% (+{more} more)': 'Reduciendo: {name}, {pct}% (+{more} más)',
   'Extending: {name}, {pct}%': 'Ampliando: {name}, {pct}%',
@@ -1737,4 +1734,6 @@ export const ES: Record<string, string> = {
   "Nobody reached the person in crisis: the police held them down and took them in. People saw it.": "Nadie llegó a la persona en crisis: la policía la redujo y se la llevó. La gente lo vio.",
   "Nobody reached the person in crisis: they collapsed in the street and the ambulance took them.": "Nadie llegó a la persona en crisis: se desplomó en la calle y se la llevó la ambulancia.",
   "Someone in acute crisis on the street": "Alguien en crisis aguda en la calle",
+  "Paused. Press to play at 1x (Space)": "En pausa. Pulsa para jugar a 1x (Espacio)",
+  "Speed {speed}x. Press to pause (Space)": "Velocidad {speed}x. Pulsa para pausar (Espacio)",
 };

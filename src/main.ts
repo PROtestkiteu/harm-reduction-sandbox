@@ -307,12 +307,13 @@ let speed = 1;
 let dirty = true;
 
 const hud = new Hud(hudRoot, {
-  onTogglePause: () => setPaused(!paused),
+  // 0 is the toggle's pause step: the speed is kept for when play resumes.
   onSpeed: (s) => {
+    if (s === 0) { setPaused(true); return; }
     speed = s;
+    if (paused) setPaused(false);
     hud.setSpeed(s);
     if (s > 1) markTried('speed');
-    if (paused) setPaused(false);
   },
   onService: (id, on) => {
     sim.setEnabled(id, on);

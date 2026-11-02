@@ -16,7 +16,6 @@ import { METRIC_KEYS, MetricTrend, sparkPoints, TREND_BUCKET_MINUTES, TREND_BUCK
 import { LOCALE, plural, t } from '../i18n';
 
 export interface HudCallbacks {
-  onTogglePause(): void;
   onSpeed(speed: number): void;
   onService(id: ServiceId, on: boolean): void;
   /** A location label was activated; `null` closes the selection. */
@@ -263,8 +262,9 @@ export class Hud {
   private folded = false;
   /** Where the replies started when last unfolded, so framing holds still while folded. */
   private optionsTopUnfolded = 0;
-  private readonly continueBtn: HTMLButtonElement;
-  private readonly continueLabel: HTMLSpanElement;
+  /** Building work under way: a slim strip at the foot of the panel (no bar to press; pausing is on the speed toggle). */
+  private readonly works: HTMLElement;
+  private paused = false;
   private readonly worksFill: HTMLSpanElement;
   private readonly worksText: HTMLSpanElement;
   private readonly speedBtn: HTMLButtonElement;
@@ -355,8 +355,9 @@ export class Hud {
     this.clock = el('span', 'clock', '19:40');
     this.clock.setAttribute('aria-label', t('Scene clock'));
     // One toggle beside the clock steps through the speeds.
+    // One toggle steps 1x, 4x, 16x, then pause (0), then 1x again; Space pauses too.
     this.speedBtn = button('speed-toggle', '1x');
-    this.speedBtn.addEventListener('click', () => cb.onSpeed(SPEEDS[(SPEEDS.indexOf(this.speed as (typeof SPEEDS)[number]) + 1) % SPEEDS.length]));
+    this.speedBtn.addEventListener('click', () => cb.onSpeed(this.paused ? SPEEDS[0] : this.speed === SPEEDS[SPEEDS.length - 1] ? 0 : SPEEDS[SPEEDS.indexOf(this.speed as (typeof SPEEDS)[number]) + 1]));
     const time = el('div', 'column-time');
     time.append(this.clock, this.speedBtn);
     // Money on hand, always in view: everything priced is greyed out when it runs short.
@@ -723,13 +724,14 @@ export class Hud {
     this.resetOpt = opt(reset);
     this.resetOpt.hidden = true;
 
-    this.continueBtn = button('continue');
-    this.continueLabel = el('span', 'continue-label', t('Pause'));
+    this.works = el('div', 'works-bar');
+    this.works.setAttribute('role', 'status');
+    this.works.hidden = true;
     this.worksFill = el('span', 'works-fill');
     this.worksText = el('span', 'works-text');
-    this.worksFill.hidden = this.worksText.hidden = true;
-    this.continueBtn.append(this.worksFill, this.continueLabel, this.worksText);
-    this.continueBtn.addEventListener('click', () => cb.onTogglePause());
+    const track = el('span', 'works-track');
+    track.append(this.worksFill);
+    this.works.append(this.worksText, track);
 
     // City services under pressure: three small meters under the top line.
     // The meters sit in their own size container, so their grid follows the room they have.
@@ -759,7 +761,7 @@ export class Hud {
       meters.append(m);
       this.stressFill[key] = fill;
     }
-    this.column.append(this.foldBtn, top, this.stressRow, this.unmet, this.eventsSlot, this.log, this.options, this.continueBtn);
+    this.column.append(this.foldBtn, top, this.stressRow, this.unmet, this.eventsSlot, this.log, this.options, this.works);
     // Phones: the clock, money and meters live in a block at the top of the screen; the sheet keeps the rest.
     this.topBar = el('div', 'top-bar');
     const placeIndicators = () => {
@@ -816,15 +818,14 @@ export class Hud {
   }
 
   setPaused(paused: boolean): void {
-    setText(this.continueLabel, paused ? t('Continue') : t('Pause'));
-    setAttr(this.continueBtn, 'aria-pressed', String(paused));
-    setAttr(this.continueBtn, 'aria-label', paused ? t('Continue the simulation (Space)') : t('Pause the simulation (Space)'));
+    this.paused = paused;
+    this.setSpeed(this.speed);
   }
 
   /** Building work under way, shown as a fill across the Pause bar. Empty hides it. */
   setWorks(works: readonly { name: string; progress: number; building: boolean }[]): void {
     const on = works.length > 0;
-    this.worksFill.hidden = this.worksText.hidden = !on;
+    if (this.works.hidden === on) this.works.hidden = !on;
     if (!on) return;
     const w = works[0];
     const pct = Math.round(100 * Math.min(1, Math.max(0, w.progress)));
@@ -837,10 +838,15 @@ export class Hud {
 
   setSpeed(speed: number): void {
     this.speed = speed;
-    setText(this.speedBtn, `${speed}x`);
-    const next = SPEEDS[(SPEEDS.indexOf(speed as (typeof SPEEDS)[number]) + 1) % SPEEDS.length];
-    setAttr(this.speedBtn, 'aria-label', t('Speed {speed}x. Switch to {next}x', { speed, next }));
-    this.speedBtn.dataset.fast = String(speed > 1);
+    const p = this.paused;
+    setText(this.speedBtn, p ? '\u2016' : `${speed}x`);
+    const last = speed === SPEEDS[SPEEDS.length - 1];
+    setAttr(this.speedBtn, 'aria-label', p
+      ? t('Paused. Press to play at 1x (Space)')
+      : last ? t('Speed {speed}x. Press to pause (Space)', { speed }) : t('Speed {speed}x. Switch to {next}x', { speed, next: SPEEDS[SPEEDS.indexOf(speed as (typeof SPEEDS)[number]) + 1] }));
+    setAttr(this.speedBtn, 'aria-pressed', String(p));
+    this.speedBtn.dataset.fast = String(!p && speed > 1);
+    if (this.speedBtn.dataset.paused !== String(p)) this.speedBtn.dataset.paused = String(p);
   }
 
   /** Offers the overview option only while the camera is away from it. */

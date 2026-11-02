@@ -46,10 +46,7 @@ export const PL: Record<string, string> = {
   'Services ({on}/{all}).': 'Usługi ({on}/{all}).',
 
   // Pause bar and speed
-  'Pause': 'Pauza',
   'Continue': 'Dalej',
-  'Continue the simulation (Space)': 'Wznów symulację (spacja)',
-  'Pause the simulation (Space)': 'Wstrzymaj symulację (spacja)',
   'Extending: {name}, {pct}% (+{more} more)': 'Rozbudowa: {name}, {pct}% (i jeszcze {more})',
   'Scaling down: {name}, {pct}% (+{more} more)': 'Ograniczanie: {name}, {pct}% (i jeszcze {more})',
   'Extending: {name}, {pct}%': 'Rozbudowa: {name}, {pct}%',
@@ -1787,4 +1784,6 @@ export const PL: Record<string, string> = {
   "Nobody reached the person in crisis: the police held them down and took them in. People saw it.": "Nikt nie dotarł do osoby w kryzysie: policja ją obezwładniła i zabrała. Ludzie to widzieli.",
   "Nobody reached the person in crisis: they collapsed in the street and the ambulance took them.": "Nikt nie dotarł do osoby w kryzysie: zasłabła na ulicy i zabrała ją karetka.",
   "Someone in acute crisis on the street": "Osoba w ostrym kryzysie na ulicy",
+  "Paused. Press to play at 1x (Space)": "Pauza. Naciśnij, żeby grać w 1x (Spacja)",
+  "Speed {speed}x. Press to pause (Space)": "Prędkość {speed}x. Naciśnij, żeby zatrzymać (Spacja)",
 };

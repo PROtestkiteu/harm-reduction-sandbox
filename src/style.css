@@ -17,7 +17,7 @@
  * (bottom sheet on phones) fades in over the street; the selected place or
  * person speaks in it with their name in hand-lettered marker, the words in
  * a plain condensed sans, controls are numbered red replies,
- * and a solid red bar pauses or continues. Soft shadows and a faint grain;
+ * and the speed toggle by the clock also pauses. Soft shadows and a faint grain;
  * no cards, frames or rounded corners.
  */
 
@@ -503,39 +503,22 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
 .speed { min-width: 44px; min-height: 44px; text-align: center; color: var(--reply); font-variant-numeric: tabular-nums; }
 .speed[aria-pressed='true'] { color: var(--reply-hover); text-decoration: underline; text-underline-offset: 4px; text-decoration-thickness: 2px; }
 
-/* The one solid thing on screen: a red bar. */
-.continue {
-  width: 100%;
-  min-height: 48px;
-  background: var(--bar);
-  color: var(--bar-text);
-  font-family: var(--body); font-weight: 500;
-  font-size: 16px;
-  text-align: center;
-  font-size: 19px;
-  letter-spacing: 0.04em;
-  background-image: var(--grain), linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(0, 0, 0, 0.18));
-}
-
-/* Building work in progress: a lighter band filling the bar, with a caption. */
-.continue { position: relative; overflow: hidden; }
-.continue-label, .works-text { position: relative; display: block; }
-.continue [hidden] { display: none; }
-.works-text { font-size: 13px; letter-spacing: 0.02em; opacity: 0.85; margin-top: 2px; }
+/* Building work under way: a caption and a slim gold track at the foot of the panel. */
+.works-bar { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; font-size: 13px; color: var(--muted); }
+.works-bar[hidden] { display: none; }
+.works-track { display: block; height: 3px; background: color-mix(in srgb, var(--muted) 28%, transparent); overflow: hidden; }
 .works-fill {
-  position: absolute;
-  inset: 0;
-  background: rgba(9, 10, 12, 0.2);
+  display: block;
+  height: 100%;
+  background: var(--reply);
   transform-origin: left center;
   transition: transform 0.25s linear;
 }
 @media (prefers-reduced-motion: reduce) {
   .works-fill { transition: none; }
 }
-
-@media (hover: hover) {
-  .continue:hover { background: var(--bar-hover); }
-}
+/* Paused, the speed toggle shows a pause sign in the bar's gold. */
+.speed-toggle[data-paused='true'] { background: var(--bar); border-color: var(--bar); color: var(--bar-text); font-weight: 700; }
 
 /* Hover tooltip over the scene: bare text with a soft shadow. */
 
@@ -677,7 +660,6 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
   .column[data-folded] { padding-top: 56px; }
   .opt .long { display: none; }
   .opt .short { display: inline; }
-  .continue { min-height: 46px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1806,7 +1788,6 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
   .column .options { margin: 0 0 4px; row-gap: 0; }
   .column .log { max-height: 28dvh; padding: 2px 0; }
   .column .column-events { margin-top: 4px; }
-  .continue { min-height: 40px; }
 }
 @media (max-width: 760px) {
   /* Money and 'turned away' never touch: a gap, and the count shrinks first. */
@@ -1938,7 +1919,6 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
   .opt { min-height: 40px; }
   .svc-row .opt { min-height: 40px; }
   /* Pinned to the foot: a soft fade above it and solid sheet colour below, so rows scroll out of sight. */
-  .continue { position: sticky; bottom: 0; flex: none; z-index: 1; box-shadow: 0 -8px 12px rgba(var(--fade), 0.95), 0 24px 0 12px rgb(var(--fade)); }
   .top-bar { width: min(58vw, 250px); padding: 6px 9px 7px; border-top-width: 2px; }
   .top-bar .clock, .top-bar .money { font-size: 15px; }
   .top-bar .column-sub { font-size: 12px; gap: 6px; }
@@ -2164,7 +2144,6 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
   .column[data-folded] .notice-strip { display: none; }
   .goals-strip, .notice-strip { margin-top: 2px; }
   /* Room above Pause, whose fade would otherwise sit on an open layer's last line. */
-  .column[data-layer] .continue { margin-top: 12px; }
   /* The open feed scrolls with the sheet, not inside a box of its own. */
   .column[data-layer='events'] .events { max-height: none; overflow: visible; }
   .notice-strip li:not(:first-child) { display: none; }
@@ -2203,7 +2182,6 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
   .column .clock { font-size: 20px; }
   .column .line { font-size: 15px; }
   .column .opt { min-height: 36px; }
-  .continue { position: sticky; bottom: 0; min-height: 40px; z-index: 1; box-shadow: 0 -8px 12px rgba(var(--fade), 0.95); }
   .portrait[data-who='player'] { display: none; }
   .portrait { width: 96px; bottom: max(10px, env(safe-area-inset-bottom)); }
   .portrait figcaption { font-size: 12px; }

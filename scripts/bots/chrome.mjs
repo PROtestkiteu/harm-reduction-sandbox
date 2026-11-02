@@ -8,7 +8,7 @@
 // runs, so the city's layout (random per launch) is the same on every run.
 
 import { spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -20,6 +20,80 @@ const seeded = (seed) => `(() => { let a = ${Number(seed)} >>> 0; Math.random = 
   a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
   return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();`;
 
+const PREFIX = 'hrs-chrome-';
+/** Chromes this process started and has not closed yet, with their profiles. */
+const live = new Set();
+
+/** Resolves true once `child` has exited, or false after `ms`. */
+const exited = (child, ms) => (child.exitCode !== null || child.signalCode !== null
+  ? Promise.resolve(true)
+  : Promise.race([new Promise((r) => child.once('exit', () => r(true))), sleep(ms).then(() => false)]));
+
+/**
+ * Closes Chrome the way it expects: Browser.close over the browser's own
+ * DevTools socket, so it shuts down cleanly (and macOS removes its code-signing
+ * clone). Only if it is still running after 5 s, SIGTERM, then SIGKILL. Then
+ * the profile goes.
+ */
+async function close(run) {
+  live.delete(run);
+  const { chrome, port, profile } = run;
+  if (!(await exited(chrome, 0))) {
+    try {
+      const v = await (await fetch(`http://127.0.0.1:${port}/json/version`, { signal: AbortSignal.timeout(1500) })).json();
+      const ws = new WebSocket(v.webSocketDebuggerUrl);
+      await new Promise((ok, fail) => { ws.addEventListener('open', ok); ws.addEventListener('error', fail); });
+      ws.send(JSON.stringify({ id: 1, method: 'Browser.close' }));
+    } catch { /* not answering: the signals below */ }
+    if (!(await exited(chrome, 5000))) {
+      chrome.kill('SIGTERM');
+      if (!(await exited(chrome, 3000))) { chrome.kill('SIGKILL'); await exited(chrome, 2000); }
+    }
+  }
+  try { rmSync(profile, { recursive: true, force: true }); } catch { /* left for the next launch's sweep */ }
+}
+
+// Interrupted (Ctrl-C, a kill, an uncaught error): close every Chrome cleanly and remove its profile, then exit.
+let quitting = false;
+const quit = (code) => async (err) => {
+  if (quitting) return;
+  quitting = true;
+  if (err instanceof Error) console.error(err);
+  await Promise.all([...live].map(close));
+  process.exit(code);
+};
+process.once('SIGINT', quit(130));
+process.once('SIGTERM', quit(143));
+process.once('uncaughtException', quit(1));
+process.once('unhandledRejection', quit(1));
+
+/**
+ * Removes profiles that earlier runs left behind (a crash, a power cut): a
+ * folder is stale when its Chrome lock is missing or names a process that is
+ * gone, and it is over a minute old (a brand-new folder may not have its lock
+ * yet). Runs once per process, at the first launch.
+ */
+let swept = false;
+function sweep() {
+  if (swept) return;
+  swept = true;
+  const dir = tmpdir();
+  for (const name of readdirSync(dir)) {
+    if (!name.startsWith(PREFIX)) continue;
+    const path = join(dir, name);
+    try {
+      if (Date.now() - statSync(path).mtimeMs < 60_000) continue;
+      let alive = false;
+      try {
+        // The lock is a symlink to "host-pid".
+        const pid = Number(readlinkSync(join(path, 'SingletonLock')).split('-').pop());
+        if (pid > 0) { process.kill(pid, 0); alive = true; }
+      } catch { /* no lock, or its process is gone */ }
+      if (!alive) rmSync(path, { recursive: true, force: true });
+    } catch { /* gone already, or not ours to read */ }
+  }
+}
+
 /**
  * Opens `url`, runs `steps` in order and returns what each `eval` step gave
  * back. Page errors are printed to stderr. Screenshots and profiles go to `out`.
@@ -27,11 +101,14 @@ const seeded = (seed) => `(() => { let a = ${Number(seed)} >>> 0; Math.random = 
 export async function drive(url, steps, { out = '.', size = '1280x800', seed = process.env.SEED, settle = 9000, log = console.log } = {}) {
   const [w, h] = size.split('x').map(Number);
   const port = 9300 + Math.floor(Math.random() * 500);
-  const profile = mkdtempSync(join(tmpdir(), 'hrs-chrome-'));
+  sweep();
+  const profile = mkdtempSync(join(tmpdir(), PREFIX));
   const chrome = spawn(CHROME, [
     '--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, `--window-size=${w},${h}`,
     '--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--autoplay-policy=no-user-gesture-required', 'about:blank',
   ], { stdio: 'ignore' });
+  const run = { chrome, port, profile };
+  live.add(run);
   const results = [];
   try {
     let target;
@@ -80,11 +157,8 @@ export async function drive(url, steps, { out = '.', size = '1280x800', seed = p
     }
     ws.close();
   } finally {
-    // Chrome writes its profile while it shuts down: wait for it to exit before removing the folder.
-    const exited = new Promise((r) => chrome.once('exit', r));
-    chrome.kill();
-    await Promise.race([exited, sleep(5000)]);
-    try { rmSync(profile, { recursive: true, force: true }); } catch { /* left for the OS to clear from the temp folder */ }
+    // Chrome writes its profile while it shuts down: close it, wait for it to exit, then remove the folder.
+    if (!quitting) await close(run);
   }
   return results;
 }
