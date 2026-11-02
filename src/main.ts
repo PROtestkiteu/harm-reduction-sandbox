@@ -704,12 +704,18 @@ function queueContext(): void {
 
 // Random events: manual triggers wait for the next frame like slider input.
 const pendingTriggers: EventId[] = [];
+let pausedBeforeDetail = false;
 const feed = new EventFeed(hud.eventsSlot, {
   onTrigger: (id) => {
     pendingTriggers.push(id);
     dirty = true;
   },
   onFocus: (id) => focusPlace(EVENT_PLACE[id]),
+  // An event's details box holds the clock while it is open, and leaves a pause the player chose alone.
+  onDetail: (open) => {
+    if (open) { pausedBeforeDetail = paused; setPaused(true); }
+    else if (!pausedBeforeDetail) setPaused(false);
+  },
   // One layer at a time: the feed and tonight's goals never stand open together.
   onToggle: (open) => {
     if (open) goalsStrip.setOpen(false);

@@ -1634,4 +1634,10 @@ export const PT: Record<string, string> = {
   "Start the night": "Começar a noite",
   "Next": "Seguinte",
   "When nothing is selected, the side panel is us: it names your next step. Tonight it walks you through the first ones.": "Quando nada está selecionado, o painel lateral somos nós: diz-te o próximo passo. Esta noite guia-te pelos primeiros.",
+  "{left} min left": "faltam {left} min",
+  "{collapsed} collapsed, {helped} reached": "{collapsed} desmaios, {helped} assistidos",
+  "alert out": "alerta emitido",
+  "detected": "detetado",
+  "not detected": "não detetado",
+  "Close": "Fechar",
 };

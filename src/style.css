@@ -2265,3 +2265,37 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
 /* A closed or switched-off place does not grow: its investment bar under the name goes grey. */
 .loc-label[data-status='closed'] .level-fill { background: #8a8278; }
 .loc-label[data-status='closed'] .level-bar { opacity: 0.7; }
+
+/*
+ * Tonight's events as rows: the kind, the title and one short line of how it stands, each row one
+ * tap target opening the event's box (what happens, what helps, the sources).
+ */
+button.event-card {
+  display: block; width: 100%; text-align: left; cursor: pointer; color: var(--text);
+  font: inherit; font-size: 14px; min-height: 44px; -webkit-tap-highlight-color: transparent;
+}
+.event-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+.event-head::after { content: '›'; margin-left: auto; color: var(--reply); font-size: 18px; line-height: 1; }
+.event-line { display: block; margin-top: 2px; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+button.event-card:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+@media (hover: hover) { button.event-card:hover .event-title { color: var(--reply-hover); } }
+
+/* The event's box: the story, then the settings that help, then its sources. */
+.event-detail { border-top-color: var(--closed); }
+.event-detail[data-kind='supply'] { border-top-color: var(--closing); }
+.event-detail[data-kind='health'] { border-top-color: #e0503c; }
+.event-detail[data-kind='person'] { border-top-color: var(--opening); }
+.event-detail[data-kind='service'] { border-top-color: #8f8aa0; }
+.event-detail[data-kind='setting'] { border-top-color: var(--switch-on); }
+.event-detail .event-status { margin: 0; color: var(--muted); font-size: 14px; }
+.event-detail .event-counts { margin: 2px 0 0; font-size: 14px; }
+.event-detail .event-counts[hidden] { display: none; }
+.event-detail .event-body p { margin: 10px 0 0; }
+.event-detail .event-mitigation { color: var(--muted); }
+.event-detail .event-hints { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; margin: 12px 0 4px; }
+.event-detail .btn.hint {
+  min-height: 40px; padding: 0 2px; background: none; border: 0; color: var(--reply);
+  font: 500 15px var(--body); cursor: pointer; text-align: left;
+}
+.event-detail .sources { margin: 8px 0 14px; font-size: 13px; }
+.event-detail .sources > summary { cursor: pointer; color: var(--muted); min-height: 36px; display: flex; align-items: center; }

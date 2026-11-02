@@ -9,6 +9,8 @@ export interface EventFeedCallbacks {
   onHint(hint: Hint): void;
   /** An event's card was opened: bring where it happens into view. */
   onFocus(id: EventId): void;
+  /** The event's details box opened or closed (the clock waits while it is open). */
+  onDetail?(open: boolean): void;
   /** The heading opened or folded the feed. */
   onToggle?(open: boolean): void;
 }
@@ -30,12 +32,11 @@ export function hintInputId(hint: Hint): string {
   return `org-${hint.org}`;
 }
 
+/** A row in the feed: the event's kind and title, and one short line of how it stands. */
 interface Card {
-  root: HTMLDetailsElement;
-  status: HTMLElement;
-  counts: HTMLElement;
-  statusText: string;
-  countsText: string;
+  root: HTMLButtonElement;
+  line: HTMLElement;
+  lineText: string;
 }
 
 /**
@@ -54,8 +55,12 @@ export class EventFeed {
   /** Which events belong to what is selected, or null to show them all. */
   private match: ((id: EventId) => boolean) | null = null;
   private active: readonly ActiveEvent[] = [];
+  private readonly detail: EventDetail;
+  /** The clock at the last refresh, for a box opened between refreshes. */
+  private clock = 0;
 
   constructor(parent: HTMLElement, private readonly cb: EventFeedCallbacks) {
+    this.detail = new EventDetail(cb);
     this.root = el('section', 'events');
     this.root.setAttribute('aria-label', t('Events tonight'));
     // The heading folds the feed away; folded by default so the scene stays clear.
@@ -112,6 +117,7 @@ export class EventFeed {
     }
     for (const e of active) if (!this.cards.has(e)) this.list.prepend(this.buildCard(e));
     this.active = active;
+    this.detail.ended(active);
     this.applyFilter();
     const ended = recent.slice(0, 2).map((e) => e.acuteHarms
       ? t('{event} ({collapsed} collapsed, {helped} reached by staff)', { event: EVENTS[e.id].label, collapsed: e.acuteHarms, helped: e.helped })
@@ -152,47 +158,108 @@ export class EventFeed {
     if (this.heading.textContent !== text) this.heading.textContent = text;
   }
 
-  /** Cheap per-refresh update of status and counts. */
+  /** Cheap per-refresh update: each row's short line, and the open box's status and counts. */
   refresh(clock: number): void {
+    this.clock = clock;
     for (const [e, card] of this.cards) {
-      const def = EVENTS[e.id];
-      const left = Math.max(0, Math.round(e.endsAt - clock));
-      let status = t('Since {time}, about {left} min left', { time: formatClock(e.startedAt), left });
-      if (def.affects.length) {
-        status = e.alerted
-          ? t('Public alert out. {status}', { status })
-          : e.detectedAt !== null
-            ? t('Detected by checking at {time}, no public alert. {status}', { time: formatClock(e.detectedAt), status })
-            : t('Not detected yet. {status}', { status });
-      }
-      if (status !== card.statusText) {
-        card.statusText = status;
-        card.status.textContent = status;
-      }
-      const counts = def.affects.length ? t('{collapsed} collapsed: {helped} reached by staff, {alone} alone', { collapsed: e.acuteHarms, helped: e.helped, alone: e.alone }) : '';
-      if (counts !== card.countsText) {
-        card.countsText = counts;
-        card.counts.textContent = counts;
-        card.counts.hidden = !counts;
+      const line = shortLine(e, clock);
+      if (line !== card.lineText) {
+        card.lineText = line;
+        card.line.textContent = line;
       }
     }
+    this.detail.refresh(clock);
   }
 
-  private buildCard(e: ActiveEvent): HTMLDetailsElement {
+  private buildCard(e: ActiveEvent): HTMLButtonElement {
     const def = EVENTS[e.id];
-    const root = el('details', 'event-card');
+    // One tap target: the kind, the title and how it stands; the story and what helps open in a box.
+    const root = el('button', 'event-card');
+    root.type = 'button';
     root.dataset.kind = def.kind;
-    // Collapsed to one line; opening a card shows the details and the sliders that help.
-    root.open = false;
-    root.addEventListener('toggle', () => { if (root.open) this.cb.onFocus(e.id); });
-    const summary = el('summary');
-    summary.append(el('span', 'event-kind', KIND_LABELS[def.kind]), el('span', 'event-title', def.label));
-    const status = el('p', 'event-status');
-    const counts = el('p', 'event-counts');
-    const body = el('div', 'event-body');
-    // Open, a card shows only what to do (the settings that help); the story and sources wait behind "More".
-    const more = el('details', 'event-more');
-    more.append(el('summary', undefined, t('More')), el('p', undefined, def.happens), el('p', 'event-mitigation', def.mitigation));
+    root.setAttribute('aria-haspopup', 'dialog');
+    const head = el('span', 'event-head');
+    head.append(el('span', 'event-kind', KIND_LABELS[def.kind]), el('span', 'event-title', def.label));
+    const line = el('span', 'event-line');
+    root.append(head, line);
+    root.addEventListener('click', () => {
+      this.cb.onFocus(e.id);
+      this.detail.show(e, this.clock);
+    });
+    this.cards.set(e, { root, line, lineText: '' });
+    return root;
+  }
+}
+
+/** The row's line: minutes left, then who collapsed and was reached, then whether checking caught it. */
+function shortLine(e: ActiveEvent, clock: number): string {
+  const def = EVENTS[e.id];
+  const parts = [t('{left} min left', { left: Math.max(0, Math.round(e.endsAt - clock)) })];
+  if (def.affects.length) {
+    if (e.acuteHarms) parts.push(t('{collapsed} collapsed, {helped} reached', { collapsed: e.acuteHarms, helped: e.helped }));
+    parts.push(e.alerted ? t('alert out') : e.detectedAt !== null ? t('detected') : t('not detected'));
+  }
+  return parts.join(' · ');
+}
+
+/** Full status, as the details box says it. */
+function fullStatus(e: ActiveEvent, clock: number): { status: string; counts: string } {
+  const def = EVENTS[e.id];
+  const left = Math.max(0, Math.round(e.endsAt - clock));
+  let status = t('Since {time}, about {left} min left', { time: formatClock(e.startedAt), left });
+  if (def.affects.length) {
+    status = e.alerted
+      ? t('Public alert out. {status}', { status })
+      : e.detectedAt !== null
+        ? t('Detected by checking at {time}, no public alert. {status}', { time: formatClock(e.detectedAt), status })
+        : t('Not detected yet. {status}', { status });
+  }
+  const counts = def.affects.length ? t('{collapsed} collapsed: {helped} reached by staff, {alone} alone', { collapsed: e.acuteHarms, helped: e.helped, alone: e.alone }) : '';
+  return { status, counts };
+}
+
+/**
+ * An event's details, as a box over the game, after the event windows of
+ * management games: what is happening, how it stands, what helps (each opens
+ * its setting), and the sources behind it. Status and counts stay live while
+ * it is open; the clock waits (through `onDetail`).
+ */
+class EventDetail {
+  private readonly dialog: HTMLDialogElement;
+  private readonly kind: HTMLElement;
+  private readonly title: HTMLElement;
+  private readonly status: HTMLElement;
+  private readonly counts: HTMLElement;
+  private readonly body: HTMLElement;
+  private event: ActiveEvent | null = null;
+
+  constructor(private readonly cb: EventFeedCallbacks) {
+    this.dialog = el('dialog', 'welcome event-popup event-detail');
+    this.dialog.setAttribute('aria-labelledby', 'event-detail-title');
+    this.kind = el('p', 'intro-step');
+    this.title = el('h2');
+    this.title.id = 'event-detail-title';
+    this.status = el('p', 'event-status');
+    this.counts = el('p', 'event-counts');
+    this.body = el('div', 'event-body');
+    const close = el('button', 'welcome-start', t('Close'));
+    close.type = 'button';
+    close.addEventListener('click', () => this.dialog.close());
+    this.dialog.append(this.kind, this.title, this.status, this.counts, this.body, close);
+    this.dialog.addEventListener('close', () => {
+      this.event = null;
+      this.cb.onDetail?.(false);
+    });
+    this.dialog.addEventListener('click', (ev) => { if (ev.target === this.dialog) this.dialog.close(); });
+    document.body.append(this.dialog);
+  }
+
+  show(e: ActiveEvent, clock: number): void {
+    const def = EVENTS[e.id];
+    this.event = e;
+    this.dialog.dataset.kind = def.kind;
+    this.kind.textContent = KIND_LABELS[def.kind];
+    this.title.textContent = def.label;
     const hints = el('div', 'event-hints');
     hints.append(el('span', 'hints-label', t('Helps:')));
     for (const h of def.hints) {
@@ -200,7 +267,8 @@ export class EventFeed {
       if ('org' in h) b.dataset.org = 'true';
       b.type = 'button';
       b.title = t('Open this setting');
-      b.addEventListener('click', () => this.cb.onHint(h));
+      // The box steps aside for the setting it opens.
+      b.addEventListener('click', () => { this.dialog.close(); this.cb.onHint(h); });
       hints.append(b);
     }
     const sources = el('details', 'sources');
@@ -213,11 +281,26 @@ export class EventFeed {
       list.append(li);
     }
     sources.append(list);
-    more.append(sources);
-    body.append(hints, more);
-    root.append(summary, status, counts, body);
-    this.cards.set(e, { root, status, counts, statusText: '', countsText: '' });
-    return root;
+    this.body.replaceChildren(el('p', undefined, def.happens), el('p', 'event-mitigation', def.mitigation), hints, sources);
+    this.refresh(clock);
+    if (!this.dialog.open) {
+      this.dialog.showModal();
+      this.cb.onDetail?.(true);
+    }
+  }
+
+  refresh(clock: number): void {
+    const e = this.event;
+    if (!e) return;
+    const { status, counts } = fullStatus(e, clock);
+    if (this.status.textContent !== status) this.status.textContent = status;
+    if (this.counts.textContent !== counts) this.counts.textContent = counts;
+    this.counts.hidden = !counts;
+  }
+
+  /** The event ended while its box was open: the box closes. */
+  ended(active: readonly ActiveEvent[]): void {
+    if (this.event && !active.includes(this.event)) this.dialog.close();
   }
 }
 
