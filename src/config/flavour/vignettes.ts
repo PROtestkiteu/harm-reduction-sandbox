@@ -18,9 +18,9 @@ export const BUSKER = {
 
 /** Smokers by the club, beside the door on the side away from the queue (metres along the wall, out from it). */
 export const SMOKERS = [
-  { along: -2.6, out: 0.45 },
-  { along: -3.4, out: 0.6 },
-  { along: -4.4, out: 0.4 },
+  { along: -2.6, out: 0.22 },
+  { along: -3.4, out: 0.3 },
+  { along: -4.4, out: 0.22 },
 ] as const;
 
 /** Delivery riders wait with their bikes on the ring's east pavement by the takeaway corner, then ride off. */

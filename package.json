@@ -7,7 +7,10 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "bots": "node scripts/bots/run-bots.mjs",
+    "perf": "node scripts/bots/perf.mjs",
+    "clearance": "node scripts/bots/clearance.mjs"
   },
   "dependencies": {
     "@fontsource/roboto-condensed": "5.3.0",

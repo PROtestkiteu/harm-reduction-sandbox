@@ -5,6 +5,7 @@ import { POCKET_PARKS } from '../infill';
 import { range } from '../../sim/random';
 import { fade, walkTo, type Actor } from './actors';
 import type { FlavourContext, Pack, PackDeps } from './index';
+import { seatClear } from './squatDoors';
 import { belongings, bikeProp } from './props';
 
 /**
@@ -30,7 +31,7 @@ interface Buyer {
   lightIn: number;
 }
 
-interface Sitter { a: Actor; spot: UseSpot; nodIn: number; lightIn: number }
+interface Sitter { a: Actor; spot: UseSpot; nodIn: number; lightIn: number; clear: boolean }
 
 /**
  * The fixed spots plus this launch's pocket parks: the first gets a seller and
@@ -114,7 +115,7 @@ export function buildStreet({ pool, board, random, scene }: PackDeps): Pack {
     a.heading = spot.face;
     a.pose = spot.pose;
     a.voice = 'user';
-    return { a, spot, nodIn: 10 + random() * 30, lightIn: random() * 40 };
+    return { a, spot, nodIn: 10 + random() * 30, lightIn: random() * 40, clear: true };
   };
   const residents = RESIDENT_USERS.map(sitter);
   const squatters: Sitter[] = [];
@@ -276,6 +277,7 @@ export function buildStreet({ pool, board, random, scene }: PackDeps): Pack {
         s.a.x = door.x + door.ax * seat.along + door.nx * (seat.out - 0.6);
         s.a.z = door.z + door.az * seat.along + door.nz * (seat.out - 0.6);
         s.a.heading = Math.atan2(door.nx, door.nz);
+        s.clear = seatClear(s.a.x, s.a.z);
         n++;
       });
       const bag = squatBags[d];
@@ -317,7 +319,7 @@ export function buildStreet({ pool, board, random, scene }: PackDeps): Pack {
       const want = Math.max(1, Math.round(ctx.squat * SQUAT_SEATS.length));
       squatters.forEach((s, i) => {
         const seat = i % SQUAT_SEATS.length;
-        fade(s.a, i < squatShown && seat < want, dt, 0.8);
+        fade(s.a, i < squatShown && seat < want && s.clear, dt, 0.8);
         tickUser(s.a, s, dt);
         trySlump(s.a, s.spot.group, dt);
       });
