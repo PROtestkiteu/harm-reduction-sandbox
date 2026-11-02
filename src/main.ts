@@ -1,5 +1,6 @@
 import { QUALITY } from './render/quality';
 import { Vector3, WebGLRenderer } from 'three';
+import { cityBuilding } from './world/cityBuildings';
 import { LANG, LANG_KEY, t } from './i18n';
 import { ILLUSTRATIVE } from './config/illustrative';
 import { combineEffects, decodeContext, defaultContext, encodeContext, type ContextSelection } from './config/contextFactors';
@@ -298,6 +299,18 @@ const hud = new Hud(hudRoot, {
   onSelect: (id) => interaction.selectLocation(id),
   onResetView: () => interaction.resetView(),
   onToggleFocus: () => interaction.toggleFocus(),
+  onPersonPlace: () => {
+    const sel = interaction.selected;
+    const p = sel?.kind === 'person' ? crowd.person(sel.id) : undefined;
+    const place = p && placeOf(p);
+    if (!place) return;
+    if (place.location) interaction.selectLocation(place.location);
+    else if (place.building !== undefined) {
+      interaction.select({ kind: 'building', id: place.building });
+      const b = cityBuilding(place.building);
+      if (b) rig.lookAt(new Vector3((b.x0 + b.x1) / 2, 0, (b.z0 + b.z1) / 2));
+    }
+  },
   onAction: (service, action) => confirmSpend(placeDecision(service, action), () => queuePlaceAction(service, action)),
   onBuildingAction: (action) => confirmSpend(buildingDecision(action), () => queueBuildingAction(action)),
   onTitle: () => sandbox.setOpen(true),
@@ -361,6 +374,7 @@ const interaction = new Interaction({
   reducedMotion,
   buildingCard: (id) => cards.describeBuilding(id),
   personCamper: (p) => personCamperOffer(p),
+  personPlace: (p) => placeOf(p)?.name ?? null,
   vehicleCard: (id) => cards.describeVehicle(id),
   openMenu: (x, y) => {
     // Let the column catch up with the new selection first, so the menu lists its actions.
@@ -406,6 +420,20 @@ function camperSpotNear(x: number, z: number): number | null {
     if (e < d) { d = e; best = i; }
   });
   return best;
+}
+
+/**
+ * Where a person belongs: staff and visitors to their service, clubgoers and
+ * door staff to the club, officers to the police station. Others have none.
+ */
+function placeOf(p: PersonState): { name: string; location?: LocationId; building?: number } | null {
+  // A visitor's goal is the service they came for; staff carry theirs as `service`.
+  const goal = (SERVICE_IDS as readonly string[]).includes(p.goal ?? '') ? (p.goal as ServiceId) : undefined;
+  const service = p.crowding ?? p.service ?? goal;
+  const location: LocationId | null = p.role === 'clubgoer' || p.role === 'bouncer' ? 'club' : service ? (service === 'clubHr' ? 'club' : service) : null;
+  if (location) return { name: displayName('location', location, LOCATION_NAMES[location]), location };
+  if (p.role === 'police') return { name: displayName('building', world.landmarks.police, t('Police station')), building: world.landmarks.police };
+  return null;
 }
 
 function personCamperOffer(p: PersonState): PersonCamperOffer | null {

@@ -95,14 +95,8 @@ export class CameraRig {
    */
   pan(dx: number, dz: number, immediate: boolean): void {
     this.locked = false;
-    const lim = this.reach(this.targetZoom);
-    const x = clamp(this.targetFocus.x + dx, -lim, lim);
-    const z = clamp(this.targetFocus.z + dz, -lim, lim);
-    if (immediate) {
-      this.focus.x = clamp(this.focus.x + dx, -lim, lim);
-      this.focus.z = clamp(this.focus.z + dz, -lim, lim);
-    }
-    this.target(x, this.targetFocus.y, z, this.targetZoom);
+    if (immediate) this.within(this.focus.set(this.focus.x + dx, this.focus.y, this.focus.z + dz));
+    this.target(this.targetFocus.x + dx, this.targetFocus.y, this.targetFocus.z + dz, this.targetZoom);
   }
 
   /** One zoom step in (`+1`) or out (`-1`), from the current target. */
@@ -136,20 +130,23 @@ export class CameraRig {
   }
 
   /**
-   * How far the focus may travel at `zoom`: the full limit from the base
-   * scale in, less as the view widens, so zoomed out the screen still shows
-   * city and never the empty ground past its edge.
+   * Keeps a focus point within a circle of `limit` round the middle: every
+   * place in the district can be brought to the centre of the screen, but the
+   * corners past the city, where only empty ground shows, cannot.
    */
-  private reach(zoom: number): number {
-    return this.limit * Math.min(1, zoom);
+  private within(p: { x: number; z: number }): void {
+    const r = Math.hypot(p.x, p.z);
+    if (r <= this.limit) return;
+    p.x *= this.limit / r;
+    p.z *= this.limit / r;
   }
 
   private target(x: number, y: number, z: number, zoom: number): void {
     const zz = clamp(zoom, this.minZoom, MAX_ZOOM);
-    // Zooming out near the edge draws the view back towards the city.
-    const lim = this.reach(zz);
-    x = clamp(x, -lim, lim);
-    z = clamp(z, -lim, lim);
+    const p = { x, z };
+    this.within(p);
+    x = p.x;
+    z = p.z;
     if (this.targetFocus.x === x && this.targetFocus.y === y && this.targetFocus.z === z && zz === this.targetZoom) return;
     this.targetFocus.set(x, y, z);
     this.targetZoom = zz;

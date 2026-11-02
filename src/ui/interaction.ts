@@ -33,6 +33,8 @@ export interface InteractionDeps {
   openMenu(x: number, y: number): void;
   /** Whether a camper can be sent to this person, and how; null for someone a camper would not help. */
   personCamper(p: PersonState): PersonCamperOffer | null;
+  /** The place a person belongs to (their service, the club, the police station), by name; null if none. */
+  personPlace(p: PersonState): string | null;
 }
 
 const PERSON_ZOOM = 2.6;
@@ -159,7 +161,6 @@ export class Interaction {
       this.following = true;
       this.updatePersonCard();
     }
-    this.syncFocusButton();
     this.redraw = true;
   }
 
@@ -171,12 +172,8 @@ export class Interaction {
     if (sel.kind === 'location') {
       if (this.d.rig.focused) this.d.rig.release();
       else this.focusLocation(sel.id);
-    } else {
-      this.following = !this.following;
-      if (!this.following) this.d.rig.release();
-      this.updatePersonCard();
     }
-    this.syncFocusButton();
+    // A selected person is always followed: there is nothing to toggle.
   }
 
   resetView(): void {
@@ -185,7 +182,6 @@ export class Interaction {
       this.updatePersonCard();
     }
     this.d.rig.reset();
-    this.syncFocusButton();
   }
 
   private focusLocation(id: LocationId): void {
@@ -194,18 +190,11 @@ export class Interaction {
     this.d.rig.focusOn(this.scratch.set(f.x, 1.2, f.z), Math.max(1.6, zoom));
   }
 
-  private syncFocusButton(): void {
-    const sel = this.selection;
-    const focused = sel?.kind === 'person' ? this.following : this.d.rig.focused;
-    this.d.hud.setFocused(focused, sel?.kind === 'person');
-  }
-
   private updatePersonCard(): void {
     if (this.selection?.kind !== 'person') return;
     const p = this.d.crowd.person(this.selection.id);
     const card = p ? describePerson(p) : null;
-    this.d.hud.showPerson(card, this.following, this.leftTitle ?? undefined, p ? this.d.personCamper(p) : null);
-    this.syncFocusButton();
+    this.d.hud.showPerson(card, this.following, this.leftTitle ?? undefined, p ? this.d.personCamper(p) : null, p ? this.d.personPlace(p) : null);
   }
 
   // Per-frame work, called by the main loop after the crowd moved.
@@ -224,7 +213,6 @@ export class Interaction {
         if (this.following && rig.focused) rig.release();
         this.following = false;
         this.d.hud.showPerson(null, false, title);
-        this.syncFocusButton();
         this.redraw = true;
       } else {
         this.leftTitle = describePerson(p).title;
@@ -475,7 +463,6 @@ export class Interaction {
       if (target?.kind !== 'location') return;
       if (this.selection?.kind !== 'location' || this.selection.id !== target.id) this.select(target);
       if (!this.d.rig.focused) this.focusLocation(target.id);
-      this.syncFocusButton();
     });
     c.addEventListener('pointerup', (e) => lift(e, false));
     c.addEventListener('pointercancel', (e) => lift(e, true));
@@ -492,7 +479,6 @@ export class Interaction {
       this.releaseFollow();
       this.d.rig.zoomStep(this.wheel < 0 ? 1 : -1);
       this.wheel = 0;
-      this.syncFocusButton();
     }, { passive: false });
   }
 
@@ -502,7 +488,6 @@ export class Interaction {
       this.following = false;
       this.updatePersonCard();
     }
-    this.syncFocusButton();
   }
 
   /**
@@ -563,7 +548,6 @@ export class Interaction {
     this.lastTap = double ? null : { time: now, x, y, target: normal };
     if (double && normal?.kind === 'location') {
       if (!this.d.rig.focused) this.focusLocation(normal.id);
-      this.syncFocusButton();
       return;
     }
     if (double) return; // Double on a person: the first tap already follows them.
@@ -623,7 +607,6 @@ export class Interaction {
         if (this.selection || this.leftTitle !== null) this.select(null);
         else if (this.d.rig.focused) {
           this.d.rig.release();
-          this.syncFocusButton();
         }
         return;
       }
@@ -649,7 +632,6 @@ export class Interaction {
         const next = LOCATION_IDS[(current + step + LOCATION_IDS.length) % LOCATION_IDS.length];
         this.selectLocation(next);
         if (!this.d.rig.focused) this.focusLocation(next);
-        this.syncFocusButton();
         if (onLabel || document.activeElement === document.body) this.d.hud.labelFor(next).focus({ preventScroll: true });
       }
     });

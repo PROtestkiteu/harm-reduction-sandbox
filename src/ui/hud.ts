@@ -23,6 +23,8 @@ export interface HudCallbacks {
   onResetView(): void;
   /** Zoom onto the selection, or back out; follow or unfollow a person. */
   onToggleFocus(): void;
+  /** Go from a selected person to the place they belong to. */
+  onPersonPlace(): void;
   /** Something to do at the selected place: applied between simulation steps. */
   onAction(service: ServiceId, action: PlaceAction): void;
   /** Open the welcome box again. */
@@ -294,6 +296,8 @@ export class Hud {
   private readonly personCamperLong: HTMLElement;
   /** The camper offer for the selected person, kept so the reply can show while their card does. */
   private personCamper: PersonCamperOffer | null = null;
+  /** The selected person's place, for the Go to reply; null when they have none. */
+  private personPlace: string | null = null;
   private readonly staffGroupBtn: HTMLButtonElement;
   private readonly staffGroupLong: HTMLElement;
   private readonly staffGroupOpt: HTMLLIElement;
@@ -476,7 +480,8 @@ export class Hud {
     this.focusShort = el('span', 'short');
     this.focusShort.setAttribute('aria-hidden', 'true');
     this.focusBtn.append(this.focusLong, this.focusShort);
-    this.focusBtn.addEventListener('click', () => cb.onToggleFocus());
+    // On a person's card: go to their place (a selected person is always followed).
+    this.focusBtn.addEventListener('click', () => cb.onPersonPlace());
     this.focusOpt = opt(this.focusBtn);
     // For someone a camper could help: send one to the kerb nearest them.
     this.personCamperBtn = button('opt');
@@ -846,16 +851,6 @@ export class Hud {
     void changed;
   }
 
-  /** Reflects whether the camera is zoomed onto (or following) the selection. */
-  setFocused(focused: boolean, person = false): void {
-    const text = person ? (focused ? t('Stop following.') : t('Follow them.')) : focused ? t('Step back.') : t('Take a closer look.');
-    const short = person ? (focused ? t('Unfollow.') : t('Follow.')) : focused ? t('Step back.') : t('Look closer.');
-    setText(this.focusLong, text);
-    setText(this.focusShort, short);
-    setAttr(this.focusBtn, 'aria-label', text);
-    setAttr(this.focusBtn, 'aria-pressed', String(focused));
-    setAttr(this.focusBtn, 'title', focused ? t('Back to the overview (F)') : person ? t('Keep the camera on this person (F)') : t('Zoom in here (F, or double-click)'));
-  }
 
   /** Label button for a location, for keyboard focus moves. */
   labelFor(id: LocationId): HTMLButtonElement {
@@ -934,7 +929,7 @@ export class Hud {
   }
 
   /** Shows the person. `card` null means they have left the scene. */
-  showPerson(card: PersonCard | null, following: boolean, lastTitle?: string, camper: PersonCamperOffer | null = null): void {
+  showPerson(card: PersonCard | null, following: boolean, lastTitle?: string, camper: PersonCamperOffer | null = null, place: string | null = null): void {
     this.personCamper = card ? camper : null;
     if (this.personCamper) {
       setText(this.personCamperLong, this.personCamper.label);
@@ -951,10 +946,17 @@ export class Hud {
     setText(this.speaker, card?.title ?? lastTitle ?? t('Person'));
     setText(this.said, card ? `${card.activity}.` : t('Walked out of the scene.'));
     if (this.said.dataset.alert) delete this.said.dataset.alert;
-    const camera = !card ? '' : following ? ' ' + (card.inView ? t('The camera follows.') : t('Out of view inside; the camera waits.')) : '';
+    // The camera always follows a selected person; only say so when they are out of sight.
+    const camera = card && following && !card.inView ? ' ' + t('Out of view inside; the camera waits.') : '';
     setText(this.aside, card ? `${card.subtitle}.${camera}` : t('The camera returns to the overview.'));
-    // Only following a person stays a reply; looking closer is a double-click or pinch.
-    this.focusOpt.hidden = !card;
+    this.personPlace = card ? place : null;
+    if (place) {
+      const text = t('Go to {place}.', { place });
+      setText(this.focusLong, text);
+      setText(this.focusShort, text);
+      setAttr(this.focusBtn, 'aria-label', text);
+    }
+    this.focusOpt.hidden = !card || !place;
     const pr = card?.profile;
     const key = pr?.name ?? '';
     if (this.profileView.dataset.key !== key) {
@@ -1375,7 +1377,7 @@ export class Hud {
     if (m?.kind !== 'person') this.profileView.hidden = true;
     else this.profileView.hidden = !this.profileView.dataset.key;
     const open = this.servicesOpen;
-    this.focusOpt.hidden = m === null || open || m.kind !== 'person';
+    this.focusOpt.hidden = m === null || open || m.kind !== 'person' || !this.personPlace;
     this.personCamperOpt.hidden = m?.kind !== 'person' || open || !this.personCamper;
     if (m?.kind !== 'building') for (const o of this.buildingOpts) o.li.hidden = true;
     if (m?.kind !== 'location') {

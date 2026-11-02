@@ -191,6 +191,8 @@ export class OrgPanel {
     this.staff.hidden = true;
     this.recruiting = el('p', 'org-recruiting');
     const actions = el('div', 'org-actions');
+    // Hiring and letting go belong with the team, inside its fold.
+    const teamActions = el('div', 'org-actions org-team-actions');
     for (const id of Object.keys(RECRUIT) as RecruitId[]) {
       const r = RECRUIT[id];
       const b = el('button', 'btn org-action', id === 'hirePaid'
@@ -203,14 +205,14 @@ export class OrgPanel {
       b.title = t('{label}: about {hours} h. {summary}', { label: r.label, hours: (Math.round(r.minutes / 60 * 10) / 10).toLocaleString(LOCALE), summary: r.summary });
       b.addEventListener('click', () => cb.onRecruit(id));
       this.recruitBtns[id] = b;
-      actions.append(b);
+      teamActions.append(b);
     }
     const letGo = el('button', 'btn org-action', t('Let one go'));
     letGo.type = 'button';
     letGo.title = t('Saves {wage} per hour in wages.', { wage: price(ORG.wagePerHour) });
     letGo.id = 'org-letGo';
     letGo.addEventListener('click', () => cb.onLetGo());
-    actions.append(letGo);
+    teamActions.append(letGo);
     // A donation drive: its price on the reply; the detail is in the confirm box.
     this.driveBtn = el('button', 'btn org-action org-drive');
     this.driveBtn.type = 'button';
@@ -274,14 +276,14 @@ export class OrgPanel {
     team.classList.add('sandbox-sub');
     team.append(this.teamSummary, el('p', 'factor-summary', t('Pin someone to a service or send them to rest. Automatic places people where they fit best, paid staff first; tired people go home until rested.')));
     this.teamList = el('ul', 'team-list');
-    team.append(this.teamList);
+    team.append(this.recruiting, teamActions, this.teamList);
     // The long lists fold behind a reply of their own.
     const fold = (label: string, part: HTMLElement) => {
       const sub = el('details', 'sandbox-sub');
       sub.append(el('summary', undefined, label), part);
       return sub;
     };
-    this.section.append(this.nameRow, this.meterRow, stats, this.summary, this.recruiting, actions, this.favourBox, team, this.closed, fold(t('Funding applications'), grants), fold(t('What has happened'), this.log), note);
+    this.section.append(this.nameRow, this.meterRow, stats, this.summary, actions, this.favourBox, team, this.closed, fold(t('Funding applications'), grants), fold(t('What has happened'), this.log), note);
   }
 
   /** Per-refresh update; text-only writes. */
