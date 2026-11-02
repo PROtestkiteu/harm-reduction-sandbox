@@ -1338,11 +1338,23 @@ export class Hud {
    * leads back. On wider screens the list stays as it is.
    */
   private syncDrill(): void {
-    const head = this.staffOpen && !this.staffGroupOpt.hidden ? this.staffGroupOpt
-      : this.mixOpen && !this.actionOpts.mix.li.hidden ? this.actionOpts.mix.li
-        : this.favourOpen && !this.favourOpt.hidden ? this.favourOpt
-          : null;
-    for (const li of this.options.querySelectorAll(':scope > li.drill-head')) if (li !== head) li.classList.remove('drill-head');
+    // The deepest open group leads: the camper's spots inside staffing, its paths, the mix, favours.
+    const camper = this.actionOpts.camper.li;
+    const path = this.actionOpts.path.li;
+    const [head, members]: [HTMLElement | null, readonly HTMLElement[]] =
+      this.camperOpen && this.staffOpen && !camper.hidden ? [camper, this.spotOpts.map((o) => o.li)]
+        : this.pathOpen && !path.hidden ? [path, this.pathOpts.map((o) => o.li)]
+          : this.staffOpen && !this.staffGroupOpt.hidden ? [this.staffGroupOpt, STAFF_ACTIONS.map((a) => this.actionOpts[a].li)]
+            : this.mixOpen && !this.actionOpts.mix.li.hidden ? [this.actionOpts.mix.li, this.mixRows.map((r) => r.li)]
+              : this.favourOpen && !this.favourOpt.hidden ? [this.favourOpt, this.favourOpts.map((o) => o.li)]
+                : [null, []];
+    // Everything that is not the group's own reply or one of its members steps aside.
+    const keep = new Set<Element>(members);
+    for (const li of this.options.children) {
+      const out = !!head && li !== head && !keep.has(li);
+      if (li.classList.contains('drill-out') !== out) li.classList.toggle('drill-out', out);
+      if (li !== head && li.classList.contains('drill-head')) li.classList.remove('drill-head');
+    }
     if (head) {
       head.classList.add('drill-head');
       this.options.dataset.drill = 'true';

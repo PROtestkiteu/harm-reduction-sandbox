@@ -95,11 +95,12 @@ export class CameraRig {
    */
   pan(dx: number, dz: number, immediate: boolean): void {
     this.locked = false;
-    const x = clamp(this.targetFocus.x + dx, -this.limit, this.limit);
-    const z = clamp(this.targetFocus.z + dz, -this.limit, this.limit);
+    const lim = this.reach(this.targetZoom);
+    const x = clamp(this.targetFocus.x + dx, -lim, lim);
+    const z = clamp(this.targetFocus.z + dz, -lim, lim);
     if (immediate) {
-      this.focus.x = clamp(this.focus.x + dx, -this.limit, this.limit);
-      this.focus.z = clamp(this.focus.z + dz, -this.limit, this.limit);
+      this.focus.x = clamp(this.focus.x + dx, -lim, lim);
+      this.focus.z = clamp(this.focus.z + dz, -lim, lim);
     }
     this.target(x, this.targetFocus.y, z, this.targetZoom);
   }
@@ -134,8 +135,21 @@ export class CameraRig {
     this.changed = true;
   }
 
+  /**
+   * How far the focus may travel at `zoom`: the full limit from the base
+   * scale in, less as the view widens, so zoomed out the screen still shows
+   * city and never the empty ground past its edge.
+   */
+  private reach(zoom: number): number {
+    return this.limit * Math.min(1, zoom);
+  }
+
   private target(x: number, y: number, z: number, zoom: number): void {
     const zz = clamp(zoom, this.minZoom, MAX_ZOOM);
+    // Zooming out near the edge draws the view back towards the city.
+    const lim = this.reach(zz);
+    x = clamp(x, -lim, lim);
+    z = clamp(z, -lim, lim);
     if (this.targetFocus.x === x && this.targetFocus.y === y && this.targetFocus.z === z && zz === this.targetZoom) return;
     this.targetFocus.set(x, y, z);
     this.targetZoom = zz;

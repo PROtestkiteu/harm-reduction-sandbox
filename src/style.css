@@ -1747,14 +1747,12 @@ body:has(.sandbox-toggle[aria-expanded='true']) .portrait { display: none; }
   .top-bar .stress-bar { height: 3px; min-width: 14px; }
   .top-bar .column-time { gap: 6px; }
 }
-@media (max-width: 760px) {
-  /* An open group takes the list over: other replies step aside, its own reply (marked ‹) leads back. */
-  .options[data-drill] > li:not(.nested):not(.drill-head) { display: none; }
-  .options[data-drill] > li.drill-head { grid-column: 1 / -1; }
-  .options[data-drill] > li.drill-head .opt::before { content: '‹'; font-size: 1.3em; line-height: 1; }
-  .options[data-drill] > li.drill-head .opt.group::after { display: none; }
-  .options[data-drill] > li.nested { grid-column: 1 / -1; padding-left: 0; }
-}
+/* An open group is a submenu on every screen: other replies step aside, its own reply (marked ‹) leads back. */
+.options[data-drill] > li.drill-out { display: none; }
+.options[data-drill] > li.drill-head { grid-column: 1 / -1; }
+.options[data-drill] > li.drill-head .opt::before { content: '‹'; font-size: 1.3em; line-height: 1; }
+.options[data-drill] > li.drill-head .opt.group::after { display: none; }
+.options[data-drill] > li.nested { grid-column: 1 / -1; padding-left: 0; }
 
 /* City-service meters: an icon each, coloured by state; the names show only where there is room. */
 .stress-icon { display: inline-flex; width: 13px; height: 13px; flex: none; color: var(--muted); }
