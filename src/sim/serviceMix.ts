@@ -50,6 +50,31 @@ export class ServiceMix {
     this.ready.add(`${id}:${a}`);
   }
 
+  /** The weights and the paid set-ups, for a save: weights rounded to 0.1, set-ups as `service:activity`. */
+  snapshot(): { weights: Partial<Record<ServiceId, Partial<Record<Activity, number>>>>; ready: string[] } {
+    const weights: Partial<Record<ServiceId, Partial<Record<Activity, number>>>> = {};
+    for (const id of SERVICE_IDS) {
+      const w: Partial<Record<Activity, number>> = {};
+      for (const a of SERVICE_ACTIVITIES[id]) w[a] = Math.round(this.weight(id, a) * 10) / 10;
+      weights[id] = w;
+    }
+    return { weights, ready: [...this.ready] };
+  }
+
+  /** Puts back a checked snapshot: known activities only, weights 0 to 100; set-ups are only ever added. */
+  restore(s: { weights: Partial<Record<ServiceId, Partial<Record<Activity, number>>>>; ready: readonly string[] }): void {
+    for (const id of SERVICE_IDS) {
+      for (const a of SERVICE_ACTIVITIES[id]) {
+        const v = s.weights[id]?.[a];
+        if (typeof v === 'number' && Number.isFinite(v)) this.weights[id][a] = Math.min(100, Math.max(0, v));
+      }
+    }
+    for (const key of s.ready) {
+      const [id, a] = key.split(':') as [ServiceId, Activity];
+      if ((SERVICE_ACTIVITIES[id] as readonly string[] | undefined)?.includes(a)) this.ready.add(key);
+    }
+  }
+
   lock(id: ServiceId, a: Activity, checkingAllowed: boolean): MixLock {
     if (a === 'checking' && !checkingAllowed) return 'law';
     if (!this.isSetUp(id, a)) return 'setup';

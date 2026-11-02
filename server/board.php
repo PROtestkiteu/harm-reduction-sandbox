@@ -4,7 +4,7 @@
  *
  *   GET  board.php                      top 50 runs
  *   POST board.php {"action":"start"}   a signed run ticket: {id, ts, token}
- *   POST board.php {"action":"submit", id, ts, token, name, helped, nights}
+ *   POST board.php {"action":"submit", id, ts, token, name, helped, nights}   (refused with "sandboxed": true)
  *   POST board.php {"action":"hello", sid}         presence: may I play, and for how long
  *   GET  board.php?game=<gid>           a live game's latest save: {data}
  *   POST board.php {"action":"save", data}             a new live game: {gid, key}
@@ -252,6 +252,8 @@ if (($in['action'] ?? '') === 'hello') {
 if (($in['action'] ?? '') !== 'submit') out(400, ['error' => 'action']);
 limit($db, $who, 'submit', 1, 20);
 limit($db, $who, 'submitDay', 120, 86400);
+// A run that used the Sandbox's free levers stays off the board (the game does not send one; this refuses one that says so).
+if (!empty($in['sandboxed'])) out(403, ['error' => 'sandboxed']);
 
 $id = $in['id'] ?? null;
 $ts = $in['ts'] ?? null;

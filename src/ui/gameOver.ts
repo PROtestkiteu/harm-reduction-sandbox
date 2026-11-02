@@ -1,9 +1,12 @@
 import { plural, t } from '../i18n';
+import { sandboxedReason } from '../game/sandboxed';
 
 export interface GameOverCallbacks {
   /** Sends the score; resolves to a line to show. */
   submit(): Promise<string>;
   restart(): void;
+  /** The run used the Sandbox's free levers: it cannot be submitted. */
+  sandboxed?(): boolean;
 }
 
 /**
@@ -16,7 +19,7 @@ export class GameOver {
   private readonly status: HTMLElement;
   private readonly submitBtn: HTMLButtonElement;
 
-  constructor(parent: HTMLElement, cb: GameOverCallbacks) {
+  constructor(parent: HTMLElement, private readonly cb: GameOverCallbacks) {
     this.dialog = document.createElement('dialog');
     this.dialog.className = 'welcome game-over';
     this.dialog.setAttribute('aria-labelledby', 'game-over-title');
@@ -69,8 +72,10 @@ export class GameOver {
       nights: plural(lasted, ['{n} night', '{n} nights'], ['{n} nocy', '{n} nocach', '{n} nocach']),
       people: plural(helped, ['{n} person', '{n} people'], ['{n} osobie', '{n} osobom', '{n} osobom']),
     });
-    this.status.textContent = '';
-    this.submitBtn.disabled = false;
+    // A sandboxed run cannot go on the board: say why where the button is.
+    const off = this.cb.sandboxed?.() ?? false;
+    this.status.textContent = off ? sandboxedReason() : '';
+    this.submitBtn.disabled = off;
     this.dialog.showModal();
   }
 }

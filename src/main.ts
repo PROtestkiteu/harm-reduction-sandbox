@@ -50,7 +50,8 @@ import { SERVICE_NAMES } from './sim/organisation';
 import { loadKits } from './world/kits';
 import { QueueBox } from './ui/queueBox';
 import { startPresence } from './game/presence';
-import { applySave, captureSave, parseSave, unpackSave, type SaveData } from './game/saveGame';
+import { applySave, captureSave, parseSave, takeLoadedCamperSpot, unpackSave, type SaveData } from './game/saveGame';
+import { hasFreeSettings, isFreeLever, isSandboxed, markSandboxed } from './game/sandboxed';
 import { LiveGame, fetchGame, linkedGame, newGameAddress } from './game/liveGame';
 import { GUIDE_AGAIN_MINUTES, needGuide } from './game/needGuides';
 import { METER_ORDER, meterState } from './ui/needIcons';
@@ -81,6 +82,17 @@ import { SeasonProps, snowyNight } from './world/seasonProps';
 import { POPULATIONS, presence } from './config/populations';
 import { startFlavour } from './world/flavour/setup';
 import { flavourSection } from './ui/flavourSection';
+import { NoticeStrip } from './ui/noticeStrip';
+import { GoalsStrip } from './ui/goalsStrip';
+import { MeterCauses } from './ui/meterCauses';
+import { NightReportBox } from './ui/nightReport';
+import { scenariosSection } from './ui/scenariosSection';
+import { scenarioById } from './config/scenarios';
+import type { NightReport } from './sim/goals';
+import { Sound, type SoundState } from './audio';
+import { soundSection } from './ui/soundSection';
+import { SPOTS } from './world/layout';
+import { RAIN } from './config/flavour/weather';
 
 document.documentElement.lang = LANG;
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
@@ -588,6 +600,7 @@ function refreshHud(): void {
   feed.setFilter(eventMatch());
   sandbox.syncLive('clock', sim.clockMinutes);
   feed.refresh(sim.clockMinutes);
+  refreshGoals();
   syncStreet();
   sandbox.syncLive('orgBudget', sim.org.budget);
   refreshOrg();
@@ -612,8 +625,10 @@ function refreshHud(): void {
 const settings: SandboxSettings = defaultSettings();
 let pending: Partial<SandboxSettings> | null = null;
 const sandbox = new SandboxPanel(hudRoot, settings, {
-  onChange: (id, value) => queueSetting(id, value),
+  // The Sandbox's free levers keep this run off the leaderboard (see game/sandboxed.ts).
+  onChange: (id, value) => { if (isFreeLever(id)) markSandboxed(); queueSetting(id, value); },
   onReset: () => {
+    markSandboxed();
     const defaults = defaultSettings();
     sandbox.setAll(defaults);
     for (const id of Object.keys(defaults) as ParamId[]) queueSetting(id, defaults[id]);
@@ -630,11 +645,13 @@ let modelId: string | null = null;
 let contextPending = false;
 const context = new ContextSection(contextSelection, NATIONAL_MODELS, {
   onFactor: (id, index) => {
+    markSandboxed();
     contextSelection = { ...contextSelection, [id]: index };
     modelId = null;
     queueContext();
   },
   onModel: (id) => {
+    markSandboxed();
     const model = NATIONAL_MODELS.find((m) => m.id === id);
     setContext(model ? selectionFor(model) : contextSelection, model ? model.id : null);
   },
@@ -752,6 +769,7 @@ const savePanel = new SavePanel({
     return t('Sent. {name} is number {rank}.', { name: orgName(), rank });
   },
   score: () => ({ name: orgName(), helped: sim.totals.helped, nights: sim.totals.nights }),
+  sandboxed: isSandboxed,
   top: (signal) => topRuns(signal),
 });
 sandbox.mount(savePanel.section);
@@ -764,8 +782,36 @@ const setDateClock = (v: { date: number; clock: number }) => {
   sandbox.setAll(settings);
 };
 sandbox.addAction(t('How it works'), () => welcome.show());
-sandbox.mount(randomSection(setDateClock));
+sandbox.mount(randomSection((v) => { markSandboxed(); setDateClock(v); }));
 sandbox.mount(flavourSection(flavour.settings, { onPack: (id, on) => { flavour.setPack(id, on); dirty = true; }, onMood: (m) => { flavour.setMood(m); dirty = true; } }));
+sandbox.mount(scenariosSection(new URLSearchParams(location.search).get('scenario')));
+// Sound (src/audio): generated street ambience and soft cues. Nothing is made before the first press, nothing runs while muted.
+const sound = new Sound();
+sandbox.mount(soundSection(sound.settings, { onMute: (m) => sound.setMuted(m), onVolume: (v) => sound.setVolume(v) }));
+const TAP_TARGETS = 'button, a[href], summary, select, input, [role="button"], [role="option"], [role="menuitem"], [role="tab"]';
+document.addEventListener('pointerdown', (e) => { if (e.target instanceof Element && e.target.closest(TAP_TARGETS)) sound.ui('tap'); }, { passive: true });
+const soundState: SoundState = { clock: 0, night: 0, nearClub: 0, clubOpen: false, rain: 0, paused: false, speed: 1 };
+let soundSelection: unknown = null;
+/** Each frame: one comparison for a new selection; the state is filled only when the sound is due an update. */
+function updateSound(): void {
+  if (interaction.selected !== soundSelection) {
+    soundSelection = interaction.selected;
+    if (soundSelection) sound.ui('tap');
+  }
+  if (!sound.due) return;
+  const s = soundState;
+  const half = (camera.right - camera.left) / 2;
+  const away = Math.hypot(rig.focus.x - SPOTS.clubDoor.x, rig.focus.z - SPOTS.clubDoor.z);
+  s.clock = sim.clockMinutes;
+  s.night = Math.max(0, lastNight);
+  s.nearClub = Math.max(0, 1 - away / (8 + half * 0.8)) * Math.min(1, 30 / half);
+  s.clubOpen = sim.clubOpen;
+  s.rain = flavourWetness / RAIN.wetness;
+  s.paused = paused;
+  s.speed = speed;
+  sound.update(s);
+}
+if (import.meta.env.DEV) Object.assign(window, { __sound: sound });
 const homeNote = homeScreenNote();
 if (homeNote) sandbox.mount(homeNote);
 sandbox.mount(languageSection((lang) => {
@@ -784,6 +830,7 @@ const gameOver = new GameOver(document.body, {
     const rank = await submitScore(run, orgName(), sim.totals.helped, sim.totals.nights);
     return t('Sent. {name} is number {rank}.', { name: orgName(), rank });
   },
+  sandboxed: isSandboxed,
   // A new page is a new game; settings in the address stay, a shared save does not.
   restart: () => { location.href = newGameAddress(); },
 });
@@ -801,7 +848,7 @@ const confirmBox = new ConfirmPopup(document.body, (open) => {
 });
 function confirmSpend(d: Decision | null, run: () => void): void {
   if (!d || d.cost <= 0) return run();
-  confirmBox.ask(d, sim.org.budget, run);
+  confirmBox.ask(d, sim.org.budget, () => { sound.ui('confirm'); run(); });
 }
 /** What a place reply would spend, for the confirm box; null when it is free. */
 function placeDecision(service: ServiceId, action: PlaceAction): Decision | null {
@@ -857,6 +904,7 @@ function checkBigEvent(): void {
     const v = need === 'district' ? sim.vitality.level : sim.cityStress[need];
     if (meterState(need, v) !== 'high' || sim.org.now < (guidedAt[need] ?? -Infinity) + GUIDE_AGAIN_MINUTES) continue;
     guidedAt[need] = sim.org.now;
+    sound.ui('warn');
     const guide = needGuide(need, sim.busiest.service, (id) => interaction.selectLocation(id));
     focusPlace(guide.place);
     eventPopup.show(guide, sim.org.budget, (choice) => choice.apply(eventWorld));
@@ -865,6 +913,7 @@ function checkBigEvent(): void {
   // Money running out: a pause with suggestions, at most every 8 clock hours.
   if (sim.org.budget < 150 && sim.org.netPerHour < 0 && !sim.org.broke && sim.org.now >= nextBudgetWarning) {
     nextBudgetWarning = sim.org.now + 8 * 60;
+    sound.ui('warn');
     eventPopup.show(budgetEvent(eventWorld, (id) => SERVICE_NAMES[id]), sim.org.budget, (choice) => choice.apply(eventWorld));
     return;
   }
@@ -884,6 +933,8 @@ function checkGameOver(): void {
 
 /** After any load: the world, the panels and the crowd's destinations follow the new state. */
 function afterLoad(): void {
+  const spot = takeLoadedCamperSpot();
+  if (spot !== null && spot !== camperSpot()) world.moveCamper(spot);
   syncProperty();
   // A loaded game's stages appear in place, not growing one by one.
   stagesShown = false;
@@ -926,6 +977,8 @@ async function startGame(): Promise<void> {
   const linked = !resume && gid ? await fetchGame(gid) : null;
   // Our game did not load: this is a fresh start, so a fresh leaderboard run too.
   if (own && !linked && !resume) setRun(undefined);
+  // A fresh run under free-lever settings from the address is a sandboxed run.
+  if (!resume && !(own && linked) && hasFreeSettings(fromUrl)) markSandboxed();
   if (linked) {
     queueOrg(() => {
       applySave(sim, linked);
@@ -967,6 +1020,44 @@ async function startGame(): Promise<void> {
   try { await ensureRun(); } catch { /* leaderboard offline: the game plays the same */ }
 }
 feed.prependBar(org.bar);
+// Goals, news and why the meters move, where the player looks (above the event feed and on the meters).
+const goalsStrip = new GoalsStrip();
+const notices = new NoticeStrip();
+hud.eventsSlot.before(goalsStrip.root, notices.root);
+const stressRow = document.querySelector<HTMLElement>('.stress-row');
+const meterCauses = stressRow ? new MeterCauses(stressRow, (m) => sim.cityStress.causesOf(m)) : null;
+// A scenario comes with the address (`?scenario=`); a loaded game brings its own.
+{
+  const s = scenarioById(new URLSearchParams(location.search).get('scenario'));
+  if (s && !sim.goals.scenario) sim.goals.scenario = s;
+}
+let pausedBeforeReport = false;
+const nightBox = new NightReportBox(document.body, (open) => {
+  if (open) { pausedBeforeReport = paused; setPaused(true); }
+  else if (!pausedBeforeReport) setPaused(false);
+});
+/** The morning's report waits until no other box is open. */
+let pendingReport: NightReport | null = null;
+sim.on((e) => {
+  if (e.type === 'orgNotice') notices.push(e.notice.text, e.notice.at, sim.org.now);
+  else if (e.type === 'nightReport') pendingReport = e.report;
+});
+/** Four times a second with the HUD: tonight's goals, the news strip, and a waiting report. */
+function refreshGoals(): void {
+  const s = sim.goals.scenario;
+  goalsStrip.set(sim.goals.progress(sim.totals.nights, sim.totals.helped, sim.org.budget), s
+    ? (sim.goals.won ? t('{title}: won.', { title: s.title }) : t('{title}: {nights} of {needNights} nights, {helped} of {needHelped} helped, {stars} of {needStars} stars.', {
+      title: s.title, nights: sim.totals.nights, needNights: s.nights, helped: sim.totals.helped, needHelped: s.helped, stars: sim.goals.stars, needStars: s.stars,
+    }))
+    : null);
+  notices.refresh(sim.org.now, sim.exposure.deaths);
+  if (pendingReport && !document.querySelector('dialog[open]')) {
+    const r = pendingReport;
+    pendingReport = null;
+    const next = sim.goals.targets(sim.totals.nights);
+    nightBox.show(r, [{ id: 'helped', target: next.helped }, { id: 'calm', target: next.calm }, { id: 'money', target: next.money }], sim.goals.scenario, sim.totals.helped);
+  }
+}
 
 // A newer version on the server: offer a reload that keeps the game; in a background tab, just do it.
 function reloadKeepingGame(): void {
@@ -1286,10 +1377,12 @@ function frame(now: number): void {
     }
   }
   if (interaction.frame()) dirty = true;
+  meterCauses?.update(realDt);
   if (rig.step(realDt, reducedMotion.matches)) applyView();
   if (marker.update(realDt, reducedMotion.matches)) dirty = true;
   if (coins.update(realDt)) dirty = true;
   syncPortrait();
+  updateSound();
   if (dirty) {
     pipeline.render(world.scene, camera, interaction.highlightFlags);
     dirty = false;

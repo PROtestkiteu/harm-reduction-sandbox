@@ -28,19 +28,25 @@ const url = new URL(base);
 url.searchParams.set('packs', 'none');
 const summary = [];
 for (const name of bots) {
-  const [, result] = await drive(url.href, [...SKIP_WELCOME, call('./strategies.js', name, days, { clockSpeed: speed })], { seed, log: () => {} });
-  if (!result || typeof result !== 'object') { console.error(name, 'failed:', result); continue; }
+  // A dev-server reload (someone saved a file) restarts the page mid-run: such a run comes back
+  // without rows and is tried again, at most twice.
+  let result = null;
+  for (let attempt = 0; attempt < 3 && !result?.rows?.length; attempt++) {
+    [, result] = await drive(url.href, [...SKIP_WELCOME, call('./strategies.js', name, days, { clockSpeed: speed })], { seed, log: () => {} });
+    if (!result?.rows?.length) console.error(name, 'run interrupted, retrying:', typeof result === 'string' ? result.slice(0, 120) : result);
+  }
+  if (!result?.rows?.length) { console.error(name, 'failed'); continue; }
   writeFileSync(join(out, `${name}.json`), JSON.stringify(result, null, 1));
   const rows = result.rows;
   const at = (f) => rows[Math.min(rows.length - 1, Math.floor(f * (rows.length - 1)))];
   summary.push({
     bot: name, money: `${at(0).budget} / ${at(0.5).budget} / ${at(1).budget}`, 'net/h end': at(1).net,
     'first red h': result.firstRedHour ?? '-', 'red h': result.redHours, 'game over h': result.gameOverHour ?? '-',
-    helped: result.totals.helped, 'open end': at(1).open, 'staff end': at(1).staff, acts: JSON.stringify(result.acts),
+    helped: result.totals.helped, stars: at(1).stars, 'trust end': at(1).trust, 'open end': at(1).open, 'staff end': at(1).staff, acts: JSON.stringify(result.acts),
   });
-  console.log(`\n${name}: h clock budget net police medics sobering district crisis unmet24 helped`);
+  console.log(`\n${name}: h clock budget net police medics sobering district crisis unmet24 helped stars trust`);
   for (const r of rows.filter((_, i) => i % 6 === 0 || i === rows.length - 1)) {
-    console.log(`  ${[r.h, r.clock, r.budget, r.net, r.police, r.medics, r.sobering, r.district, r.crisis, r.unmet24, r.helped].join(' ')}`);
+    console.log(`  ${[r.h, r.clock, r.budget, r.net, r.police, r.medics, r.sobering, r.district, r.crisis, r.unmet24, r.helped, r.stars, r.trust].join(' ')}`);
   }
 }
 console.log(`\nseed ${seed}, ${days} game days, clock speed ${speed}`);

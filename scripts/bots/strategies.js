@@ -63,6 +63,7 @@ async (name, days = 3, opts = {}) => {
         police: +s.police.toFixed(2), medics: +s.medics.toFixed(2), sobering: +s.sobering.toFixed(2), district: +sim.vitality.level.toFixed(2),
         crisis: +sim.crisis.toFixed(2), unmet24: sim.unmet24, helped: sim.totals.helped, broke: sim.org.broke ? Math.round(sim.org.brokeMinutes / 60) : 0,
         staff: `${sim.org.paid}+${sim.org.volunteers}`, open: ids.filter((i) => sim.services[i].status === 'open').length,
+        stars: sim.goals?.stars ?? 0, trust: sim.funders ? +sim.funders.trust.toFixed(2) : 1,
       });
     }
     if (guard % 240 === 0) await new Promise((r) => setTimeout(r, 0));

@@ -11,7 +11,14 @@ export const VITALITY = {
   /** Decline per clock hour in a crisis or with city services overstretched. */
   decline: 0.03,
   /** People turned away over 24 hours below which things count as going well. */
-  calmUnmet: 15,
+  calmUnmet: 30,
+  /** City services' average pressure below which the district can grow, and above which it declines. */
+  calmStress: 0.45,
+  strainedStress: 0.6,
+  /** A crisis deeper than this wears the district down; a passing flicker of one does not. */
+  declineCrisis: 0.25,
+  /** The district grows only with a crisis lighter than this. */
+  growCrisis: 0.1,
   /** New venues open at these levels (and close 0.07 below them). */
   venuesAt: [0.4, 0.55, 0.7, 0.85],
   /** Partnering with a venue: one-off cost, then what the venue pays per clock hour. */
@@ -42,8 +49,8 @@ export class Vitality {
   /** Advances by `dtMinutes`; returns +1 when a venue opened, -1 when one closed, else 0. */
   tick(dtMinutes: number, inp: VitalityInput): number {
     const hours = dtMinutes / 60;
-    if (inp.crisis > 0 || inp.stress > 0.6) this.level -= VITALITY.decline * hours;
-    else if (inp.unmet24 < VITALITY.calmUnmet && inp.stress < 0.4) this.level += VITALITY.grow * (1 - this.level) * hours;
+    if (inp.crisis > VITALITY.declineCrisis || inp.stress > VITALITY.strainedStress) this.level -= VITALITY.decline * hours;
+    else if (inp.unmet24 < VITALITY.calmUnmet && inp.stress < VITALITY.calmStress && inp.crisis < VITALITY.growCrisis) this.level += VITALITY.grow * (1 - this.level) * hours;
     this.level = Math.min(1, Math.max(0, this.level));
     const at = VITALITY.venuesAt;
     if (this.venues < at.length && this.level >= at[this.venues]) { this.venues++; return 1; }

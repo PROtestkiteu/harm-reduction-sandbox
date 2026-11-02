@@ -2069,3 +2069,43 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
 .flavour-pack .flavour-hint { grid-column: 2; color: var(--muted); font-size: 12px; }
 .flavour-mood { display: flex; gap: 8px; align-items: center; margin: 4px 0 0 22px; font-size: 13px; }
 .flavour-mood select { font: inherit; }
+
+/* Sound settings: the volume slider fills its row, its value beside it. */
+.sound-volume { display: flex; gap: 8px; align-items: center; margin-top: 8px; font-size: 13px; }
+.sound-volume input { flex: 1; min-width: 0; accent-color: var(--accent, var(--reply)); }
+.sound-volume output { min-width: 3.5em; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Goals, news and meter causes (audit pass): quiet text in the column, a small card under a meter. */
+.goals-strip, .notice-strip { margin: 6px 0 0; font-size: 13px; line-height: 1.3; }
+.goals-strip[hidden], .notice-strip[hidden] { display: none; }
+.goals-head { margin: 0 0 2px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.goals-strip ul, .notice-strip ul { list-style: none; margin: 0; padding: 0; }
+.goals-strip li { color: var(--muted); }
+.goals-strip li[data-met='true'] { color: var(--text); }
+.goals-scenario { margin: 2px 0 0; color: var(--reply); font-size: 12px; }
+.notice-strip li { margin-top: 3px; color: var(--text); }
+.notice-time { margin-right: 6px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.notice-deaths { margin: 0; color: var(--closing); font-weight: 600; }
+.stress[role='button'] { cursor: pointer; }
+.stress[role='button']:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.meter-causes {
+  position: fixed; z-index: 60; padding: 10px 12px; border-radius: 6px;
+  background: var(--panel, rgba(18, 15, 13, 0.96)); border: 1px solid var(--panel-border, #3a3128); color: var(--text);
+  font: 13px/1.35 var(--body); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+  overflow-y: auto; overscroll-behavior: contain;
+}
+.meter-causes[hidden] { display: none; }
+.meter-causes h3 { margin: 0 0 6px; font-size: 13px; }
+.meter-causes ul { list-style: none; margin: 0 0 6px; padding: 0; }
+.meter-causes li { display: flex; gap: 8px; }
+.cause-share { min-width: 3ch; color: var(--reply); font-variant-numeric: tabular-nums; text-align: right; }
+.meter-causes .cause-help { margin: 0; color: var(--muted); font-size: 12px; }
+.night-report .night-stars { margin: 0 0 6px; font-size: 26px; color: var(--reply); letter-spacing: 0.1em; }
+.night-report ul { margin: 0 0 8px; padding-left: 18px; }
+.night-report .night-goals { list-style: none; padding-left: 0; }
+.night-report .night-goals li[data-met='false'] { color: var(--muted); }
+.night-report .goal-mark { display: inline-block; width: 1.4em; color: var(--reply); }
+.night-report .night-won { color: var(--reply); }
+.scenario-btn { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; width: 100%; margin-top: 6px; }
+.scenario-btn .scenario-blurb { font-weight: 400; font-size: 12px; color: var(--muted); }
+.scenario-btn[aria-current='true'] { border-color: var(--reply); }

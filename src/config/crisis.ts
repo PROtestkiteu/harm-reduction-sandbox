@@ -5,15 +5,15 @@
  */
 export const CRISIS = {
   /** Unmet need over 24 clock hours below which there is no crisis. */
-  calm: 20,
+  calm: 30,
   /** Unmet need over 24 clock hours at which the crisis is at its worst. */
-  full: 60,
+  full: 85,
   /**
    * A city service pushed near its limit brings a crisis on its own: from this pressure (0 to 1)
    * on the busiest of police, medics and the sobering-up centre, full at `stressFull`.
    */
-  stressFrom: 0.7,
-  stressFull: 0.95,
+  stressFrom: 0.85,
+  stressFull: 1,
   /** Random events come this much more often at the worst. */
   eventBoost: 1.6,
   /** Grant chances drop by this share at the worst. */
@@ -26,9 +26,9 @@ export const CRISIS = {
    * `stressSurge` more as the busiest city service goes from `surgeFrom` to its limit), and they
    * come in a worse state, so a visit costs up to `visitCostBoost` more.
    */
-  demandSurge: 1.5,
-  stressSurge: 0.8,
-  surgeFrom: 0.4,
+  demandSurge: 0.8,
+  stressSurge: 0.4,
+  surgeFrom: 0.55,
   visitCostBoost: 1.5,
   /**
    * In a crisis, people turned away come back worse off and the team gives first aid at the door:

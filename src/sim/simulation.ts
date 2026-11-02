@@ -51,6 +51,10 @@ import { CityLife, type CityHappening, type PasserbyKind } from './cityLife';
 import { Calendar } from './calendar';
 import { CALENDAR_WAVES, SEASONAL_EVENT_RATE } from '../config/populations';
 import { createRandom, nextArrival, range, type Random } from './random';
+import { Funders } from './funders';
+import { Goals, type NightReport } from './goals';
+import { scenarioById } from '../config/scenarios';
+import { NIGHT_RAMP, ramp } from '../config/difficulty';
 import { SERVICE_IDS, WALK_IN_SERVICE_IDS, type ServiceId, type ServiceStatus, type WalkInServiceId } from './types';
 import { plural, t } from '../i18n';
 
@@ -91,6 +95,8 @@ export type SimEvent =
   | { type: 'clubLeaver'; intoxicated: boolean; acute: AcuteOutcome | null }
   /** Someone outdoors was harmed by the cold or the heat; an ambulance is called. */
   | { type: 'exposure'; harm: ExposureHarm }
+  /** 08:00: the night just ended, scored against its goals. */
+  | { type: 'nightReport'; report: NightReport }
   /** Money moved at a place: in (positive) or out (negative), one unit at a time, for the coins over it. */
   | { type: 'money'; service: ServiceId; amount: number };
 
@@ -355,7 +361,7 @@ export class Simulation {
     const turnedAway = (this.unmet24 - CRISIS.calm) / (CRISIS.full - CRISIS.calm);
     const s = this.cityStress;
     const stretched = (Math.max(s.police, s.medics, s.sobering) - CRISIS.stressFrom) / (CRISIS.stressFull - CRISIS.stressFrom);
-    return Math.min(1, Math.max(0, turnedAway, stretched));
+    return Math.min(1, Math.max(0, turnedAway, stretched) * ramp(NIGHT_RAMP.crisis, this.totals.nights));
   }
 
   /** A camper (the first or an extra one) stands by the squat: its residents come to the counter. */
@@ -375,6 +381,19 @@ export class Simulation {
   readonly team: Team;
   /** This game so far, for saves and the leaderboard: people served and nights run. */
   readonly totals = { helped: 0, nights: 0 };
+  /** How far funders trust the project, from the last day's results (multiplies project funding, grant odds and drives). */
+  readonly funders = new Funders();
+  /** The night's goals, stars over the run and the scenario being played, if any. */
+  readonly goals = new Goals();
+  /** People turned away at a door over the whole run (the night report counts tonight's). */
+  turnedAwayTotal = 0;
+  private goalsBegun = false;
+
+  /** After loading a save: the night's goals as they were (the save's own night start). */
+  restoreGoals(g: Parameters<Goals['restore']>[0]): void {
+    this.goals.restore(g, scenarioById);
+    if (g?.start) this.goalsBegun = true;
+  }
   /**
    * Each service's stage (1 to its last, see SERVICE_STAGES) and progress toward the next (0..1): money in
    * fills it, going broke drains it. The starting services begin at their usual size, the rest small.
@@ -549,8 +568,8 @@ export class Simulation {
     // A thriving district brings more people out, and more people needing the services.
     const v = id === 'passerby' || id === 'club' ? this.vitality.footfall * (1 + 0.15 * this.vitality.venues) : this.vitality.demand;
     // Neglect brings people to the door: more of them in a crisis and while the city is stretched.
-    const surge = id === 'passerby' || id === 'club' || id === 'party' ? 1 : this.surge;
-    return this.rates[id] * boost * street * seasonal * squat * fee * v * surge;
+    const need = id === 'passerby' || id === 'club' || id === 'party' ? 1 : this.surge * ramp(NIGHT_RAMP.demand, this.totals.nights);
+    return this.rates[id] * boost * street * seasonal * squat * fee * v * need;
   }
 
   private setStaff(id: ServiceId, staff: number): void {
@@ -985,7 +1004,7 @@ export class Simulation {
     this.driveUntil = null;
     this.driveAgainAt = this.org.now + HUSTLE.driveCooldownHours * 60;
     // A good name brings more in; a crisis on the street brings less.
-    const pull = this.neighbourhood.reputationPull * (1 - 0.6 * this.crisis);
+    const pull = this.neighbourhood.reputationPull * (1 - 0.6 * this.crisis) * this.funders.trust;
     const raised = Math.round((HUSTLE.driveMin + this.random() * (HUSTLE.driveMax - HUSTLE.driveMin)) * Math.max(0.3, Math.min(1.5, pull)));
     this.org.budget += raised;
     this.org.notice(this.clockMinutes, t('The donation drive raised {amount}.', { amount: raised }));
@@ -1063,7 +1082,7 @@ export class Simulation {
   get fundingIncome(): number {
     const club = (this.clubContract && this.services.clubHr.status === 'open' ? HUSTLE.clubFeePerHour : 0) + this.vitality.partners.size * VITALITY.partnerFeePerHour;
     const boxes = this.donationIncome * (this.driveUntil !== null ? HUSTLE.driveBoxes : 1);
-    return (ORG.incomePerHour[this.policy.funding] ?? 0) + boxes + club;
+    return (ORG.incomePerHour[this.policy.funding] ?? 0) * this.funders.trust + boxes + club;
   }
 
   /** Money moved at each place, not yet shown as a coin. */
@@ -1130,6 +1149,13 @@ export class Simulation {
     return total;
   }
 
+  /** The starting services the player has switched off (not closed down for lack of money): funders notice. */
+  get servicesClosedByPlayer(): number {
+    let n = 0;
+    for (const id of ORG.startServices) if (!this.services[id].switchedOn && !this.org.closedDown.has(id)) n++;
+    return n;
+  }
+
   get donationIncome(): number {
     return SERVICE_IDS.reduce((n, id) => n + this.boxPerHour(id), 0);
   }
@@ -1142,7 +1168,7 @@ export class Simulation {
       publicAlerts: this.context.publicAlerts,
       checksDone: this.checking.samples,
       criminalPossession: this.policy.criminalPossession,
-      reputation: (this.camperPath === 'social' ? CAMPER_PATH_EFFECT.socialReputation : 1) * (this.org.now < this.mediaHit.until ? this.mediaHit.factor : 1) * this.mixAverage('counselling', 0.9, 0.1) * (1 - CRISIS.grantCut * this.crisis) * (1 - STRESS.policeGrantCut * this.cityStress.police),
+      reputation: this.funders.trust * (this.camperPath === 'social' ? CAMPER_PATH_EFFECT.socialReputation : 1) * (this.org.now < this.mediaHit.until ? this.mediaHit.factor : 1) * this.mixAverage('counselling', 0.9, 0.1) * (1 - CRISIS.grantCut * this.crisis) * (1 - STRESS.policeGrantCut * this.cityStress.police),
     };
   }
 
@@ -1426,7 +1452,17 @@ export class Simulation {
     const before = this.clockMinutes;
     this.clockMinutes += dt * this.minuteRate;
     // A night is done in the morning: it counts for the leaderboard then, not at the next evening.
-    if (before < MORNING && this.clockMinutes >= MORNING) this.totals.nights++;
+    if (!this.goalsBegun) {
+      this.goalsBegun = true;
+      this.goals.begin(this.totals.helped, this.turnedAwayTotal, this.exposure.deaths, this.org.budget);
+    }
+    const stretched = Math.max(this.cityStress.police, this.cityStress.medics, this.cityStress.sobering) >= 0.7;
+    this.goals.tick(dt * this.minuteRate, stretched);
+    if (before < MORNING && this.clockMinutes >= MORNING) {
+      const report = this.goals.end(this.totals.nights, this.totals.helped, this.turnedAwayTotal, this.exposure.deaths, this.org.budget, this.totals.helped);
+      this.totals.nights++;
+      this.emit({ type: 'nightReport', report });
+    }
     // A full day, 18:00 round to 18:00; then the next evening begins.
     if (this.clockMinutes >= DAY_END) {
       this.clockMinutes -= DAY_END - DAY_START;
@@ -1557,6 +1593,12 @@ export class Simulation {
     if (this.team.tick((dt * this.minuteRate) / 60, late)) this.reallocate();
     else this.updateSkill();
     if (this.openingChanged()) this.reallocate();
+    const band = this.funders.tick(dt * this.minuteRate, this.neighbourhood.state.reputation, this.servicesClosedByPlayer, ramp(NIGHT_RAMP.demand, this.totals.nights));
+    if (band) this.org.notice(this.clockMinutes, band === 'wary'
+      ? t('Funders are getting wary: fewer people helped this past day. Project money and grant chances are down until results pick up.')
+      : band === 'confident'
+        ? t('Funders are pleased with the past day\'s work: project money and grant chances are up.')
+        : t('Funders are back to their usual confidence.'));
     const income = this.fundingIncome;
     const wasBroke = this.org.broke;
     if (this.org.tick(this.clockMinutes, dt * this.minuteRate, income, this.payroll, this.applicationContext(), this.runningPerHour)) {
@@ -1717,6 +1759,7 @@ export class Simulation {
   private admit(s: ServiceModel, visitor: VisitorId, notify: boolean): void {
     s.metrics.attended++;
     this.totals.helped++;
+    this.funders.helped();
     // Every visit costs money and wears the place; unpaid, it wears twice as fast.
     const mix = this.mix.factors(s.id, this.context.checkingAllowed);
     // In a crisis people come in a worse state: more dressings, more supplies, longer care.
@@ -1736,6 +1779,7 @@ export class Simulation {
     s.metrics.unmetNeed++;
     if (reachedDoor) {
       this.unmetLog.push(this.org.now);
+      this.turnedAwayTotal++;
       // In a crisis nobody is simply gone: they come back worse off, and the team patches them up at the door.
       const doorstep = CRISIS.doorstepCost * this.crisis;
       if (doorstep > 0 && this.org.spend(doorstep)) this.flow(s.id, -doorstep);

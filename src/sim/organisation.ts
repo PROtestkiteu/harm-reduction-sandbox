@@ -159,7 +159,7 @@ export class Organisation {
       this.churnCarry -= 1;
       if (this.random() < 0.8) {
         this.volunteers--;
-        this.notice(clock, t('A volunteer could not stay on.'));
+        this.notice(clock, t('A volunteer could not stay on. Look for volunteers under Your team; the peer programme grant keeps them longer.'));
       }
     }
 

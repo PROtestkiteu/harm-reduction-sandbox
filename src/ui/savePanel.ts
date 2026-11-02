@@ -1,5 +1,6 @@
 import type { BoardRow } from '../game/leaderboard';
 import { plural, t } from '../i18n';
+import { sandboxedReason } from '../game/sandboxed';
 
 const helpedText = (n: number) => plural(n, ['{n} helped', '{n} helped'], ['{n} osoba z pomocą', '{n} osoby z pomocą', '{n} osób z pomocą']);
 const nightsText = (n: number) => plural(n, ['{n} night', '{n} nights'], ['{n} noc', '{n} noce', '{n} nocy']);
@@ -12,6 +13,8 @@ export interface SavePanelCallbacks {
   submit(): Promise<string>;
   /** The score as it stands, for the submit button. */
   score(): { name: string; helped: number; nights: number };
+  /** The run used the Sandbox's free levers: it cannot be submitted. */
+  sandboxed?(): boolean;
   top(signal: AbortSignal): Promise<BoardRow[]>;
 }
 
@@ -34,6 +37,8 @@ export class SavePanel {
   private readonly submitBtn: HTMLButtonElement;
   private readonly list: HTMLOListElement;
   private readonly boardStatus: HTMLElement;
+  private readonly offBoard: HTMLElement;
+  private sending = false;
   private fetching: AbortController | null = null;
 
   constructor(private readonly cb: SavePanelCallbacks) {
@@ -69,8 +74,13 @@ export class SavePanel {
     this.submitBtn.addEventListener('click', () => void this.submit());
     this.boardStatus = el('p', 'save-status');
     this.boardStatus.setAttribute('role', 'status');
+    // Why the button is off, right under it, for a sandboxed run.
+    this.offBoard = el('p', 'note', sandboxedReason());
+    this.offBoard.hidden = true;
+    this.offBoard.id = 'save-off-board';
+    this.submitBtn.setAttribute('aria-describedby', this.offBoard.id);
     this.list = el('ol', 'board-list');
-    board.append(this.submitBtn, this.boardStatus, this.list, el('p', 'note', t('Ranked by people helped. A shared link starts a fresh run, so scores count only what you played yourself.')));
+    board.append(this.submitBtn, this.offBoard, this.boardStatus, this.list, el('p', 'note', t('Ranked by people helped. A shared link starts a fresh run, so scores count only what you played yourself.')));
     board.addEventListener('toggle', () => { if (board.open) void this.refresh(); });
 
     this.section.append(live, actions, this.status, board);
@@ -83,6 +93,10 @@ export class SavePanel {
     const s = this.cb.score();
     const label = t('Submit as {name}: {helped}, {nights}', { name: s.name, helped: helpedText(s.helped), nights: nightsText(s.nights) });
     if (this.submitBtn.textContent !== label) this.submitBtn.textContent = label;
+    const off = this.cb.sandboxed?.() ?? false;
+    if (this.offBoard.hidden === off) this.offBoard.hidden = !off;
+    const disabled = off || this.sending;
+    if (this.submitBtn.disabled !== disabled) this.submitBtn.disabled = disabled;
   }
 
   private say(text: string): void {
@@ -90,6 +104,8 @@ export class SavePanel {
   }
 
   private async submit(): Promise<void> {
+    if (this.cb.sandboxed?.()) return this.sync();
+    this.sending = true;
     this.submitBtn.disabled = true;
     this.boardStatus.textContent = t('Sending…');
     try {
@@ -98,7 +114,8 @@ export class SavePanel {
     } catch (e) {
       this.boardStatus.textContent = t('Not sent: {reason}.', { reason: e instanceof Error ? e.message : t('try again later') });
     } finally {
-      this.submitBtn.disabled = false;
+      this.sending = false;
+      this.sync();
     }
   }
 
