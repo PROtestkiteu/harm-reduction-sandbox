@@ -33,6 +33,12 @@ export const EDGE = DISTRICT + 1.5;
 const RING = { pave0: INNER, road0: INNER + 2.5, road1: INNER + 7.5, pave1: INNER + 10 };
 
 export interface Rect { x0: number; x1: number; z0: number; z1: number }
+/** A side of a rect, by its outward direction: the side a building's front is on. */
+export type Side = '+x' | '-x' | '+z' | '-z';
+/** The turn about y that takes a design's +z front to `side` (the same sense as Object3D.rotation.y). */
+export const SIDE_ROT: Readonly<Record<Side, number>> = { '+z': 0, '+x': Math.PI / 2, '-z': Math.PI, '-x': -Math.PI / 2 };
+/** The outward unit normal of each side. */
+export const SIDE_NORMAL: Readonly<Record<Side, P2>> = { '+z': { x: 0, z: 1 }, '+x': { x: 1, z: 0 }, '-z': { x: 0, z: -1 }, '-x': { x: -1, z: 0 } };
 const r = (x0: number, x1: number, z0: number, z1: number): Rect => ({ x0, x1, z0, z1 });
 
 export const ROAD = { x0: -6, x1: -0.5, laneX: -4.4, parkX: -1.75 };
@@ -254,15 +260,15 @@ export const VENUE_RECTS: readonly Rect[] = [
  * city infill never builds inside the centre, so these get an ordinary
  * building of their own instead of standing bare.
  */
-export const SPARE_CENTRE_LOTS: readonly Rect[] = (['centreWest', 'centreEast'] as const)
+export const SPARE_CENTRE_LOTS: readonly { rect: Rect; face: Side }[] = (['centreWest', 'centreEast'] as const)
   .filter((site) => !Object.values(SITE_OF).includes(site))
   .map((site) => {
     // Set back two metres from the pavement, clear of the walk node in front.
     const q = rectOn(site, SITES[site].along, SITES[site].depth);
     if (SITES[site].face === '+x') q.x1 -= 2; else q.z1 -= 2;
-    return r(Math.max(q.x0, -HALF + 0.8), Math.min(q.x1, HALF - 0.8), Math.max(q.z0, -HALF + 0.8), Math.min(q.z1, HALF - 0.8));
+    return { rect: r(Math.max(q.x0, -HALF + 0.8), Math.min(q.x1, HALF - 0.8), Math.max(q.z0, -HALF + 0.8), Math.min(q.z1, HALF - 0.8)), face: SITES[site].face };
   })
-  .filter((q) => q.x1 - q.x0 >= 4.5 && q.z1 - q.z0 >= 4.5);
+  .filter(({ rect: q }) => q.x1 - q.x0 >= 4.5 && q.z1 - q.z0 >= 4.5);
 
 /** Which way the club's and the drop-in's fronts face this launch. */
 export const VENUE_FACE = { club: SITES[SITE_OF.club].face, dropIn: SITES[SITE_OF.dropIn].face };

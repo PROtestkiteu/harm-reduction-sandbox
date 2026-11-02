@@ -1,5 +1,4 @@
 import type { Crowd, Satellite } from '../agents/crowd';
-import { nearestNode } from '../agents/nav';
 import type { Simulation } from '../sim/simulation';
 import { PROPERTY, SATELLITE_SERVICES, type SatelliteService } from '../sim/property';
 import { plural, t } from '../i18n';
@@ -8,8 +7,8 @@ import { PARTNER_NEEDS, QUEST_NEEDS, serviceNeeds } from '../config/needs';
 import type { BuildingCard, ChipState } from '../ui/hud';
 import { price } from '../ui/money';
 import { displayName } from '../ui/names';
-import { cityBuilding, type BuildingUse } from '../world/cityBuildings';
-import { DISTRICT, NODES, SQUAT_SPOT, camperSpot } from '../world/layout';
+import { cityBuilding, doorApproach, type BuildingUse } from '../world/cityBuildings';
+import { DISTRICT, SQUAT_SPOT, camperSpot } from '../world/layout';
 import { VENUE_KINDS, VITALITY, type VenueKind } from '../sim/vitality';
 import { RESIDENTS } from '../config/residents';
 import { formatClock } from '../sim/clock';
@@ -453,14 +452,9 @@ export class PropertyView {
     for (const { building, service } of [...rentedShops, ...this.sim.property.points]) {
       const b = cityBuilding(building);
       if (!b) continue;
-      // The door faces the nearest pavement: the nearest walkway point, pulled onto the wall.
-      const cx = (b.x0 + b.x1) / 2;
-      const cz = (b.z0 + b.z1) / 2;
-      const node = NODES[nearestNode({ x: cx, z: cz })];
-      const wall = { x: Math.min(b.x1, Math.max(b.x0, node.x)), z: Math.min(b.z1, Math.max(b.z0, node.z)) };
-      const away = Math.hypot(node.x - wall.x, node.z - wall.z) || 1;
-      const door = { x: wall.x + ((node.x - wall.x) / away) * 0.8, z: wall.z + ((node.z - wall.z) / away) * 0.8 };
-      out.push({ service, door, inside: { x: cx, z: cz } });
+      // The street door the building was built with, on its front, and the way in to it along the pavement.
+      const approach = doorApproach(b, 0.8);
+      out.push({ service, door: approach.way[approach.way.length - 1], approach, inside: { x: (b.x0 + b.x1) / 2, z: (b.z0 + b.z1) / 2 } });
     }
     for (const spot of this.sim.property.campers) {
       const counter = this.world.camperCounter(spot);

@@ -6,10 +6,10 @@ import { acUnit, antenna, drainpipe, roofVent, waterTank, windowTrim } from './d
 import { awning, balcony, graffiti, laundryLine, lightPool, poster, rubbish, shopSign, shutters } from './dressing';
 import { askew, bladeSign, boardedWindow, neonSign, roofClutter, scaffolding, wallClutter } from './grit';
 import { add, bench, box, gableRoof, mansard, tree } from './kit';
-import { BLOCKS, HALF, SPARE_CENTRE_LOTS, VENUE_RECTS, type Rect } from './layout';
+import { BLOCKS, EDGES, HALF, NODES, SIDE_NORMAL, SIDE_ROT, SPARE_CENTRE_LOTS, STREETS, VENUE_RECTS, type Rect, type Side } from './layout';
 import { glowMat, mat } from './materials';
 import { mergeStatic } from './mergeStatic';
-import { registerBuilding } from './cityBuildings';
+import { DOOR_ALONG, registerBuilding } from './cityBuildings';
 
 /**
  * Ordinary city fabric for the new blocks: rows of flats and shops on a grid
@@ -31,6 +31,92 @@ const ALLEY = 1.6;
 const PATH_EAST: Rect = { x0: HALF, x1: 22, z0: -6, z1: -2 };
 const overlaps = (a: Rect, b: Rect, pad = 0) => a.x0 < b.x1 + pad && a.x1 > b.x0 - pad && a.z0 < b.z1 + pad && a.z1 > b.z0 - pad;
 
+/** How far out from a lot's side a street may start for that side to be on it: the alley, and a little. */
+const REACH = ALLEY + 0.6;
+/** Pavements and roads of the district, where a lot's front can face. */
+const WALKS: readonly Rect[] = Object.values(STREETS).flatMap((st) => [st.road, ...st.pavements]);
+
+/** The crowd's walking lines (the walk graph's edges), as thin strips: a front on one of them is a door people reach along it. */
+const WALK_LINES: readonly Rect[] = EDGES.map(([a, b]) => {
+  const p = NODES[a];
+  const q = NODES[b];
+  return { x0: Math.min(p.x, q.x) - 0.2, x1: Math.max(p.x, q.x) + 0.2, z0: Math.min(p.z, q.z) - 0.2, z1: Math.max(p.z, q.z) + 0.2 };
+});
+/**
+ * How far beyond a lot's side a walking line may run for that side to be on
+ * it: across the alley, the near pavement and the road to the far pavement's
+ * middle (the crowd walks only one side of some streets).
+ */
+const LINE_REACH = REACH + 11;
+
+/** How far out from side `s` of `q` the nearest of `ground` starts that runs along at least half of that side; Infinity if none. */
+function gapTo(q: Rect, s: Side, ground: readonly Rect[]): number {
+  const alongX = s === '+z' || s === '-z';
+  const [a0, a1] = alongX ? [q.x0, q.x1] : [q.z0, q.z1];
+  let best = Infinity;
+  for (const g of ground) {
+    const [b0, b1] = alongX ? [g.x0, g.x1] : [g.z0, g.z1];
+    if (Math.min(a1, b1) - Math.max(a0, b0) < (a1 - a0) / 2) continue;
+    const gap = s === '+z' ? g.z0 - q.z1 : s === '-z' ? q.z0 - g.z1 : s === '+x' ? g.x0 - q.x1 : q.x0 - g.x1;
+    if (gap > -0.5) best = Math.min(best, Math.max(0, gap));
+  }
+  return best;
+}
+
+/** Sides in the order taken when two front the street equally: the ones the opening view sees first. */
+const SIDES: readonly Side[] = ['+z', '+x', '-x', '-z'];
+
+/**
+ * Which way a building on lot `q` faces: its front on a street side, and the
+ * corner's other street side, if any, which gets shopfronts too. On a corner
+ * the front goes on the side people walk along (`walked`), then on the longer
+ * side. `gap` measures each side's distance to a street; a lot with no street
+ * within reach faces the nearest one there is.
+ */
+function frontage(q: Rect, gap: (s: Side) => number, walked: (s: Side) => boolean = () => false): { front: Side; corner: Side | null } {
+  const len = (s: Side) => (s === '+z' || s === '-z' ? q.x1 - q.x0 : q.z1 - q.z0);
+  const gaps = SIDES.map((s) => ({ s, g: gap(s), w: walked(s) }));
+  const onStreet = gaps.filter(({ g }) => g <= REACH).sort((a, b) => Number(b.w) - Number(a.w) || len(b.s) - len(a.s) || SIDES.indexOf(a.s) - SIDES.indexOf(b.s));
+  if (!onStreet.length) {
+    const nearest = gaps.sort((a, b) => a.g - b.g || SIDES.indexOf(a.s) - SIDES.indexOf(b.s))[0];
+    return { front: Number.isFinite(nearest.g) ? nearest.s : '+z', corner: null };
+  }
+  const front = onStreet[0].s;
+  const acrossX = (s: Side) => SIDE_NORMAL[s].x !== 0;
+  const corner = onStreet.find(({ s }) => acrossX(s) !== acrossX(front))?.s ?? null;
+  return { front, corner };
+}
+
+/**
+ * A district lot's frontage: towards the district's streets and pavements (the
+ * district's outer edge is no street), on a corner the side the crowd walks along.
+ */
+const districtFrontage = (q: Rect) => frontage(q, (s) => gapTo(q, s, WALKS), (s) => gapTo(q, s, WALK_LINES) <= LINE_REACH);
+
+/** A lot's frontage in a city block out beyond the district: every edge of those blocks is a street. */
+function blockFrontage(q: Rect, block: Rect) {
+  return frontage(q, (s) => (s === '+z' ? block.z1 - q.z1 : s === '-z' ? q.z0 - block.z0 : s === '+x' ? block.x1 - q.x1 : q.x0 - block.x0));
+}
+
+/**
+ * Builds an ordinary building on lot `q` (world ground) facing `front`: in a
+ * frame at the lot's middle (nudged by `nudge`, turned a little more by
+ * `yaw`), turned so the design's +z front faces that way. `corner` is a second
+ * street side that gets shopfronts too.
+ */
+function placeBuilding(parent: Object3D, q: Rect, front: Side, corner: Side | null, yaw: number, nudge: [number, number], h: number, wall: number, windows: MeshLambertMaterial[], random: Random): void {
+  const frame = add(parent, new Group());
+  frame.position.set((q.x0 + q.x1) / 2 + nudge[0], 0, (q.z0 + q.z1) / 2 + nudge[1]);
+  frame.rotation.y = SIDE_ROT[front] + yaw;
+  const n = SIDE_NORMAL[front];
+  const w = n.x ? q.z1 - q.z0 : q.x1 - q.x0;
+  const d = n.x ? q.x1 - q.x0 : q.z1 - q.z0;
+  // The design's +x side, turned: to the right of the front as seen from the street.
+  const right = { x: n.z, z: -n.x };
+  const side = corner ? (SIDE_NORMAL[corner].x === right.x && SIDE_NORMAL[corner].z === right.z ? '+x' : '-x') : null;
+  building(frame, { x0: -w / 2, x1: w / 2, z0: -d / 2, z1: d / 2 }, h, wall, windows, random, side);
+}
+
 /** True when `q` stands between the camera and a service building or its entrance. */
 function inFrontOfService(q: Rect): boolean {
   return VENUE_RECTS.some((r) => {
@@ -39,7 +125,12 @@ function inFrontOfService(q: Rect): boolean {
   });
 }
 
-function building(g: Object3D, q: Rect, h: number, wall: number, windows: MeshLambertMaterial[], random: Random): void {
+/**
+ * One ordinary building on `q`, its front (street door, shopfronts, the
+ * detailed facade) on +z; `side` is a second street side (+x or -x) on a
+ * corner that gets shopfronts too. Callers turn it to face its street.
+ */
+function building(g: Object3D, q: Rect, h: number, wall: number, windows: MeshLambertMaterial[], random: Random, side: '+x' | '-x' | null): void {
   const w = q.x1 - q.x0;
   const d = q.z1 - q.z0;
   const cx = (q.x0 + q.x1) / 2;
@@ -58,11 +149,12 @@ function building(g: Object3D, q: Rect, h: number, wall: number, windows: MeshLa
   for (let y = 3.2; y < h - 1; y += 3) add(g, box(w + 0.12, 0.12, d + 0.12, mat(PALETTE.plasterShade), cx, y + 0.12, cz));
   add(g, box(w + 0.3, 0.18, d + 0.3, mat(PALETTE.plasterShade), cx, h - 0.06, cz));
   let k = Math.floor(random() * windows.length);
-  // Ground floor on the camera-facing sides: lit shops with awnings, signs and
+  // Ground floor on the street sides: lit shops with awnings, signs and
   // a pool of light on the pavement; shuttered ones collect posters and tags.
-  for (const [face, len] of [['+z', w], ['+x', d]] as const) {
-    const rot = face === '+z' ? 0 : Math.PI / 2;
-    const at = (a: number, out: number): [number, number] => (face === '+z' ? [cx + a, q.z1 + out] : [q.x1 + out, cz - a]);
+  const fronts: ['+z' | '+x' | '-x', number][] = side ? [['+z', w], [side, d]] : [['+z', w]];
+  for (const [face, len] of fronts) {
+    const rot = face === '+z' ? 0 : face === '+x' ? Math.PI / 2 : -Math.PI / 2;
+    const at = (a: number, out: number): [number, number] => (face === '+z' ? [cx + a, q.z1 + out] : face === '+x' ? [q.x1 + out, cz - a] : [q.x0 - out, cz + a]);
     for (let a = -len / 2 + 1.2; a < len / 2 - 1; a += 3.2) {
       const mid = a + 1;
       const lit = random() < 0.45;
@@ -141,8 +233,8 @@ function building(g: Object3D, q: Rect, h: number, wall: number, windows: MeshLa
     if (random() < 0.4) add(g, antenna(1.4 + random())).position.set(cx + w / 4, flatTop, cz + d / 4);
     roofClutter(g, cx, cz, w, d, flatTop, random, windows[k++ % windows.length]);
   }
-  // Street door with a step and a lamp beside it, on the camera-facing side.
-  const doorX = cx + w / 2 - 1.0;
+  // Street door with a step and a lamp beside it, on the front (cityBuildings.frontDoor finds it there).
+  const doorX = cx + w / 2 - DOOR_ALONG;
   add(g, box(1.1, 0.12, 0.5, mat(PALETTE.concrete), doorX, 0.12, q.z1 + 0.25));
   add(g, box(0.95, 2.2, 0.08, mat(DOORS[Math.floor(random() * DOORS.length)]), doorX, 0.24, q.z1 + 0.03));
   add(g, box(1.15, 0.12, 0.1, mat(PALETTE.frame), doorX, 2.44, q.z1 + 0.06));
@@ -200,9 +292,10 @@ function building(g: Object3D, q: Rect, h: number, wall: number, windows: MeshLa
     tarp.rotation.z = (random() - 0.5) * 0.25;
     tarp.rotation.x = (random() - 0.5) * 0.2;
   }
-  // Pipes, plant, ivy and wiring on the two faces the camera sees.
+  // Pipes, plant, ivy and wiring on the front and on a side.
   add(g, wallClutter(w, h, random)).position.set(cx, 0.12, q.z1);
-  add(g, wallClutter(d, h, random), Math.PI / 2).position.set(q.x1, 0.12, cz);
+  if (side === '-x') add(g, wallClutter(d, h, random), -Math.PI / 2).position.set(q.x0, 0.12, cz);
+  else add(g, wallClutter(d, h, random), Math.PI / 2).position.set(q.x1, 0.12, cz);
   // Patched plaster and stains break up the facade.
   for (let i = 0; i < 2 + Math.floor(random() * 3); i++) {
     const pw = 0.8 + random() * 2.2;
@@ -303,16 +396,12 @@ function fillBlock(scene: Object3D, block: Rect, windows: MeshLambertMaterial[],
       const low = inFrontOfService(q);
       // Rooflines are ragged: storeys plus a little, never a neat grid of heights.
       const h = low ? 3.2 + random() * 1.4 : 6.2 + Math.floor(random() * 3) * 3 + (random() - 0.3) * 0.8;
-      // Each building sits in its own frame, turned a fraction of a degree off
+      // Each building faces its street, turned a fraction of a degree off
       // the street grid, the way blocks get rebuilt piecemeal.
-      const bx = (q.x0 + q.x1) / 2;
-      const bz = (q.z0 + q.z1) / 2;
-      const frame = add(g, new Group());
-      frame.position.set(bx, 0, bz);
-      frame.rotation.y = (random() - 0.5) * 0.03;
-      const local: Rect = { x0: q.x0 - bx, x1: q.x1 - bx, z0: q.z0 - bz, z1: q.z1 - bz };
-      building(frame, local, h, WALLS[Math.floor(random() * WALLS.length)], windows, random);
-      registerBuilding(q.x0, q.x1, q.z0, q.z1, h);
+      const { front, corner } = districtFrontage(q);
+      const yaw = (random() - 0.5) * 0.03;
+      placeBuilding(g, q, front, corner, yaw, [0, 0], h, WALLS[Math.floor(random() * WALLS.length)], windows, random);
+      registerBuilding(q.x0, q.x1, q.z0, q.z1, h, false, front);
       // Washing strung across the alley to the next building along.
       if (!low && h > 6 && i < nx - 1 && random() < 0.35) {
         const z = q.z0 + 1 + random() * (cd - 2);
@@ -354,14 +443,12 @@ export function fillCityBlock(scene: Object3D, block: Rect, windows: MeshLambert
       }
       const storeys = Math.max(1, Math.round((minH + random() * (maxH - minH)) / 3));
       const h = 3.2 + (storeys - 1) * 3 + (random() - 0.3) * 0.6;
-      const bx = (q.x0 + q.x1) / 2;
-      const bz = (q.z0 + q.z1) / 2;
-      const frame = add(g, new Group());
-      // Out in the city buildings sit a little off the grid and a degree or two askew.
-      frame.position.set(bx + (random() - 0.5) * 0.8, 0, bz + (random() - 0.5) * 0.8);
-      frame.rotation.y = (random() - 0.5) * 0.06;
-      building(frame, { x0: q.x0 - bx, x1: q.x1 - bx, z0: q.z0 - bz, z1: q.z1 - bz }, h, WALLS[Math.floor(random() * WALLS.length)], windows, random);
-      registerBuilding(q.x0, q.x1, q.z0, q.z1, h);
+      // Out in the city buildings sit a little off the grid and a degree or two askew, each facing its street.
+      const nudge: [number, number] = [(random() - 0.5) * 0.8, (random() - 0.5) * 0.8];
+      const yaw = (random() - 0.5) * 0.06;
+      const { front, corner } = blockFrontage(q, block);
+      placeBuilding(g, q, front, corner, yaw, nudge, h, WALLS[Math.floor(random() * WALLS.length)], windows, random);
+      registerBuilding(q.x0, q.x1, q.z0, q.z1, h, false, front);
     }
   }
   // The caller may merge many blocks together instead.
@@ -381,11 +468,11 @@ export function buildInfill(scene: Object3D, random: Random): WindowBank[] {
   while (parks.size < want) parks.add(names[Math.floor(random() * names.length)]);
   for (const [name, block] of Object.entries(BLOCKS)) fillBlock(scene, block, windows, random, parks.has(name));
   // A centre site the club or the drop-in left this launch: an ordinary building, never a bare lot.
-  for (const q of SPARE_CENTRE_LOTS) {
+  for (const { rect: q, face } of SPARE_CENTRE_LOTS) {
     const g = add(scene, new Group());
     const h = inFrontOfService(q) ? 3.2 + random() * 1.4 : 6.2 + Math.floor(random() * 2) * 3;
-    building(g, q, h, WALLS[Math.floor(random() * WALLS.length)], windows, random);
-    registerBuilding(q.x0, q.x1, q.z0, q.z1, h);
+    placeBuilding(g, q, face, null, 0, [0, 0], h, WALLS[Math.floor(random() * WALLS.length)], windows, random);
+    registerBuilding(q.x0, q.x1, q.z0, q.z1, h, false, face);
     mergeStatic(g);
   }
   return [new WindowBank(windows, 1.0, 0.05, random)];

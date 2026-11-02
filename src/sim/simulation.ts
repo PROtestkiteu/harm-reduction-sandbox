@@ -822,6 +822,7 @@ export class Simulation {
     out.push('busiest');
     if (this.clockMinutes < CLUB_CLOSES) out.push('club');
     if (this.daemon.active) out.push('daemon');
+    out.push('street');
     return out;
   }
 
@@ -832,14 +833,14 @@ export class Simulation {
   }
 
   /** Sends the foot patrol from its table to `spot` for a few hours. */
-  sendPatrol(spot: PatrolSpot): boolean {
+  sendPatrol(spot: PatrolSpot, at: { x: number; z: number } | null = null): boolean {
     if (!this.patrolReady || !this.patrolSpots().includes(spot)) return false;
     if (!this.org.spend(PATROL.cost, false)) {
       this.org.notice(this.clockMinutes, t('Not enough money to send the foot patrol out.'));
       return false;
     }
     for (const m of this.team.members) if (m.workingAt === 'footPatrol') m.energy = Math.max(0, m.energy - PATROL.walk);
-    this.patrol.send(spot, this.org.now);
+    this.patrol.send(spot, this.org.now, at);
     this.org.notice(this.clockMinutes, t('The foot patrol is out at {spot} for {hours} hours.', { spot: PATROL.spots[spot].label, hours: PATROL.hours }));
     // Reaching the person in crisis: two streetworkers walk up and talk.
     if (spot === 'daemon' && this.daemon.active) {

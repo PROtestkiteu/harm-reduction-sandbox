@@ -1,9 +1,11 @@
+import { PATROL, type PatrolSpot } from './config/patrol';
+import type { MenuItem } from './ui/actionMenu';
+import { clientToNdc } from './render/camera';
 import { TIRED } from './sim/team';
 import { locationOf, nextStep, type GuideView } from './game/guide';
 import { QUALITY } from './render/quality';
-import { Vector3, WebGLRenderer, type Object3D } from 'three';
+import { Plane, Raycaster, Vector3, WebGLRenderer, type Object3D } from 'three';
 import { DaemonFigure } from './agents/daemonFigure';
-import { formatClock } from './sim/clock';
 import { FAVOUR } from './config/favours';
 import { QUESTS } from './config/institutionQuests';
 import { setPoliceLine } from './ui/personInfo';
@@ -17,7 +19,7 @@ import { LANG, LANG_KEY, t } from './i18n';
 import { ILLUSTRATIVE } from './config/illustrative';
 import { combineEffects, decodeContext, defaultContext, encodeContext, type ContextSelection } from './config/contextFactors';
 import { NATIONAL_MODELS, selectionFor } from './config/nationalModels';
-import { GRANTS } from './config/organisation';
+import { GRANTS, RECRUIT } from './config/organisation';
 import { FAVOURS, type FavourId } from './config/favours';
 import { CAMPER_SPOTS, camperSpot } from './world/layout';
 import { exposureNow } from './sim/exposure';
@@ -30,7 +32,7 @@ import { ScenePipeline } from './render/scenePipeline';
 import { DynamicResolution } from './render/dynamicResolution';
 import { whenViewportSettled } from './render/viewportSettle';
 import { CoinPops } from './render/coinPops';
-import { dayFactor, nightFactor } from './sim/clock';
+import { dayFactor, formatClock, nightFactor } from './sim/clock';
 import { createRandom } from './sim/random';
 import { Simulation } from './sim/simulation';
 import { loadPeople } from './agents/humanFigure';
@@ -261,6 +263,63 @@ function placePoint(place: EventPlace): Vector3 {
   const a = place === 'busiest' ? anchorOf(sim.busiest.service) : world.locations[place].labelAnchor;
   return new Vector3(a.x, 0, a.z);
 }
+/**
+ * Everything under way, for the strip under the replies: building works, each
+ * hire or volunteer search until the person starts (or nobody is found), and
+ * the foot patrol out on its round, each with how far along it is.
+ */
+function underWay(): { text: string; progress: number }[] {
+  const out = world.works().map((w) => {
+    const vars = { name: displayName('location', w.id, LOCATION_NAMES[w.id]), pct: Math.round(100 * w.progress) };
+    return { text: w.building ? t('Extending: {name}, {pct}%', vars) : t('Scaling down: {name}, {pct}%', vars), progress: w.progress };
+  });
+  const o = sim.org;
+  for (const r of o.recruiting) {
+    const minutes = RECRUIT[r.id].minutes;
+    const progress = 1 - (r.readyAt - o.now) / minutes;
+    const at = formatClock(o.clockAt(r.readyAt, sim.clockMinutes));
+    out.push({ text: r.id === 'hirePaid' ? t('Hiring a paid worker: starts about {time}', { time: at }) : t('Looking for volunteers: answers about {time}', { time: at }), progress });
+  }
+  if (sim.patrol.out) {
+    const p = sim.patrol;
+    out.push({ text: t('Foot patrol out at {spot}: back about {time}, {n} reached', { spot: PATROL.spots[p.spot!].label, time: formatClock(o.clockAt(p.until, sim.clockMinutes)), n: p.reached }), progress: 1 - (p.until - o.now) / (PATROL.hours * 60) });
+  }
+  return out;
+}
+
+/** Where on the ground a sent patrol walks to, for each of its spots (the daemon's where they are now). */
+function patrolPoint(spot: PatrolSpot): { x: number; z: number } {
+  if (spot === 'camp') return { x: CAMP_AT.x, z: CAMP_AT.z };
+  if (spot === 'party') return { x: PARTY_AT.x, z: PARTY_AT.z };
+  if (spot === 'club') return { x: SPOTS.clubExit.x, z: SPOTS.clubExit.z };
+  if (spot === 'daemon' && daemonFigure.shown) return { x: daemonFigure.x, z: daemonFigure.z };
+  const a = anchorOf(sim.busiest.service);
+  return { x: a.x, z: a.z };
+}
+
+const groundRay = new Raycaster();
+const groundPlane = new Plane(new Vector3(0, 1, 0), 0);
+const groundHit = new Vector3();
+/**
+ * The right-click (long press) menu's own entry, wherever it opens: send the
+ * foot patrol to that point on the ground. Near the person in crisis it goes
+ * to them. Greyed out, with the reason, while the patrol cannot go.
+ */
+function patrolHereItem(x: number, y: number): MenuItem {
+  groundRay.setFromCamera(clientToNdc(x, y, pipeline.frame), camera);
+  const hit = groundRay.ray.intersectPlane(groundPlane, groundHit);
+  const at = hit ? { x: hit.x, z: hit.z } : null;
+  const s = sim.services.footPatrol;
+  const why = !s.switchedOn ? t('not running') : sim.patrol.out ? t('already out') : !sim.patrolReady ? t('nobody on shift') : sim.org.budget < PATROL.cost ? t('not enough money') : '';
+  const nearDaemon = !!at && daemonFigure.shown && Math.hypot(at.x - daemonFigure.x, at.z - daemonFigure.z) < PATROL.daemonReach;
+  const label = nearDaemon ? t('Send the foot patrol to the person in crisis ({price})', { price: price(PATROL.cost) }) : t('Send the foot patrol here ({price})', { price: price(PATROL.cost) });
+  return {
+    label: why ? t('{action}: {why}', { action: label, why }) : label,
+    disabled: !!why || !at,
+    run: () => { if (at) queueOrg(() => { sim.sendPatrol(nearDaemon ? 'daemon' : 'street', nearDaemon ? { x: daemonFigure.x, z: daemonFigure.z } : at); refreshHud(); refreshOrg(); }); },
+  };
+}
+
 /** Brings where an event happens into view, without locking the camera on it. */
 function focusPlace(place: EventPlace | undefined): void {
   if (!place) return;
@@ -536,7 +595,7 @@ const interaction = new Interaction({
     // Let the column catch up with the new selection first, so the menu lists its actions.
     refreshHud();
     const { title, items } = hud.menuEntries();
-    actionMenu.show(x, y, title, items);
+    actionMenu.show(x, y, title, [...items, patrolHereItem(x, y)]);
   },
 });
 
@@ -756,7 +815,7 @@ function refreshHud(): void {
   world.setNightlife(sim.vitality.venues, sim.vitality.partners);
   syncProperty();
   hud.update(buildSnapshot(sim, crowd.population));
-  hud.setWorks(world.works().map((w) => ({ name: displayName('location', w.id, LOCATION_NAMES[w.id]), progress: w.progress, building: w.building })));
+  hud.setWorks(underWay());
   const sel = interaction.selected;
   if (sel?.kind === 'building') hud.showBuilding(cards.describeBuilding(sel.id));
   interaction.refresh();
@@ -920,7 +979,7 @@ const stakesSection = new StakesSection({
   onOrder: (id) => queueOrg(() => sim.orderSupply(id)),
   onStandingOrder: (id, on) => queueOrg(() => sim.setStandingOrder(id, on)),
   onPrepare: (p) => queueOrg(() => sim.prepareStorm(p)),
-  onPatrol: (spot) => queueOrg(() => { sim.sendPatrol(spot); refreshHud(); }),
+  onPatrol: (spot) => queueOrg(() => { sim.sendPatrol(spot, patrolPoint(spot)); refreshHud(); }),
 });
 org.section.insertBefore(stakesSection.root, org.section.querySelector('.org-team'));
 // The storm warning and the run's end wait for the pop-up to be free, ahead of other big events.

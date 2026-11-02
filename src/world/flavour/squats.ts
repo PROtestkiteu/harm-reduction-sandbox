@@ -1,7 +1,7 @@
 import { CanvasTexture, DoubleSide, Group, Mesh, MeshLambertMaterial, PlaneGeometry, SRGBColorSpace } from 'three';
 import { add, box, pixelTextTexture } from '../kit';
 import { mat } from '../materials';
-import { cityBuilding } from '../cityBuildings';
+import { cityBuilding, frontFrame } from '../cityBuildings';
 import { dynamic } from '../mergeStatic';
 import { fade, type Actor } from './actors';
 import type { Pack, PackDeps, SquatDoor } from './index';
@@ -166,12 +166,12 @@ export function buildSquats({ pool, scene }: PackDeps): Pack {
         top.rotation.y = face + Math.PI / 2;
         roof.add(top);
       }
-      // A big banner hung down the squat's front (the south or east face, which the camera sees), from the roof edge.
+      // A big banner hung down the squat's front, over its street, from the roof edge.
       if (b) {
-        const south = b.x1 - b.x0 >= b.z1 - b.z0;
+        const f = frontFrame(b);
         const hang = new Mesh(hangGeo, hangMat);
-        hang.position.set(south ? (b.x0 + b.x1) / 2 : b.x1 + 0.04, b.height - 0.25, south ? b.z1 + 0.04 : (b.z0 + b.z1) / 2);
-        hang.rotation.y = south ? 0 : Math.PI / 2;
+        hang.position.set(f.x + Math.sin(f.rot) * 0.04, b.height - 0.25, f.z + Math.cos(f.rot) * 0.04);
+        hang.rotation.y = f.rot;
         root.add(hang);
       }
       // A resident punk leaning by the door, a red mohawk on top.

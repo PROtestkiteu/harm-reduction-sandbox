@@ -1,7 +1,8 @@
 import { Group, type MeshLambertMaterial, type Object3D } from 'three';
 import { add, box, signBoard } from './kit';
 import { mat } from './materials';
-import type { CityBuilding } from './cityBuildings';
+import { frontSide, type CityBuilding } from './cityBuildings';
+import { SIDE_ROT } from './layout';
 
 /** What a shop unit shows on the street. */
 export type UnitLook = 'trading' | 'toLet' | { sign: string; fg: string; bg: string };
@@ -43,8 +44,8 @@ export class Letting {
     const b = this.building;
     const g = add(this.root, new Group());
     g.position.set((b.x0 + b.x1) / 2, this.baseY, (b.z0 + b.z1) / 2);
-    // Turned to the corner, so it reads from the usual views.
-    g.rotation.y = Math.PI / 4;
+    // Turned to the building's street, reading from the pavement in front (and from behind on its back).
+    g.rotation.y = SIDE_ROT[frontSide(b)];
     add(g, box(0.08, 1.1, 0.08, post, -1.3, 0, 0));
     add(g, box(0.08, 1.1, 0.08, post, 1.3, 0, 0));
     const front = signBoard(text, 3.2, 1, fg, bg, glow);

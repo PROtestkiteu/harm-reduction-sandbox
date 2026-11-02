@@ -163,8 +163,12 @@ export async function drive(url, steps, { out = '.', size = '1280x800', seed = p
   return results;
 }
 
-/** Steps that skip the welcome box on a fresh profile: mark it seen, then reload once. */
-export const SKIP_WELCOME = [{ eval: "localStorage.setItem('hrp-welcome-seen-2','1'); location.reload(); 1" }, { wait: 12000 }];
+/**
+ * Steps that skip the tutorial boxes on a fresh profile: tick "Don't show
+ * again" for the welcome and the red-meter guides (the key and ids of
+ * src/ui/tutorials.ts), then reload once. A box left open pauses the game.
+ */
+export const SKIP_WELCOME = [{ eval: "localStorage.setItem('hrp-tutorials-hidden', JSON.stringify(['welcome', 'guides'])); location.reload(); 1" }, { wait: 12000 }];
 
 /** A page-side file (a function expression) called with `args`, as one eval step. */
 export const call = (file, ...args) => ({ eval: `(${readFileSync(new URL(file, import.meta.url), 'utf8')})(${args.map((a) => JSON.stringify(a)).join(', ')})` });

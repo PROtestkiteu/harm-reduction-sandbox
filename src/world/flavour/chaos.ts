@@ -41,8 +41,9 @@ function frontsOf(random: () => number, count: number): SquatDoor[] {
     const j = Math.floor(random() * (i + 1));
     [ranked[i], ranked[j]] = [ranked[j], ranked[i]];
   }
-  // Walls that face the usual view (the camera sits towards +x, +z): a board on a far wall is never seen.
-  return squatDoors(ranked.map((b) => b.id)).filter((f) => f.nx + f.nz > 0).slice(0, count);
+  // Fronts facing the opening view (the camera starts towards +x, +z) first; the camera turns, so the others follow.
+  const fronts = squatDoors(ranked.map((b) => b.id));
+  return [...fronts.filter((f) => f.nx + f.nz > 0), ...fronts.filter((f) => f.nx + f.nz <= 0)].slice(0, count);
 }
 
 /** Spray tags on a small pixel canvas: a few bubble strokes in two colours with a dark outline. */

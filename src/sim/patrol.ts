@@ -7,6 +7,8 @@ import { PATROL, type PatrolSpot } from '../config/patrol';
  */
 export class Patrol {
   spot: PatrolSpot | null = null;
+  /** Where on the map they went (the crowd walks them there), if known. */
+  at: { x: number; z: number } | null = null;
   until = 0;
   /** People reached so far on this round, and the fraction carried to the next step. */
   reached = 0;
@@ -16,8 +18,9 @@ export class Patrol {
     return this.spot !== null;
   }
 
-  send(spot: PatrolSpot, now: number): void {
+  send(spot: PatrolSpot, now: number, at: { x: number; z: number } | null = null): void {
     this.spot = spot;
+    this.at = at && { x: at.x, z: at.z };
     this.until = now + PATROL.hours * 60;
     this.reached = 0;
     this.carry = 0;
@@ -35,11 +38,12 @@ export class Patrol {
     this.reached += contacts;
     if (now < this.until) return { contacts, back: false };
     this.spot = null;
+    this.at = null;
     return { contacts, back: true };
   }
 
-  snapshot(): { spot: PatrolSpot | null; until: number; reached: number } {
-    return { spot: this.spot, until: Math.round(this.until), reached: this.reached };
+  snapshot(): { spot: PatrolSpot | null; until: number; reached: number; at: { x: number; z: number } | null } {
+    return { spot: this.spot, until: Math.round(this.until), reached: this.reached, at: this.at };
   }
 
   restore(s: Partial<ReturnType<Patrol['snapshot']>> | undefined): void {
@@ -47,5 +51,7 @@ export class Patrol {
     this.spot = s.spot && s.spot in PATROL.spots ? s.spot : null;
     if (typeof s.until === 'number' && Number.isFinite(s.until)) this.until = s.until;
     if (typeof s.reached === 'number' && Number.isFinite(s.reached)) this.reached = Math.max(0, Math.round(s.reached));
+    const a = s.at;
+    this.at = this.spot && a && typeof a === 'object' && Number.isFinite(a.x) && Number.isFinite(a.z) ? { x: a.x, z: a.z } : null;
   }
 }

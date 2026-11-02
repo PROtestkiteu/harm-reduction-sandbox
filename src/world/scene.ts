@@ -52,7 +52,7 @@ import { buildMurals, type MuralSpot } from './murals';
 import type { Figure } from '../agents/character';
 import { Letting, type UnitLook } from './letting';
 import { OpeningFx } from './openingFx';
-import { allBuildings, cityBuilding, registerBuilding, type CityBuilding } from './cityBuildings';
+import { DOOR_ALONG, allBuildings, cityBuilding, frontDoor, frontFrame, registerBuilding, type CityBuilding } from './cityBuildings';
 import { t } from '../i18n';
 import { PROPERTY } from '../sim/property';
 import { Expansion, type ExpansionKind, type Facing } from './expansion';
@@ -312,6 +312,15 @@ function fastFoodFront(parent: Object3D, b: CityBuilding): void {
   for (const [r, h, y, c] of [[0.62, 0.22, 0, 0xd89040], [0.66, 0.06, 0.22, 0x5aa83a], [0.6, 0.18, 0.28, 0x5a3220], [0.66, 0.05, 0.46, 0xf2c400], [0.62, 0.32, 0.51, 0xd89040]] as const) add(burger, cylinder(r, h, mat(c), 14, 0, y, 0));
 }
 
+/** A group on a building's front wall, turned so dressing built facing +z faces the street, and the wall's length. */
+function onFront(parent: Object3D, b: CityBuilding): { g: Group; width: number } {
+  const f = frontFrame(b);
+  const g = add(parent, new Group());
+  g.position.set(f.x, 0, f.z);
+  g.rotation.y = f.rot;
+  return { g, width: f.width };
+}
+
 /**
  * A bookshop's dressing: a deep green fascia with BOOKS on every side, a
  * warm-lit window full of book spines, and a cart of second-hand books on the
@@ -331,14 +340,15 @@ function bookshopFront(parent: Object3D, b: CityBuilding): void {
   }
   // Spines in the front window: rows of thin coloured boxes behind the glass.
   const spines = [0x8a2a2a, 0x2a4a8a, 0xc8a040, 0x3a6a3a, 0xe8e0d0, 0x5a3a6a];
+  const front = onFront(g, b);
   for (let row = 0; row < 3; row++) {
-    for (let i = 0; i < Math.floor((w - 1) / 0.09); i++) {
-      add(g, box(0.07, 0.24 + ((i * 7 + row) % 4) * 0.03, 0.05, mat(spines[(i * 5 + row * 3) % spines.length]), b.x0 + 0.5 + i * 0.09, 0.55 + row * 0.42, b.z1 + 0.1));
+    for (let i = 0; i < Math.floor((front.width - 1) / 0.09); i++) {
+      add(front.g, box(0.07, 0.24 + ((i * 7 + row) % 4) * 0.03, 0.05, mat(spines[(i * 5 + row * 3) % spines.length]), -front.width / 2 + 0.5 + i * 0.09, 0.55 + row * 0.42, 0.1));
     }
   }
-  // The cart of second-hand books by the door.
-  const cart = add(g, new Group());
-  cart.position.set(b.x1 - 1.2, 0.12, b.z1 + 0.55);
+  // The cart of second-hand books out on the pavement, beside the street door and clear of it.
+  const cart = add(front.g, new Group());
+  cart.position.set(front.width / 2 - DOOR_ALONG - 1.3, 0.12, 0.55);
   add(cart, box(1.1, 0.06, 0.5, mat(0x5a3e26), 0, 0.62, 0));
   for (const [x, z] of [[-0.5, -0.2], [0.5, -0.2], [-0.5, 0.2], [0.5, 0.2]]) add(cart, box(0.04, 0.62, 0.04, mat(0x3a2a1a), x, 0, z));
   for (let i = 0; i < 11; i++) add(cart, box(0.08, 0.2, 0.15, mat(spines[i % spines.length]), -0.45 + i * 0.09, 0.68, 0)).rotation.z = (i % 3 - 1) * 0.12;
@@ -361,11 +371,12 @@ function civicFront(parent: Object3D, b: CityBuilding, name: string, fascia: num
     add(g, signBoard(name, Math.min(name.length * 0.62, len - 0.6), 0.62, letters, bg, 0.55).mesh, rot).position.set(x, 2.5, z);
   }
   const colours = inside === 'drawings' ? [0xe84a3a, 0xf0c830, 0x3a8ad8, 0x4ab04a, 0xe87ab8, 0xf0f0e8] : [0x8a2a2a, 0x2a4a8a, 0xc8a040, 0x3a6a3a, 0xe8e0d0, 0x5a3a6a];
-  // On the two faces the camera sees, in the ground-floor window band.
-  for (let i = 0; i < Math.floor((w - 1) / (inside === 'drawings' ? 0.5 : 0.09)); i++) {
-    const x = b.x0 + 0.5 + i * (inside === 'drawings' ? 0.5 : 0.09);
-    if (inside === 'drawings') add(g, box(0.36, 0.3, 0.02, mat(colours[i % colours.length]), x, 1.2 + (i % 2) * 0.35, b.z1 + 0.06));
-    else for (let row = 0; row < 3; row++) add(g, box(0.07, 0.24 + ((i * 7 + row) % 4) * 0.03, 0.05, mat(colours[(i * 5 + row * 3) % colours.length]), x, 0.55 + row * 0.42, b.z1 + 0.1));
+  // On the front, in the ground-floor window band.
+  const front = onFront(g, b);
+  for (let i = 0; i < Math.floor((front.width - 1) / (inside === 'drawings' ? 0.5 : 0.09)); i++) {
+    const x = -front.width / 2 + 0.5 + i * (inside === 'drawings' ? 0.5 : 0.09);
+    if (inside === 'drawings') add(front.g, box(0.36, 0.3, 0.02, mat(colours[i % colours.length]), x, 1.2 + (i % 2) * 0.35, 0.06));
+    else for (let row = 0; row < 3; row++) add(front.g, box(0.07, 0.24 + ((i * 7 + row) % 4) * 0.03, 0.05, mat(colours[(i * 5 + row * 3) % colours.length]), x, 0.55 + row * 0.42, 0.1));
   }
 }
 
@@ -492,7 +503,7 @@ export function buildWorld(random: Random): World {
   const shopKinds: (ShopKind | null)[] = specials.map(() => null);
   // The fixed shops go up straight away; drinkers hang about the liquor store and the casino.
   FIXED_SHOPS.forEach((kind, i) => { if (shopSigns[i]) { shopKinds[i] = kind; shopSigns[i].set(SHOP_SIGN[kind]); } });
-  ambient.setHangouts(specials.filter((_, i) => FIXED_SHOPS[i] === 'liquor' || FIXED_SHOPS[i] === 'casino').map(({ b }) => ({ x: (b.x0 + b.x1) / 2, z: b.z1 + 2.5 })));
+  ambient.setHangouts(specials.filter((_, i) => FIXED_SHOPS[i] === 'liquor' || FIXED_SHOPS[i] === 'casino').map(({ b }) => frontDoor(b, 2.5).door));
   // A squat: the ordinary building nearest the squat's kerb spot, not one of the shops, with a banner on its roof.
   const squatAt = counterAtSpot(SQUAT_SPOT);
   const taken = new Set([...shopUnits, ...specials].map(({ b }) => b.id));

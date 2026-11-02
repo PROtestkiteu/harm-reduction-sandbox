@@ -43,7 +43,7 @@ import { nearestNode, routeTo } from './nav';
 import { movingBox, pushFromBox } from '../world/solids';
 import type { Tailpipe } from '../world/puffs';
 import { PoliceRings, deterrenceRadius } from './policeRings';
-import { cityBuilding } from '../world/cityBuildings';
+import { cityBuilding, doorApproach, type DoorApproach } from '../world/cityBuildings';
 import { t } from '../i18n';
 
 /**
@@ -100,6 +100,8 @@ export interface Satellite {
   door: P2;
   /** Where they go once admitted; absent for a camper counter. */
   inside?: P2;
+  /** The way in from the walk graph, ending at `door`; absent where the door is straight off it. */
+  approach?: DoorApproach;
 }
 
 /** Read-only view of one person for the UI; carries no identifying detail. */
@@ -159,6 +161,8 @@ interface Agent {
   waitingForBus?: boolean;
   /** Staff away from their post helping someone who collapsed. */
   responding?: boolean;
+  /** A streetworker out on the foot patrol's beat, away from its table. */
+  onBeat?: boolean;
   /** How this person is doing, shown as a small icon; decided by simulation outcomes. */
   mood?: Mood;
   /** Seconds the mood icon stays up (Infinity: while in this state). */
@@ -232,6 +236,12 @@ export class Crowd {
   private sellerSpots: 'near' | 'displaced' = 'near';
   private encounterTimer = 12;
   private patrolKey = '';
+  /** Where the streetworkers were last sent on foot (sim.patrol), so a change is acted on once. */
+  private beatKey = '';
+  /** Some streetworker is still away from the table (finishing a conversation after the round ended). */
+  private beatersOut = false;
+  /** When the last round ended (crowd clock), to give the table's staff call a moment first. */
+  private beatEnded = 0;
   private readonly icons: MoodIcons;
   private readonly carried: CarryProps;
   private clock = 0;
@@ -307,7 +317,11 @@ export class Crowd {
       case 'served': return this.onServed(e.service, e.visitor);
       case 'leftUnserved': return this.onLeftUnserved(e.service, e.visitor);
       case 'staffCall':
-        for (let i = 0; i < e.count; i++) this.staffQueue.push({ service: e.service, post: e.first + i, delay: i * 1.6 });
+        for (let i = 0; i < e.count; i++) {
+          // The table reopens after a round: the streetworkers out on the beat walk back to it, no one new is called.
+          if (e.service === 'footPatrol' && this.returnFromBeat(e.first + i)) continue;
+          this.staffQueue.push({ service: e.service, post: e.first + i, delay: i * 1.6 });
+        }
         return;
       case 'staffRelease': return this.releaseStaff(e.service, e.fromPost);
       case 'clubAdmitted': return this.onClubAdmitted(e.visitor);
@@ -353,7 +367,7 @@ export class Crowd {
   private goToSatellite(a: Agent, sat: Satellite): void {
     a.satellite = sat;
     a.service = sat.service;
-    this.walk(a, [...routeTo(a.pos, nearestNode(sat.door), a.offset), sat.door], () => {
+    this.walk(a, sat.approach ? [...routeTo(a.pos, sat.approach.node, a.offset), ...sat.approach.way] : [...routeTo(a.pos, nearestNode(sat.door), a.offset), sat.door], () => {
       const result = this.sim.arrive(sat.service, a.visitor!);
       if (result === 'admitted') this.enterSatellite(a);
       // Waiting at a satellite: they stay by its door rather than join the main line.
@@ -386,7 +400,7 @@ export class Crowd {
         this.show(a, sat.inside!);
         a.mode = 'walking';
         a.goal = 'exit';
-        this.walk(a, [sat.door], () => this.leaveAnywhere(a));
+        this.walk(a, sat.approach ? [...sat.approach.way].reverse() : [sat.door], () => this.leaveAnywhere(a));
       };
       if (a.mode === 'inside') out();
       else a.onArrive = out;
@@ -804,6 +818,18 @@ export class Crowd {
   /** Staff at `fromPost` and above leave; 0 releases everyone (service closing). */
   private releaseStaff(service: ServiceId, fromPost: number): void {
     this.staffQueue.splice(0, this.staffQueue.length, ...this.staffQueue.filter((s) => s.service !== service || s.post < fromPost));
+    // The table shuts because its people are going out on foot: they stay, and walk the beat (syncStreetworkers).
+    if (service === 'footPatrol' && this.sim.patrol.out && this.sim.patrol.at) {
+      for (const a of this.agents.values()) {
+        if (!a.rig.look.staff || a.service !== service || a.mode === 'leaving' || (a.staffPost ?? 0) < fromPost) continue;
+        if (a.mode === 'post' || a.responding) this.sim.staffLeft(service);
+        a.responding = false;
+        a.onBeat = true;
+        this.beatersOut = true;
+      }
+      this.beatKey = '';
+      return;
+    }
     for (const a of this.agents.values()) {
       if (!a.rig.look.staff || a.service !== service || a.mode === 'leaving' || (a.staffPost ?? 0) < fromPost) continue;
       const wasOnPost = a.mode === 'post' || a.responding === true;
@@ -1243,19 +1269,13 @@ export class Crowd {
     const door = this.squatDoor();
     if (!door) return;
     const a = this.createAgent(NODES[pick(this.random, ENTRY_NODES)], 'passerby', { style: 'unhoused', extra: 'backpack' });
-    this.walk(a, [...routeTo(a.pos, nearestNode(door), a.offset), door], () => this.remove(a));
+    this.walk(a, [...routeTo(a.pos, door.node, a.offset), ...door.way], () => this.remove(a));
   }
 
-  /** A squat's door (one of them, at random): on the wall nearest the pavement it faces. */
-  private squatDoor(): P2 | null {
+  /** The way in to a squat's door (one of them, at random): the street door on its front. */
+  private squatDoor(): DoorApproach | null {
     const b = this.squats.length ? cityBuilding(pick(this.random, this.squats)) : undefined;
-    if (!b) return null;
-    const cx = (b.x0 + b.x1) / 2;
-    const cz = (b.z0 + b.z1) / 2;
-    const node = NODES[nearestNode({ x: cx, z: cz })];
-    const wall = { x: Math.min(b.x1, Math.max(b.x0, node.x)), z: Math.min(b.z1, Math.max(b.z0, node.z)) };
-    const away = Math.hypot(node.x - wall.x, node.z - wall.z) || 1;
-    return { x: wall.x + ((node.x - wall.x) / away) * 0.6, z: wall.z + ((node.z - wall.z) / away) * 0.6 };
+    return b ? doorApproach(b, 0.6) : null;
   }
 
   private spawnStreetFigure(role: 'seller' | 'sleeper', spot: { node: NodeId; at: P2; face: number }): Agent {
@@ -1313,6 +1333,86 @@ export class Crowd {
     const a = this.createAgent(NODES[i % 2 ? 'xN2' : 'eN2'], 'resident', { placard: true, extra: 'none' });
     this.walk(a, [...routeTo(a.pos, SERVICE_NODES.dropIn, a.offset), spot], () => { a.mode = 'standing'; a.faceHeading = Math.PI + VENUE_ROT.dropIn; });
     return a;
+  }
+
+  /**
+   * The foot patrol sent out (sim.patrol): its streetworkers leave the table,
+   * walk to where they were sent and walk a beat between the nearest corners
+   * there, stopping for a word with people they meet; when the round is over
+   * they walk back to the table. Only does work while the patrol is out.
+   */
+  private syncStreetworkers(): void {
+    const p = this.sim.patrol;
+    const at = p.out ? p.at : null;
+    const key = at ? `${at.x.toFixed(1)},${at.z.toFixed(1)},${p.until}` : '';
+    const changed = key !== this.beatKey;
+    if (changed && !at) this.beatEnded = this.clock;
+    this.beatKey = key;
+    if (!changed && !at && !this.beatersOut) return;
+    let out = false;
+    for (const a of this.agents.values()) {
+      if (!a.rig.look.staff || a.service !== 'footPatrol' || a.mode === 'leaving' || !a.visible) continue;
+      // Sent out (or just arrived at a table that is out): off on the beat.
+      if (at && (changed || (a.mode === 'post' && !a.onBeat))) this.walkBeat(a, at, 0);
+      // Round over with no staff call to answer (the patrol closed meanwhile): they go off shift.
+      else if (!at && a.onBeat && a.mode !== 'pausing' && !this.sim.services.footPatrol.enabled && this.sim.patrol.spot === null && this.clock - this.beatEnded > 2) { a.onBeat = false; this.leave(a, pick(this.random, ENTRY_NODES)); }
+      out ||= !!a.onBeat;
+    }
+    this.beatersOut = out;
+  }
+
+  /** The `step`th leg of the beat round `at`: to one of the corners nearest it, then a word with someone close. */
+  private walkBeat(a: Agent, at: P2, step: number): void {
+    a.onBeat = true;
+    this.beatersOut = true;
+    a.faceHeading = undefined;
+    a.responding = false;
+    const corners = (Object.keys(NODES) as NodeId[]).map((id) => ({ id, d: dist(NODES[id], at) })).sort((p, q) => p.d - q.d).slice(0, 4).map((n) => n.id);
+    const target = step === 0 ? corners[0] : corners[(step + (a.staffPost ?? 0)) % corners.length];
+    this.walk(a, routeTo(a.pos, target, a.offset), () => {
+      if (!a.onBeat || !this.sim.patrol.out) return;
+      let other: Agent | undefined;
+      let best = 5;
+      for (const o of this.agents.values()) {
+        if (o === a || o.rig.look.staff || SPECIAL_ROLES.has(o.role) || !o.visible || (o.mode !== 'walking' && o.mode !== 'leaving' && o.mode !== 'standing')) continue;
+        const d = dist(o.pos, a.pos);
+        if (d < best) { best = d; other = o; }
+      }
+      if (other && this.random() < 0.75) {
+        this.holdFor(other, 5 + this.random() * 3, headingTo(other.pos, a.pos));
+        this.holdFor(a, 5.5 + this.random() * 3, headingTo(a.pos, other.pos), () => { if (this.sim.patrol.out && a.onBeat) this.walkBeat(a, at, step + 1); });
+      } else this.walkBeat(a, at, step + 1);
+    });
+  }
+
+  /**
+   * Back from the beat to its place at the table, facing the pavement again;
+   * on arrival it counts as on site (the table's staff call is answered by it).
+   */
+  private backToTable(a: Agent, post = a.staffPost ?? 0): void {
+    a.onBeat = false;
+    a.staffPost = post;
+    a.goal = 'post';
+    this.walk(a, [...routeTo(a.pos, SERVICE_NODES.footPatrol, a.offset), PATROL.staff[Math.min(post, PATROL.staff.length - 1)]], () => {
+      a.mode = 'post';
+      a.faceHeading = PATROL.facing + Math.PI;
+      this.sim.staffArrived('footPatrol');
+    });
+  }
+
+  /** A streetworker still out on the beat takes post `post` back at the table; false if none is out. */
+  private returnFromBeat(post: number): boolean {
+    for (const a of this.agents.values()) {
+      if (!a.onBeat || a.service !== 'footPatrol' || a.mode === 'leaving') continue;
+      if (a.mode === 'pausing') {
+        // Finishing a conversation: back to the table once it ends.
+        const done = a.onArrive;
+        a.onArrive = () => { done?.(); this.backToTable(a, post); };
+        a.onBeat = false;
+      } else this.backToTable(a, post);
+      return true;
+    }
+    return false;
   }
 
   /** A possession stop: an officer and the nearest person walking past pause together. Counted only if it happens. */
@@ -1561,6 +1661,7 @@ export class Crowd {
     for (const o of this.officers) if (o.visible && o.mode !== 'leaving') this.ringAt.push(o.pos);
     this.rings.update(this.ringAt, deterrenceRadius(this.sim.context.deterrence));
     this.streetEncounters(dt);
+    this.syncStreetworkers();
     this.syncBouncers();
     this.maybeHarass(dt);
     for (const s of this.staffQueue) s.delay -= dt;

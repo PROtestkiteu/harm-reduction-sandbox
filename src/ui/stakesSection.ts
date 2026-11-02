@@ -192,11 +192,12 @@ export class StakesSection {
       setText(this.patrolLine, p.out
         ? t('Out at {spot} until {time}: {n} reached so far. The table is shut meanwhile.', { spot: PATROL.spots[p.out].label, time: formatClock(v.clock + p.until - v.now), n: p.reached })
         : p.ready
-          ? t('At its table. Send it out for {hours} hours to reach people where they are; the table shuts meanwhile.', { hours: PATROL.hours })
+          ? t('At its table. Send it out for {hours} hours to reach people where they are, or right-click anywhere on the map; the table shuts meanwhile.', { hours: PATROL.hours })
           : t('Needs its table open and someone on shift there before it can go out.'));
       for (const spot of PATROL_SPOTS) {
         const b = this.patrolBtns[spot];
-        const show = !p.out && p.ready && p.spots.includes(spot);
+        // Anywhere else on the street is a right-click on the map ("Send the foot patrol here"), not a reply here.
+        const show = spot !== 'street' && !p.out && p.ready && p.spots.includes(spot);
         if (b.hidden === show) b.hidden = !show;
         setDisabled(b, v.budget < PATROL.cost);
       }

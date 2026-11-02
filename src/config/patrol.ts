@@ -8,7 +8,7 @@ import { t } from '../i18n';
  * weight off the city's services where they are. ILLUSTRATIVE numbers, tuned
  * with the strategy bots (scripts/bots).
  */
-export type PatrolSpot = 'camp' | 'party' | 'busiest' | 'club' | 'daemon';
+export type PatrolSpot = 'camp' | 'party' | 'busiest' | 'club' | 'daemon' | 'street';
 
 export interface PatrolSpotInfo {
   label: string;
@@ -21,6 +21,8 @@ export interface PatrolSpotInfo {
 }
 
 export const PATROL = {
+  /** Sent to a point this close (metres) to the person in crisis, they go to them. */
+  daemonReach: 9,
   /** Clock hours out before the patrol walks back to its table. */
   hours: 3,
   /** Kit and bus fare for a round (money). */
@@ -34,6 +36,7 @@ export const PATROL = {
     party: { label: t('the party in the park'), does: t('Water, earplugs, test strips and an eye on anyone in trouble.'), contacts: 2.6, eases: { medics: 0.02, sobering: 0.03 } },
     busiest: { label: t('the longest queue'), does: t('People about to give up waiting: a kit and advice on the spot instead of nothing.'), contacts: 2, eases: { police: 0.015 } },
     club: { label: t('outside the club'), does: t('People leaving the club late: water, a seat, a lift home called.'), contacts: 1.8, eases: { sobering: 0.03, police: 0.01 } },
+    street: { label: t('the street'), does: t('Walking a beat where you sent them: a word with whoever they meet, kits and naloxone to hand.'), contacts: 1.4, eases: { police: 0.01 } },
     daemon: { label: t('the person in crisis'), does: t('Two streetworkers walk up slowly and talk; it often works better than any siren.'), contacts: 0.6, eases: { police: 0.02 } },
   } satisfies Record<PatrolSpot, PatrolSpotInfo>,
 } as const;

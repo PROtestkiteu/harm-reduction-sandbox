@@ -267,8 +267,8 @@ export class Hud {
   /** Building work under way: a slim strip at the foot of the panel (no bar to press; pausing is on the speed toggle). */
   private readonly works: HTMLElement;
   private paused = false;
-  private readonly worksFill: HTMLSpanElement;
-  private readonly worksText: HTMLSpanElement;
+  /** One row per thing under way: text and a bar each, reused as the list changes. */
+  private readonly workRows: { root: HTMLElement; text: HTMLElement; fill: HTMLElement }[] = [];
   private readonly speedBtn: HTMLButtonElement;
   private readonly money: HTMLElement;
   /** City hall favours held, beside the money: a small icon and the count. */
@@ -732,11 +732,7 @@ export class Hud {
     this.works = el('div', 'works-bar');
     this.works.setAttribute('role', 'status');
     this.works.hidden = true;
-    this.worksFill = el('span', 'works-fill');
-    this.worksText = el('span', 'works-text');
-    const track = el('span', 'works-track');
-    track.append(this.worksFill);
-    this.works.append(this.worksText, track);
+
 
     // City services under pressure: three small meters under the top line.
     // The meters sit in their own size container, so their grid follows the room they have.
@@ -862,17 +858,32 @@ export class Hud {
   }
 
   /** Building work under way, shown as a fill across the Pause bar. Empty hides it. */
-  setWorks(works: readonly { name: string; progress: number; building: boolean }[]): void {
+  /**
+   * What is under way, one row each with a bar: building works, people being
+   * hired (until they start) and the foot patrol out on its round. Rows are
+   * kept and reused; only text and bar width are written, and only on change.
+   */
+  setWorks(works: readonly { text: string; progress: number }[]): void {
     const on = works.length > 0;
     if (this.works.hidden === on) this.works.hidden = !on;
-    if (!on) return;
-    const w = works[0];
-    const pct = Math.round(100 * Math.min(1, Math.max(0, w.progress)));
-    this.worksFill.style.transform = `scaleX(${pct / 100})`;
-    const vars = { name: w.name, pct, more: works.length - 1 };
-    setText(this.worksText, works.length > 1
-      ? (w.building ? t('Extending: {name}, {pct}% (+{more} more)', vars) : t('Scaling down: {name}, {pct}% (+{more} more)', vars))
-      : (w.building ? t('Extending: {name}, {pct}%', vars) : t('Scaling down: {name}, {pct}%', vars)));
+    while (this.workRows.length < works.length) {
+      const root = el('div', 'works-row');
+      const text = el('span', 'works-text');
+      const track = el('span', 'works-track');
+      const fill = el('span', 'works-fill');
+      track.append(fill);
+      root.append(text, track);
+      this.works.append(root);
+      this.workRows.push({ root, text, fill });
+    }
+    this.workRows.forEach((r, i) => {
+      const w = works[i];
+      if (r.root.hidden === !!w) r.root.hidden = !w;
+      if (!w) return;
+      setText(r.text, w.text);
+      const tx = `scaleX(${Math.round(100 * Math.min(1, Math.max(0, w.progress))) / 100})`;
+      if (r.fill.style.transform !== tx) r.fill.style.transform = tx;
+    });
   }
 
   setSpeed(speed: number): void {

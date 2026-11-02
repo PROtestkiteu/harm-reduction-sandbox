@@ -2405,3 +2405,7 @@ body:has(.sandbox-body:not([hidden])) .layers-toggle { display: none; }
 .dont-show-again { display: flex; align-items: center; gap: 8px; min-height: 44px; margin-top: 10px; color: var(--muted); font-size: 14px; cursor: pointer; }
 .dont-show-again[hidden] { display: none; }
 .dont-show-again input { width: 20px; height: 20px; margin: 0; accent-color: var(--bar); }
+
+/* One row per thing under way (works, hires on the way, the patrol out). */
+.works-row { display: flex; flex-direction: column; gap: 3px; }
+.works-row[hidden] { display: none; }
