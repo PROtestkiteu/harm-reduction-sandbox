@@ -3,6 +3,7 @@ import type { Choice, MajorEvent } from '../game/majorEvents';
 import { price } from './money';
 import { t } from '../i18n';
 import { playerBadge, type PlayerPicture } from './playerBadge';
+import { dontShowAgain } from './tutorials';
 
 /**
  * A big event as a modal box that stops the clock: what is happening, the
@@ -13,6 +14,8 @@ export class EventPopup {
   private readonly title: HTMLElement;
   private readonly body: HTMLElement;
   private readonly choices: HTMLElement;
+  /** On the meter guides only: turns them all off (ui/tutorials.ts). */
+  private readonly guideOptOut = dontShowAgain('guides');
 
   constructor(parent: HTMLElement, private readonly onChange: (open: boolean) => void, private readonly picture?: PlayerPicture) {
     this.dialog = document.createElement('dialog');
@@ -23,7 +26,7 @@ export class EventPopup {
     this.body = document.createElement('div');
     this.choices = document.createElement('div');
     this.choices.className = 'event-choices';
-    this.dialog.append(this.title, this.body, this.choices);
+    this.dialog.append(this.title, this.body, this.choices, this.guideOptOut);
     // A decision is needed: Escape does not dismiss it.
     this.dialog.addEventListener('cancel', (e) => e.preventDefault());
     parent.append(this.dialog);
@@ -35,6 +38,9 @@ export class EventPopup {
 
   show(event: MajorEvent, budget: number, choose: (c: Choice) => string | void): void {
     this.title.textContent = event.title;
+    const guide = event.id.startsWith('guide-');
+    this.guideOptOut.hidden = !guide;
+    if (guide) this.guideOptOut.dispatchEvent(new Event('refresh'));
     // You head the box: a guide is your own notes, anything else is yours to decide.
     this.dialog.querySelector('.player-badge')?.remove();
     if (this.picture) this.title.before(playerBadge(this.picture, event.id.startsWith('guide-') ? t('What I know about this.') : t('Your call.')));

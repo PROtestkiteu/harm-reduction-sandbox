@@ -1355,7 +1355,7 @@ export const PT: Record<string, string> = {
   "Switch the service on to invest in it.": "Liga o serviço para investir nele.",
   "Switch the service on to use this.": "Liga o serviço para usar isto.",
 
-  // ===== Flavour packs (src/config/flavour, src/ui/flavourSection.ts) =====
+  // ===== Flavour packs (src/config/flavour, Settings (removed: every pack is always on)) =====
   "phone snatches": "roubos de telemóvel por esticão",
   "Hey! My phone!": "Ei! O meu telemóvel!",
   "shoplifting": "furtos em lojas",
@@ -1462,9 +1462,6 @@ export const PT: Record<string, string> = {
   "Dry": "Seco",
   "Rain": "Chuva",
   "Fog": "Nevoeiro",
-  "Flavour packs": "Pacotes de ambiente",
-  "Street life on top of the model. None of it changes the numbers.": "Vida de rua por cima do modelo. Nada disto muda os números.",
-  "Weather": "Tempo",
   // ===== Sound (src/audio, src/ui/soundSection.ts) =====
   "Sound": "Som",
   "Street sounds and soft clicks, made in the browser. They start with your first click or key press.": "Sons da rua e cliques suaves, criados no navegador. Começam com o seu primeiro clique ou toque numa tecla.",
@@ -1871,9 +1868,15 @@ export const PT: Record<string, string> = {
   "Street scene": "Cena de rua",
   "Reach": "Alcance",
   "Map overlay": "Camada do mapa",
-  "Turn the overlay off": "Desligar a camada",
-  "Map overlay: off": "Camada do mapa: desligada",
-  "Map overlay: {name}": "Camada do mapa: {name}",
+  // Cycling, pets, street furniture and the bookshop (config/flavour/packs.ts, game/cityState.ts)
+  "Cycling": "Bicicletas",
+  "Cyclists on the ring road's bike lane and bikes parked at racks.": "Ciclistas na ciclovia do anel e bicicletas presas nos suportes.",
+  "Pets": "Animais de estimação",
+  "People walking dogs, and cats in doorways.": "Gente a passear cães e gatos às portas.",
+  "Street furniture": "Mobiliário urbano",
+  "Planters, café boards, a post box, a newspaper box and bollards.": "Floreiras, quadros de café, um marco do correio, uma caixa de jornais e pilaretes.",
+  "Bookshop": "Livraria",
+  "New and second-hand books, a cart of them by the door.": "Livros novos e usados, um carrinho deles à porta.",
   // ===== Sending the foot patrol out (src/config/patrol.ts, src/sim/simulation.ts, src/ui/stakesSection.ts) =====
   'the tent camp in the park': 'o acampamento do parque',
   'People sleeping out: kits, naloxone, a warm drink, a word about the shelter.': 'Pessoas a dormir na rua: kits, naloxona, uma bebida quente, uma palavra sobre o abrigo.',
@@ -1898,4 +1901,5 @@ export const PT: Record<string, string> = {
   'The foot patrol is back at its table: it reached {n} people out there.': 'A patrulha a pé voltou à sua mesa: chegou a {n} pessoas.',
   "Map overlay: off. Press to choose one.": "Camada do mapa: desligada. Carrega para escolher uma.",
   "Map overlay: {name}. Press to turn it off.": "Camada do mapa: {name}. Carrega para a desligar.",
+  "Don't show again": 'Não mostrar novamente',
 };

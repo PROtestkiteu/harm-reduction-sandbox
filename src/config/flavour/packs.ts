@@ -6,7 +6,7 @@ import { t } from '../../i18n';
  * the same with any of them on or off. Each is built the first time it is
  * switched on and costs nothing per frame while it is off.
  */
-export type PackId = 'street' | 'guard' | 'crime' | 'vignettes' | 'lines' | 'service' | 'weather' | 'campus' | 'chaos' | 'users' | 'thieves' | 'visitors';
+export type PackId = 'street' | 'guard' | 'crime' | 'vignettes' | 'lines' | 'service' | 'weather' | 'campus' | 'chaos' | 'users' | 'thieves' | 'visitors' | 'cycling' | 'pets' | 'decor';
 
 export interface PackInfo {
   id: PackId;
@@ -26,6 +26,9 @@ export const PACKS: readonly PackInfo[] = [
   { id: 'campus', label: t('University'), hint: t('A university and its students, on the south-west edge of the district.') },
   { id: 'thieves', label: t('Petty thieves'), hint: t('Pickpockets and shoplifters from the simulation, shown where they strike; shops hit often hire a guard or pull their shutters down early.') },
   { id: 'visitors', label: t('Pickets and clergy'), hint: t('A picket, a priest or a nun at the drop-in some evenings, as likely to be for harm reduction as against it.') },
+  { id: 'cycling', label: t('Cycling'), hint: t('Cyclists on the ring road\'s bike lane and bikes parked at racks.') },
+  { id: 'pets', label: t('Pets'), hint: t('People walking dogs, and cats in doorways.') },
+  { id: 'decor', label: t('Street furniture'), hint: t('Planters, café boards, a post box, a newspaper box and bollards.') },
   { id: 'users', label: t('Who uses what'), hint: t('Small groups along the inner ring: smokers and vapers, opioid users bent over in the fentanyl fold, cannabis smokers on a bench, clubbers after hours, people tripping, people slumped on benzos and stimulant users pacing.') },
 ];
 
@@ -46,29 +49,25 @@ export interface PackSettings {
 }
 
 export const defaultPacks = (): PackSettings => ({
-  on: { street: true, guard: true, crime: true, vignettes: true, lines: true, service: true, weather: true, campus: true, chaos: true, users: true, thieves: true, visitors: true },
+  on: { street: true, guard: true, crime: true, vignettes: true, lines: true, service: true, weather: true, campus: true, chaos: true, users: true, thieves: true, visitors: true, cycling: true, pets: true, decor: true },
   weather: 'auto',
 });
 
-/** Where the choice is remembered on this device (a convenience: the packs never change a save). */
-const KEY = 'hrp-packs';
-
-/** The packs as last chosen here, or the defaults; `?packs=street,lines` (or `none`) overrides both. */
+/**
+ * Every pack is on, always: they are part of the city, not options. Dev builds
+ * only take `?packs=street,lines` (or `none`) and `?weather=rain`, so the
+ * frame-cost check and the bots can compare runs with packs off.
+ */
 export function loadPacks(): PackSettings {
   const out = defaultPacks();
-  try {
-    const kept = JSON.parse(localStorage.getItem(KEY) ?? 'null') as Partial<PackSettings> | null;
-    if (kept?.on) for (const p of PACKS) if (typeof kept.on[p.id] === 'boolean') out.on[p.id] = kept.on[p.id];
-    if (kept?.weather && WEATHER_MOODS.some((m) => m.id === kept.weather)) out.weather = kept.weather;
-  } catch { /* storage blocked or bad data: defaults */ }
-  const forced = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('packs') : null;
+  if (!import.meta.env.DEV || typeof location === 'undefined') return out;
+  const q = new URLSearchParams(location.search);
+  const forced = q.get('packs');
   if (forced !== null) {
     const ids = new Set(forced.split(','));
     for (const p of PACKS) out.on[p.id] = ids.has(p.id);
   }
+  const mood = q.get('weather');
+  if (mood && WEATHER_MOODS.some((m) => m.id === mood)) out.weather = mood as WeatherMood;
   return out;
-}
-
-export function savePacks(s: PackSettings): void {
-  try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* private mode: not kept */ }
 }

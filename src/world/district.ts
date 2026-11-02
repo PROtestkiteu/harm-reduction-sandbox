@@ -47,6 +47,24 @@ function zebra(g: Group, across: 'x' | 'z', from: number, to: number, at: number
   }
 }
 
+/** The ring road's bike lane, metres wide: the gap between the cars parked at its two kerbs. */
+export const BIKE_LANE = 1.2;
+
+/** A bicycle painted on the lane, along local z: two wheels (rings) and a frame. */
+function bikeGlyph(g: Group, paint: ReturnType<typeof mat>, x: number, z: number, rot: number): void {
+  const b = add(g, new Group());
+  b.position.set(x, 0.024, z);
+  b.rotation.y = rot;
+  for (const wz of [-0.28, 0.28]) {
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * Math.PI * 2;
+      add(b, box(0.05, 0.01, 0.1, paint, Math.cos(a) * 0.15, 0, wz + Math.sin(a) * 0.15)).rotation.y = -a;
+    }
+  }
+  add(b, box(0.05, 0.01, 0.5, paint, 0, 0, 0));
+  add(b, box(0.22, 0.01, 0.05, paint, 0, 0, 0.3));
+}
+
 export function buildStreets(scene: Object3D, random: Random): void {
   const g = add(scene, new Group());
   const roads = Object.values(STREETS).map((s) => s.road);
@@ -61,7 +79,8 @@ export function buildStreets(scene: Object3D, random: Random): void {
         add(g, rectBox(part, 0.12, i % 2 ? PALETTE.pavement : PALETTE.pavementAlt));
       }
     }
-    // Centre line dashes, skipping junctions and crossings.
+    // Centre line dashes, skipping junctions and crossings. The ring road has a bike lane down its middle instead.
+    if (name.startsWith('ring')) continue;
     const line = mat(PALETTE.asphaltLine);
     const mid = s.along === 'z' ? (s.road.x0 + s.road.x1) / 2 + (name === 'main' ? 0.25 : 0) : (s.road.z0 + s.road.z1) / 2;
     const [a0, a1] = s.along === 'z' ? [s.road.z0, s.road.z1] : [s.road.x0, s.road.x1];
@@ -74,9 +93,45 @@ export function buildStreets(scene: Object3D, random: Random): void {
     }
   }
 
+  // Lanes: a solid line between the parked cars and the moving lane, on every
+  // street with a parking lane (the cross streets and the east street park at
+  // their far kerb, the main street in its own lane).
+  // Only roads running the other way cross a line (cutStrip spans every hole along the strip).
+  const crossers = (along: 'x' | 'z') => Object.values(STREETS).filter((o) => o.along !== along).map((o) => o.road);
+  const laneLine = (q: Rect, along: 'x' | 'z') => {
+    for (const part of cutStrip(q, along, crossers(along))) add(g, rectBox(part, 0.01, PALETTE.asphaltLine, 0.021));
+  };
+  for (const s of [STREETS.north, STREETS.south]) laneLine({ x0: s.road.x0, x1: s.road.x1, z0: s.road.z1 - 2.15, z1: s.road.z1 - 2.07 }, 'x');
+  laneLine({ x0: STREETS.east.road.x1 - 2.15, x1: STREETS.east.road.x1 - 2.07, z0: STREETS.east.road.z0, z1: STREETS.east.road.z1 }, 'z');
+  laneLine({ x0: ROAD.parkX - 1.15, x1: ROAD.parkX - 1.07, z0: STREETS.main.road.z0, z1: STREETS.main.road.z1 }, 'z');
+
+  // Cycling: the ring road carries no through-traffic, so its middle, between
+  // the cars parked at both kerbs, is a two-way bike lane: red surface, dashed
+  // white edges, a bicycle painted on it every so often (the flavour packs'
+  // cyclists ride it).
+  const white = mat(0xe8e4da);
+  for (const s of [STREETS.ringNorth, STREETS.ringSouth, STREETS.ringWest, STREETS.ringEast]) {
+    const holes = crossers(s.along);
+    const mid = s.along === 'z' ? (s.road.x0 + s.road.x1) / 2 : (s.road.z0 + s.road.z1) / 2;
+    const half = BIKE_LANE / 2;
+    const lane: Rect = s.along === 'z' ? { x0: mid - half, x1: mid + half, z0: s.road.z0, z1: s.road.z1 } : { x0: s.road.x0, x1: s.road.x1, z0: mid - half, z1: mid + half };
+    for (const part of cutStrip(lane, s.along, holes)) {
+      add(g, rectBox(part, 0.01, PALETTE.bikeLane, 0.02));
+      const [a0, a1] = s.along === 'z' ? [part.z0, part.z1] : [part.x0, part.x1];
+      for (let v = a0 + 0.4; v < a1 - 0.8; v += 1.6) {
+        for (const side of [-half, half]) {
+          if (s.along === 'z') add(g, box(0.06, 0.01, 0.8, white, mid + side, 0.023, v + 0.4));
+          else add(g, box(0.8, 0.01, 0.06, white, v + 0.4, 0.023, mid + side));
+        }
+      }
+      for (let v = a0 + 6; v < a1 - 3; v += 18) bikeGlyph(g, white, s.along === 'z' ? mid : v, s.along === 'z' ? v : mid, s.along === 'z' ? 0 : Math.PI / 2);
+    }
+  }
+
   // Kerbstones along every road edge, cut at junctions, a little uneven in
-  // height; litter and leaves along every pavement.
-  const kerbMat = mat(0x8a867c);
+  // height, pale enough to read against the road and the paving; litter and
+  // leaves along every pavement.
+  const kerbMat = mat(0xb2ada2);
   for (const [name, s] of Object.entries(STREETS)) {
     const crossing = roads.filter((q) => q !== s.road);
     for (const pave of s.pavements) {

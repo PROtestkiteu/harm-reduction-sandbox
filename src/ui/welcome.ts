@@ -1,8 +1,7 @@
 import { t } from '../i18n';
 import { playerBadge, type PlayerPicture } from './playerBadge';
+import { dontShowAgain, tutorialHidden } from './tutorials';
 
-/** Renamed with the three-page welcome, so players who closed the old box see this one once. */
-const SEEN_KEY = 'hrp-welcome-seen-2';
 
 /** Who you are, set on the first page: your organisation's name and your look. */
 export interface Identity {
@@ -61,8 +60,10 @@ const PAGES: Page[] = [
 
 /**
  * The welcome: who you are, your job and how to play, over three short pages
- * with Back and Next. Shown on a first visit and from "How it works" any time
- * after, always from the first page. A native modal dialog, so focus, Escape
+ * with Back and Next. Shown at the start of every new game unless the player
+ * ticked "Don't show again" (ui/tutorials.ts; the panel's first-steps
+ * walk-through starts over with it), and from "How it works" any
+ * time, always from the first page. A native modal dialog, so focus, Escape
  * and the backdrop behave as the platform expects; it pauses the city (through
  * `onChange`) while open.
  */
@@ -76,6 +77,7 @@ export class Welcome {
   private readonly next: HTMLButtonElement;
   private page = 0;
   private readonly identityBox: HTMLElement | null;
+  private readonly optOut = dontShowAgain('welcome');
 
   constructor(parent: HTMLElement, private readonly onChange: (open: boolean) => void, private readonly picture?: PlayerPicture, identity?: Identity) {
     this.dialog = document.createElement('dialog');
@@ -92,25 +94,21 @@ export class Welcome {
     this.next.addEventListener('click', () => (this.page < PAGES.length - 1 ? this.go(this.page + 1) : this.dialog.close()));
     nav.append(this.back, this.next);
     this.identityBox = identity ? identityBox(identity) : null;
-    this.dialog.append(this.step, this.title, ...(this.identityBox ? [this.identityBox] : []), this.lead, this.list, nav);
-    this.dialog.addEventListener('close', () => {
-      try { localStorage.setItem(SEEN_KEY, '1'); } catch { /* private mode: show again next time */ }
-      this.onChange(false);
-    });
+    this.dialog.append(this.step, this.title, ...(this.identityBox ? [this.identityBox] : []), this.lead, this.list, nav, this.optOut);
+    this.dialog.addEventListener('close', () => this.onChange(false));
     // A click on the backdrop (outside the box) closes it too.
     this.dialog.addEventListener('click', (e) => { if (e.target === this.dialog) this.dialog.close(); });
     parent.append(this.dialog);
   }
 
-  /** Opens on a first visit only. */
-  showIfNew(): void {
-    let seen = false;
-    try { seen = localStorage.getItem(SEEN_KEY) === '1'; } catch { /* no storage: treat as new */ }
-    if (!seen) this.show();
+  /** A new game begins: opens unless the player ticked "Don't show again". */
+  showForNewGame(): void {
+    if (!tutorialHidden('welcome')) this.show();
   }
 
   show(): void {
     if (this.dialog.open) return;
+    this.optOut.dispatchEvent(new Event('refresh'));
     this.go(0);
     this.dialog.showModal();
     this.onChange(true);

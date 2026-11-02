@@ -2,7 +2,7 @@ import type { Camera } from 'three';
 import { randomAppearance } from '../../agents/character';
 import { HumanFigure, type PeopleLibrary } from '../../agents/humanFigure';
 import { LINES } from '../../config/flavour/lines';
-import { loadPacks, PACKS, savePacks, type PackId, type PackSettings } from '../../config/flavour/packs';
+import { loadPacks, PACKS, type PackId, type PackSettings } from '../../config/flavour/packs';
 import { QUALITY } from '../../render/quality';
 import type { Season } from '../../sim/calendar';
 import { createRandom } from '../../sim/random';
@@ -29,6 +29,9 @@ const BUILDERS: Record<PackId, () => Promise<PackBuilder>> = {
   users: () => import('./users').then((m) => m.buildUsers),
   thieves: () => import('./thieves').then((m) => m.buildThieves),
   visitors: () => import('./visitors').then((m) => m.buildVisitors),
+  cycling: () => import('./cycling').then((m) => m.buildCycling),
+  pets: () => import('./pets').then((m) => m.buildPets),
+  decor: () => import('./decor').then((m) => m.buildDecor),
 };
 
 export interface FlavourHost {
@@ -88,12 +91,10 @@ export function startFlavour(host: FlavourHost): Flavour {
     context,
     setPack(id, on) {
       settings.on[id] = on;
-      savePacks(settings);
       void packs.set(id, on);
     },
     setMood(mood) {
       settings.weather = mood;
-      savePacks(settings);
       packs.setMood(mood);
     },
     setFigures(lib) {

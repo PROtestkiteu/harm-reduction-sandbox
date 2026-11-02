@@ -1,7 +1,7 @@
 import { TIRED } from './sim/team';
 import { locationOf, nextStep, type GuideView } from './game/guide';
 import { QUALITY } from './render/quality';
-import { Vector3, WebGLRenderer } from 'three';
+import { Vector3, WebGLRenderer, type Object3D } from 'three';
 import { DaemonFigure } from './agents/daemonFigure';
 import type { PersonRole } from './agents/crowd';
 import { MapOverlays } from './world/mapOverlays';
@@ -88,7 +88,6 @@ import { CityProps } from './world/cityProps';
 import { SeasonProps, snowyNight } from './world/seasonProps';
 import { POPULATIONS, presence } from './config/populations';
 import { startFlavour } from './world/flavour/setup';
-import { flavourSection } from './ui/flavourSection';
 import { NoticeStrip } from './ui/noticeStrip';
 import { GoalsStrip } from './ui/goalsStrip';
 import { MeterCauses } from './ui/meterCauses';
@@ -101,6 +100,7 @@ import { soundSection } from './ui/soundSection';
 import { SPOTS } from './world/layout';
 import { RAIN } from './config/flavour/weather';
 import { StakesSection } from './ui/stakesSection';
+import { tutorialHidden } from './ui/tutorials';
 import { runOver, stormWarning } from './game/stakesEvents';
 import type { MajorEvent } from './game/majorEvents';
 
@@ -181,7 +181,7 @@ const fxTags = new FxTags(hudRoot);
 // What works against the selected place or person, ringed in red with a tag: a TV crew, a raid, police nearby.
 const marks = new HostileMarks(world.scene, () => reducedMotion.matches);
 const threatTags = new FxTags(hudRoot);
-type Threat = { kind: 'threatPress' | 'threatRaid' | 'threatOfficer' | 'threatCar'; x: number; y: number; z: number; r: number };
+type Threat = { kind: 'threatPress' | 'threatRaid' | 'threatOfficer' | 'threatCar'; x: number; y: number; z: number; r: number; follow?: Object3D };
 let threats: Threat[] = [];
 /**
  * Tonight's events that belong to the selection: at a place, those that play out there (or at the
@@ -218,7 +218,7 @@ function updateThreats(): void {
     for (const o of crowd.officerSpots()) if (near(o.x, o.z)) list.push({ kind: 'threatOfficer', x: o.x, y: 2.2, z: o.z, r: 1.4 });
     for (const v of world.vehicles()) {
       const p = v.root.position;
-      if (world.vehicle(v.id)?.kind === 'police' && near(p.x, p.z)) list.push({ kind: 'threatCar', x: p.x, y: 2.4, z: p.z, r: 3 });
+      if (world.vehicle(v.id)?.kind === 'police' && near(p.x, p.z)) list.push({ kind: 'threatCar', x: p.x, y: 2.4, z: p.z, r: 3, follow: v.root });
     }
   }
   threats = list;
@@ -227,6 +227,8 @@ function updateThreats(): void {
 }
 /** One tag per kind of threat (the nearest stands for the rest): rings mark them all. */
 function placeThreatTags(): void {
+  // A threat on the move (a police car) is read where it is now, not where it was at the last refresh.
+  for (const t of threats) if (t.follow) { t.x = t.follow.position.x; t.z = t.follow.position.z; }
   const seen = new Set<string>();
   const one = threats.filter((t) => !seen.has(t.kind) && seen.add(t.kind));
   threatTags.set(one.map((t) => ({ kind: t.kind, theme: null, ...worldToClient(new Vector3(t.x, t.y, t.z), camera, pipeline.frame) })));
@@ -460,6 +462,16 @@ const actionMenu = new ActionMenu(hudRoot);
 let pausedBeforeWelcome = false;
 /** Coordinator art shared by the portrait, reports and guides. */
 const playerPicture = () => ({ url: playerPortraitUrl(), org: orgName() });
+/**
+ * Whether this page carries a game on rather than starting one: back from an update reload, our
+ * own live game in the address, or a save in the link. Read before the start-up code consumes them.
+ */
+const continuingGame = ((): boolean => {
+  let resumed = false;
+  try { resumed = !!sessionStorage.getItem(RESUME_KEY); } catch { /* storage blocked: not a reload */ }
+  const gid = linkedGame();
+  return resumed || (gid !== null && LiveGame.owns(gid)) || location.hash.startsWith('#g=');
+})();
 const welcome = new Welcome(document.body, (open) => {
   if (open) { pausedBeforeWelcome = paused; setPaused(true); }
   else if (!pausedBeforeWelcome) setPaused(false);
@@ -908,7 +920,6 @@ const setDateClock = (v: { date: number; clock: number }) => {
 };
 sandbox.addAction(t('How it works'), () => welcome.show());
 sandbox.mount(randomSection((v) => { markSandboxed(); setDateClock(v); }));
-sandbox.mount(flavourSection(flavour.settings, { onPack: (id, on) => { flavour.setPack(id, on); dirty = true; }, onMood: (m) => { flavour.setMood(m); dirty = true; } }));
 sandbox.mount(scenariosSection(new URLSearchParams(location.search).get('scenario')));
 // Sound (src/audio): generated street ambience and soft cues. Nothing is made before the first press, nothing runs while muted.
 const sound = new Sound();
@@ -1147,7 +1158,7 @@ function checkBigEvent(): void {
   // A city meter gone red: a guide to what eases it, the first time and then at most once a game day.
   for (const need of METER_ORDER) {
     const v = need === 'district' ? sim.vitality.level : sim.cityStress[need];
-    if (meterState(need, v) !== 'high' || sim.org.now < (guidedAt[need] ?? -Infinity) + GUIDE_AGAIN_MINUTES) continue;
+    if (tutorialHidden('guides') || meterState(need, v) !== 'high' || sim.org.now < (guidedAt[need] ?? -Infinity) + GUIDE_AGAIN_MINUTES) continue;
     guidedAt[need] = sim.org.now;
     sound.ui('warn');
     const guide = needGuide(need, sim.busiest.service, (id) => interaction.selectLocation(id));
@@ -1304,7 +1315,13 @@ sim.on((e) => {
 /** First steps the guide asks for once, remembered per viewer so a returning player is not walked through them again. */
 const TRIED_KEY = 'hrp-guide-tried';
 const tried = ((): GuideView['tried'] => {
-  try { return { place: false, person: false, org: false, speed: false, ...JSON.parse(localStorage.getItem(TRIED_KEY) ?? '{}') }; } catch { return { place: false, person: false, org: false, speed: false }; }
+  const none = { place: false, person: false, org: false, speed: false };
+  // A new game walks through the first steps again, with the welcome, unless that tutorial is turned off.
+  if (!continuingGame && !tutorialHidden('welcome')) {
+    try { localStorage.removeItem(TRIED_KEY); } catch { /* storage blocked: nothing kept anyway */ }
+    return none;
+  }
+  try { return { ...none, ...JSON.parse(localStorage.getItem(TRIED_KEY) ?? '{}') }; } catch { return none; }
 })();
 function markTried(k: keyof GuideView['tried']): void {
   if (tried[k]) return;
@@ -1706,7 +1723,8 @@ function frame(now: number): void {
     cityProps.update(realDt * speed);
     fx.update(realDt * speed, sim.org.now, sim.party === 'popUp');
     if (fx.version !== fxVersion) placeFxTags();
-    marks.update(realDt);
+    // The rings and the tag over a moving police car follow it every frame, not in quarter-second steps.
+    if (marks.update(realDt) && threats.some((t) => t.follow)) placeThreatTags();
     seasonProps.update(realDt * speed);
     if (flavour.packs.running) updateFlavour(realDt * speed);
     // The person in crisis keeps a walking pace at any clock speed: at 16x they would only flicker past.
@@ -1790,7 +1808,8 @@ void whenViewportSettled(canvas).then(() => {
   applyView();
   requestAnimationFrame(() => requestAnimationFrame(() => {
     loading?.remove();
-    welcome.showIfNew();
+    // Every new game opens with the welcome (unless turned off); a game carrying on does not.
+    if (!continuingGame) welcome.showForNewGame();
   }));
 });
 void startGame();

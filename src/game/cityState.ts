@@ -156,6 +156,14 @@ export class CityCards {
         renamable: true,
       };
     }
+    if (id === world.bookshop) {
+      return {
+        title: displayName('building', id, t('Bookshop')),
+        said: t('New and second-hand books, a cart of them by the door.'),
+        facts: [],
+        renamable: true,
+      };
+    }
     if (world.zabkas.includes(id)) {
       return {
         title: displayName('building', id, t('Żabka')),

@@ -1414,7 +1414,7 @@ export const PL: Record<string, string> = {
   "Switch the service on to invest in it.": "Włącz usługę, żeby w nią inwestować.",
   "Switch the service on to use this.": "Włącz usługę, aby z tego skorzystać.",
 
-  // ===== Flavour packs (src/config/flavour, src/ui/flavourSection.ts) =====
+  // ===== Flavour packs (src/config/flavour, Settings (removed: every pack is always on)) =====
   "phone snatches": "kradzieże telefonów",
   "Hey! My phone!": "Hej! Mój telefon!",
   "shoplifting": "kradzieże w sklepach",
@@ -1521,9 +1521,6 @@ export const PL: Record<string, string> = {
   "Dry": "Sucho",
   "Rain": "Deszcz",
   "Fog": "Mgła",
-  "Flavour packs": "Pakiety klimatu",
-  "Street life on top of the model. None of it changes the numbers.": "Życie ulicy dodane do modelu. Nic z tego nie zmienia wyników.",
-  "Weather": "Pogoda",
   // ===== Sound (src/audio, src/ui/soundSection.ts) =====
   "Sound": "Dźwięk",
   "Street sounds and soft clicks, made in the browser. They start with your first click or key press.": "Odgłosy ulicy i ciche kliknięcia, tworzone w przeglądarce. Włączają się po pierwszym kliknięciu lub naciśnięciu klawisza.",
@@ -1914,9 +1911,15 @@ export const PL: Record<string, string> = {
   "Street scene": "Scena uliczna",
   "Reach": "Zasięg",
   "Map overlay": "Nakładka na mapę",
-  "Turn the overlay off": "Wyłącz nakładkę",
-  "Map overlay: off": "Nakładka na mapę: wyłączona",
-  "Map overlay: {name}": "Nakładka na mapę: {name}",
+  // Cycling, pets, street furniture and the bookshop (config/flavour/packs.ts, game/cityState.ts)
+  "Cycling": "Rowery",
+  "Cyclists on the ring road's bike lane and bikes parked at racks.": "Rowerzyści na drodze rowerowej obwodnicy i rowery przy stojakach.",
+  "Pets": "Zwierzaki",
+  "People walking dogs, and cats in doorways.": "Ludzie z psami na spacerze i koty w bramach.",
+  "Street furniture": "Mała architektura",
+  "Planters, café boards, a post box, a newspaper box and bollards.": "Donice, tablice kawiarni, skrzynka pocztowa, stojak z gazetami i słupki.",
+  "Bookshop": "Księgarnia",
+  "New and second-hand books, a cart of them by the door.": "Nowe i używane książki, wózek z nimi przy drzwiach.",
   // ===== Sending the foot patrol out (src/config/patrol.ts, src/sim/simulation.ts, src/ui/stakesSection.ts) =====
   'the tent camp in the park': 'obozowisko w parku',
   'People sleeping out: kits, naloxone, a warm drink, a word about the shelter.': 'Osoby śpiące na dworze: zestawy, nalokson, ciepły napój, słowo o noclegowni.',
@@ -1939,4 +1942,5 @@ export const PL: Record<string, string> = {
   'Needs its table open and someone on shift there before it can go out.': 'Żeby wyjść, potrzebuje otwartego stolika i kogoś na zmianie.',
   "Map overlay: off. Press to choose one.": "Nakładka na mapę: wyłączona. Naciśnij, żeby wybrać.",
   "Map overlay: {name}. Press to turn it off.": "Nakładka na mapę: {name}. Naciśnij, żeby wyłączyć.",
+  "Don't show again": 'Nie pokazuj więcej',
 };

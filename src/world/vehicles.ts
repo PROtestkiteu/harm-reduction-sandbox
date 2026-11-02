@@ -367,9 +367,9 @@ export function emergencyVehicle(kind: 'police' | 'ambulance'): EmergencyVehicle
     g.add(box(0.02, 0.22, p.length * 0.8, band, x, 0.62, 0));
     g.add(box(0.02, 0.1, p.length * 0.8, band2, x, 0.86, 0));
   }
-  // The light bar: two lamps that alternate when flashing.
+  // The light bar: a blue lamp and a red one, taking turns when flashing (police and ambulance alike).
   const left = glowMat(0x1e2a6a, 0x3a6aff, 0);
-  const right = glowMat(ambulance ? 0x6a1e1e : 0x1e2a6a, ambulance ? 0xff3a2a : 0x3a6aff, 0);
+  const right = glowMat(0x6a1e1e, 0xff3a2a, 0);
   // A thin base plate on the roof, the two lamps on top of it, a dark divider between them.
   g.add(box(1.16, 0.05, 0.32, vehicleMat(0x2a2a2e, 1), 0, roof, -0.2));
   g.add(box(0.5, 0.15, 0.28, left, -0.29, roof + 0.05, -0.2));

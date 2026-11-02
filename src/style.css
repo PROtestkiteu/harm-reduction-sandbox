@@ -2046,14 +2046,6 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
 }
 .overheard-line.fading { opacity: 0; }
 @media (prefers-reduced-motion: reduce) { .overheard-line { transition: none; } }
-.flavour-pack {
-  display: grid; grid-template-columns: auto 1fr; column-gap: 8px; align-items: baseline;
-  margin-top: 8px; font-size: 13px; cursor: pointer;
-}
-.flavour-pack input { margin: 0; accent-color: var(--accent, var(--reply)); }
-.flavour-pack .flavour-hint { grid-column: 2; color: var(--muted); font-size: 12px; }
-.flavour-mood { display: flex; gap: 8px; align-items: center; margin: 4px 0 0 22px; font-size: 13px; }
-.flavour-mood select { font: inherit; }
 
 /* Sound settings: the volume slider fills its row, its value beside it. */
 .sound-volume { display: flex; gap: 8px; align-items: center; margin-top: 8px; font-size: 13px; }
@@ -2408,3 +2400,8 @@ body:has(.sandbox-body:not([hidden])) .layers-toggle { display: none; }
   .map-legend li.minor { display: none; }
   .map-legend { font-size: 11.5px; line-height: 1.3; padding: 4px 8px 6px; max-height: 34dvh; overflow-y: auto; }
 }
+
+/* "Don't show again" under a tutorial box (src/ui/tutorials.ts). */
+.dont-show-again { display: flex; align-items: center; gap: 8px; min-height: 44px; margin-top: 10px; color: var(--muted); font-size: 14px; cursor: pointer; }
+.dont-show-again[hidden] { display: none; }
+.dont-show-again input { width: 20px; height: 20px; margin: 0; accent-color: var(--bar); }

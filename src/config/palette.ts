@@ -9,6 +9,8 @@ export const PALETTE = {
   soilDark: 0x26221f,
   asphalt: 0x3a3d40,
   asphaltLine: 0xc4b896,
+  /** Bike lanes: a dull brick red, as Polish and Dutch cycle paths are. */
+  bikeLane: 0x7a3a32,
   kerb: 0x8c877c,
   pavement: 0x7d786c,
   pavementAlt: 0x706b60,

@@ -171,3 +171,74 @@ export function placard(parent: Object3D, colour: number): Group {
   add(g, box(0.7, 0.48, 0.03, mat(colour), 0.18, 2.0, 0.3));
   return prop(parent, g);
 }
+
+/** A Sheffield-style bike rack along x with `n` bikes leaned across it, frames from `colours`. */
+export function bikeRack(parent: Object3D, n: number, colours: readonly number[], random: () => number): Group {
+  const g = new Group();
+  const steel = mat(0x6a6e72);
+  const w = Math.max(1.6, n * 0.75);
+  for (let i = 0; i <= n; i++) {
+    const x = -w / 2 + (i / n) * w;
+    add(g, box(0.05, 0.75, 0.05, steel, x, 0, 0));
+  }
+  add(g, box(w + 0.05, 0.05, 0.05, steel, 0, 0.72, 0));
+  for (let i = 0; i < n; i++) {
+    const b = add(g, bike(colours[Math.floor(random() * colours.length)]), Math.PI / 2);
+    b.position.set(-w / 2 + ((i + 0.5) / n) * w, 0, 0.05);
+  }
+  return prop(parent, g);
+}
+
+/** A long planter by a wall: a concrete trough, earth and a few shrubs and flowers. */
+export function planter(parent: Object3D): Group {
+  const g = new Group();
+  add(g, box(1.6, 0.45, 0.5, mat(0x8a867e), 0, 0, 0));
+  add(g, box(1.5, 0.04, 0.4, mat(0x3a2a1e), 0, 0.42, 0));
+  for (let i = 0; i < 5; i++) add(g, cylinder(0.14 + (i % 2) * 0.05, 0.26 + (i % 3) * 0.08, mat([0x3a6a32, 0x4a7a3a, 0x2e5a2a][i % 3]), 6, -0.6 + i * 0.3, 0.44, 0));
+  for (let i = 0; i < 4; i++) add(g, box(0.06, 0.06, 0.06, mat([0xd84a6a, 0xe8c84a, 0xf0f0e8, 0xb04ad8][i]), -0.45 + i * 0.3, 0.72 + (i % 2) * 0.06, 0.06));
+  return prop(parent, g);
+}
+
+/** A sandwich board: two chalkboards leaning together on a frame. */
+export function aBoard(parent: Object3D): Group {
+  const g = new Group();
+  const wood = mat(0x6a4a2e);
+  const slate = mat(0x22262a);
+  for (const s of [-1, 1]) {
+    const leaf = add(g, new Group());
+    leaf.position.z = s * 0.12;
+    leaf.rotation.x = s * 0.22;
+    add(leaf, box(0.56, 0.82, 0.03, wood, 0, 0, 0));
+    add(leaf, box(0.48, 0.66, 0.035, slate, 0, 0.08, 0));
+    add(leaf, box(0.36, 0.03, 0.037, mat(0xe8e2d0), 0, 0.55, 0));
+    add(leaf, box(0.28, 0.03, 0.037, mat(0xe8e2d0), 0, 0.42, 0));
+  }
+  return prop(parent, g);
+}
+
+/** A red pillar post box. */
+export function postBox(parent: Object3D): Group {
+  const g = new Group();
+  const red = mat(0xb8282a);
+  add(g, cylinder(0.24, 1.05, red, 10, 0, 0, 0));
+  add(g, cylinder(0.27, 0.12, red, 10, 0, 1.05, 0));
+  add(g, box(0.26, 0.04, 0.05, mat(0x1a1a1a), 0, 0.82, 0.23));
+  return prop(parent, g);
+}
+
+/** A free newspaper box on a stand. */
+export function newsBox(parent: Object3D): Group {
+  const g = new Group();
+  add(g, box(0.06, 0.5, 0.06, mat(0x3a3a3e), 0, 0, 0));
+  add(g, box(0.5, 0.6, 0.4, mat(0x2a5aa0), 0, 0.5, 0));
+  add(g, box(0.4, 0.3, 0.02, glowMat(0xc8d0d8, 0xe8f0ff, 0.25), 0, 0.68, 0.2));
+  return prop(parent, g);
+}
+
+/** A short steel bollard. */
+export function bollard(parent: Object3D): Group {
+  const g = new Group();
+  add(g, cylinder(0.09, 0.85, mat(0x3a3c40), 8, 0, 0, 0));
+  add(g, cylinder(0.095, 0.06, mat(0xd8c84a), 8, 0, 0.68, 0));
+  return prop(parent, g);
+}

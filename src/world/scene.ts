@@ -133,6 +133,8 @@ export interface World {
   zabkas: readonly number[];
   /** The fast food joint's building id, if one stands this launch. */
   fastFood: number | null;
+  /** The bookshop's building id, if one stands this launch. */
+  bookshop: number | null;
   /** The camps' pick ids (building ids on open ground). */
   camps: { park: number; station: number };
   /** The city building that is a squat this launch, by id. */
@@ -306,6 +308,38 @@ function fastFoodFront(parent: Object3D, b: CityBuilding): void {
   for (const [r, h, y, c] of [[0.62, 0.22, 0, 0xd89040], [0.66, 0.06, 0.22, 0x5aa83a], [0.6, 0.18, 0.28, 0x5a3220], [0.66, 0.05, 0.46, 0xf2c400], [0.62, 0.32, 0.51, 0xd89040]] as const) add(burger, cylinder(r, h, mat(c), 14, 0, y, 0));
 }
 
+/**
+ * A bookshop's dressing: a deep green fascia with BOOKS on every side, a
+ * warm-lit window full of book spines, and a cart of second-hand books on the
+ * pavement by the door.
+ */
+function bookshopFront(parent: Object3D, b: CityBuilding): void {
+  const g = add(parent, new Group());
+  const w = b.x1 - b.x0;
+  const d = b.z1 - b.z0;
+  const cx = (b.x0 + b.x1) / 2;
+  const cz = (b.z0 + b.z1) / 2;
+  add(g, box(w + 0.3, 0.7, d + 0.3, glowMat(0x1e3a2e, 0x2a5a42, 0.3), cx, 2.45, cz));
+  add(g, box(w + 0.14, 2.0, d + 0.14, glowMat(0x3a2a1a, 0xffd8a0, 0.6), cx, 0.35, cz));
+  for (const [x, z, rot, len] of [[cx, b.z1 + 0.2, 0, w], [cx, b.z0 - 0.2, Math.PI, w], [b.x1 + 0.2, cz, Math.PI / 2, d], [b.x0 - 0.2, cz, -Math.PI / 2, d]] as const) {
+    const sign = signBoard('BOOKS', Math.min(3.2, len - 0.6), 0.62, '#f0e2b8', '#1e3a2e', 0.6);
+    add(g, sign.mesh, rot).position.set(x, 2.5, z);
+  }
+  // Spines in the front window: rows of thin coloured boxes behind the glass.
+  const spines = [0x8a2a2a, 0x2a4a8a, 0xc8a040, 0x3a6a3a, 0xe8e0d0, 0x5a3a6a];
+  for (let row = 0; row < 3; row++) {
+    for (let i = 0; i < Math.floor((w - 1) / 0.09); i++) {
+      add(g, box(0.07, 0.24 + ((i * 7 + row) % 4) * 0.03, 0.05, mat(spines[(i * 5 + row * 3) % spines.length]), b.x0 + 0.5 + i * 0.09, 0.55 + row * 0.42, b.z1 + 0.1));
+    }
+  }
+  // The cart of second-hand books by the door.
+  const cart = add(g, new Group());
+  cart.position.set(b.x1 - 1.2, 0.12, b.z1 + 0.55);
+  add(cart, box(1.1, 0.06, 0.5, mat(0x5a3e26), 0, 0.62, 0));
+  for (const [x, z] of [[-0.5, -0.2], [0.5, -0.2], [-0.5, 0.2], [0.5, 0.2]]) add(cart, box(0.04, 0.62, 0.04, mat(0x3a2a1a), x, 0, z));
+  for (let i = 0; i < 11; i++) add(cart, box(0.08, 0.2, 0.15, mat(spines[i % spines.length]), -0.45 + i * 0.09, 0.68, 0)).rotation.z = (i % 3 - 1) * 0.12;
+}
+
 /** Renderer state the world relies on: soft shadows. */
 export function configureRenderer(renderer: WebGLRenderer): void {
   renderer.shadowMap.enabled = true;
@@ -466,11 +500,24 @@ export function buildWorld(random: Random): World {
     fastFoodFront(zabkaRoot, fastFoodPick.b);
     taken.add(fastFoodPick.b.id);
   }
+  // A bookshop on a free low building, away from the fast food joint where it can be: deep green, its window full of books.
+  const bookshopPool = allBuildings()
+    .filter((b) => !taken.has(b.id) && b.id !== squat)
+    .map((b) => ({ b, cx: (b.x0 + b.x1) / 2, cz: (b.z0 + b.z1) / 2 }))
+    .sort((p, q) => p.b.storeys - q.b.storeys || Math.abs(p.cz) - Math.abs(q.cz));
+  // Away from the fast food joint if any such building is free, else the first free one.
+  const ff = fastFoodPick && { x: (fastFoodPick.b.x0 + fastFoodPick.b.x1) / 2, z: (fastFoodPick.b.z0 + fastFoodPick.b.z1) / 2 };
+  const bookshopPick = bookshopPool.find(({ cx, cz }) => !ff || Math.hypot(cx - ff.x, cz - ff.z) > 25) ?? bookshopPool[0];
+  const bookshop = bookshopPick ? bookshopPick.b.id : null;
+  if (bookshopPick) {
+    bookshopFront(zabkaRoot, bookshopPick.b);
+    taken.add(bookshopPick.b.id);
+  }
   mergeStatic(zabkaRoot);
   // A few low-key psychedelic murals (creatures and phrases) on walls the camera sees, upper floors (shopfronts stay clear).
   const muralPool = allBuildings()
     // Upper floors only, so a shop below is fine; not the Żabkas, the fast food joint or the institutions.
-    .filter((b) => !zabkas.includes(b.id) && b.id !== fastFood && !Object.values(beyond.landmarks).includes(b.id) && Math.max(Math.abs((b.x0 + b.x1) / 2), Math.abs((b.z0 + b.z1) / 2)) < 60);
+    .filter((b) => !zabkas.includes(b.id) && b.id !== fastFood && b.id !== bookshop && !Object.values(beyond.landmarks).includes(b.id) && Math.max(Math.abs((b.x0 + b.x1) / 2), Math.abs((b.z0 + b.z1) / 2)) < 60);
   // Each mural goes on a real surface, found by a ray: walls at upper-floor height on faces the camera sees,
   // and one flat shopfront roof (flat where five points on it agree).
   const muralSpots: MuralSpot[] = [];
@@ -661,6 +708,7 @@ export function buildWorld(random: Random): World {
     pharmacyShop: pharmacyShop.building,
     zabkas,
     fastFood,
+    bookshop,
     nightlife: nightlife.map((n) => n.b.id),
     setNightlife(open, partnered) {
       nightlife.forEach((n, i) => {
