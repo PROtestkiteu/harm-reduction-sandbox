@@ -45,8 +45,6 @@ export interface HudCallbacks {
   onMix(service: ServiceId, activity: Activity, percent: number): void;
   /** Pays a place's one-off set-up for an activity. */
   onMixSetUp(service: ServiceId, activity: Activity): void;
-  /** Uses the favour held with city hall. */
-  onFavour(id: FavourId): void;
   /** Specialise the outreach camper (or change its path). */
   onCamperPath(path: CamperPath): void;
   /** Opens the Settings menu (phones reach it from the replies). */
@@ -288,11 +286,6 @@ export class Hud {
   private readonly reviewOpt: HTMLElement;
   private readonly aidOpt: HTMLElement;
   private readonly configureOpt: HTMLElement;
-  private readonly favourOpt: HTMLElement;
-  private readonly favourBtn: HTMLButtonElement;
-  private readonly favourLong: HTMLElement;
-  private readonly favourOpts: { li: HTMLLIElement; long: HTMLElement; short: HTMLElement; id: string }[] = [];
-  private favourOpen = false;
   private readonly aidBtn: HTMLButtonElement;
   private readonly staffGroupNeeds: HTMLElement;
   private readonly aidLong: HTMLElement;
@@ -676,31 +669,6 @@ export class Hud {
     this.aidBtn.addEventListener('click', () => { const k = this.lastSnapshot?.aid?.kind; if (k) cb.onAid(k); });
     this.aidOpt = opt(this.aidBtn);
 
-    // A favour with city hall: one reply that opens the favours on offer.
-    this.favourBtn = button('opt group');
-    this.favourLong = el('span', 'long');
-    const favourShort = el('span', 'short', t('City hall favour.'));
-    favourShort.setAttribute('aria-hidden', 'true');
-    this.favourBtn.append(this.favourLong, favourShort);
-    this.favourBtn.addEventListener('click', () => {
-      this.favourOpen = !this.favourOpen;
-      queueMicrotask(() => this.syncDrill());
-      if (this.lastSnapshot) this.update(this.lastSnapshot);
-    });
-    this.favourOpt = opt(this.favourBtn);
-    for (let i = 0; i < 3; i++) {
-      const b = button('opt');
-      const long = el('span', 'long');
-      // Phones show the short label: without it the reply would be just its number.
-      const short = el('span', 'short');
-      short.setAttribute('aria-hidden', 'true');
-      b.append(long, short);
-      const o = { li: opt(b), long, short, id: '' };
-      o.li.classList.add('nested');
-      o.li.hidden = true;
-      b.addEventListener('click', () => { if (o.id) cb.onFavour(o.id as FavourId); this.favourOpen = false; });
-      this.favourOpts.push(o);
-    }
     // Phones: Settings is the last reply here (with a gear, not a number) instead of a button over the scene.
     const configure = button('opt configure-opt', t('Settings'));
     configure.addEventListener('click', () => cb.onSettings());
@@ -1223,20 +1191,7 @@ export class Hud {
       const state = f.held ? 'held' : f.owed ? 'owed' : 'none';
       if (this.favourCount.dataset.state !== state) this.favourCount.dataset.state = state;
       if (this.favourCount.disabled === !!f.held) this.favourCount.disabled = !f.held;
-      setText(this.favourLong, f.held ? t('Ask city hall a favour') : f.owed ? t('City hall is owed a favour') : t('No favour with city hall'));
-      this.favourBtn.title = f.held ? t('One favour now; city hall asks something back later.') : t("Agree to city hall's next request to earn a favour.");
-      if (this.favourBtn.disabled === !!f.held) this.favourBtn.disabled = !f.held;
-      if (!f.held) this.favourOpen = false;
-      setAttr(this.favourBtn, 'aria-expanded', String(this.favourOpen));
-      this.favourOpts.forEach((o, i) => {
-        const item = f.items[i];
-        o.id = item?.id ?? '';
-        if (item) { setText(o.long, item.label); setText(o.short, item.short); }
-      });
     }
-    const favourHidden = !f || this.servicesOpen || this.mode !== null;
-    if (this.favourOpt.hidden !== favourHidden) this.favourOpt.hidden = favourHidden;
-    this.favourOpts.forEach((o) => { const h = favourHidden || !this.favourOpen || !o.id; if (o.li.hidden !== h) o.li.hidden = h; });
     const aidHidden = !aid || this.servicesOpen || this.mode !== null;
     if (this.aidOpt.hidden !== aidHidden) this.aidOpt.hidden = aidHidden;
     const on = SERVICE_IDS.filter((id) => s.enabled[id]).length;
@@ -1420,7 +1375,6 @@ export class Hud {
         : this.pathOpen && !path.hidden ? [path, this.pathOpts.map((o) => o.li)]
           : this.staffOpen && !this.staffGroupOpt.hidden ? [this.staffGroupOpt, STAFF_ACTIONS.map((a) => this.actionOpts[a].li)]
             : this.mixOpen && !this.actionOpts.mix.li.hidden ? [this.actionOpts.mix.li, this.mixRows.map((r) => r.li)]
-              : this.favourOpen && !this.favourOpt.hidden ? [this.favourOpt, this.favourOpts.map((o) => o.li)]
                 : [null, []];
     // Everything that is not the group's own reply or one of its members steps aside.
     const keep = new Set<Element>(members);
@@ -1474,13 +1428,14 @@ export class Hud {
     // Back to the overview: also a click elsewhere or Escape.
     this.leaveOpt.hidden = open || m === null;
     this.renameBtn.hidden = !m || (m.kind === 'building' && !this.renamable);
-    // The services review is for when nothing is selected.
-    this.reviewOpt.hidden = open || m !== null;
-    this.orgOpt.hidden = open || m !== null;
+    // The services review is for when nothing is selected. The guide's reply stands in for the
+    // standing one it would repeat (My organisation, Services).
+    const act = this.guide?.step.act?.kind;
+    this.reviewOpt.hidden = open || m !== null || act === 'services';
+    this.orgOpt.hidden = open || m !== null || act === 'org';
     this.guideOpt.hidden = open || m !== null || !this.guide?.step.act;
     this.aidOpt.hidden = open || m !== null || !this.lastSnapshot?.aid;
     this.configureOpt.hidden = open || m !== null;
-    this.favourOpt.hidden = open || m !== null || !this.lastSnapshot?.favours;
     this.backOpt.hidden = !open;
     const own = m?.kind === 'location' ? serviceAt(m.id) : null;
     for (const id of SERVICE_IDS) {

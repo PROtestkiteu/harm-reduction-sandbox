@@ -90,7 +90,7 @@ export async function drive(url, steps, { out = '.', size = '1280x800', seed = p
 }
 
 /** Steps that skip the welcome box on a fresh profile: mark it seen, then reload once. */
-export const SKIP_WELCOME = [{ eval: "localStorage.setItem('hrp-welcome-seen','1'); location.reload(); 1" }, { wait: 12000 }];
+export const SKIP_WELCOME = [{ eval: "localStorage.setItem('hrp-welcome-seen-2','1'); location.reload(); 1" }, { wait: 12000 }];
 
 /** A page-side file (a function expression) called with `args`, as one eval step. */
 export const call = (file, ...args) => ({ eval: `(${readFileSync(new URL(file, import.meta.url), 'utf8')})(${args.map((a) => JSON.stringify(a)).join(', ')})` });

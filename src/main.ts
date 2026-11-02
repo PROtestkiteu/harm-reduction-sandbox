@@ -339,7 +339,6 @@ const hud = new Hud(hudRoot, {
   onMixSetUp: (service, activity) => confirmSpend(setupDecision(activity), () => queueOrg(() => { sim.setUpMix(service, activity); refreshHud(); })),
   onSettings: () => sandbox.setOpen(true),
   onCamperPath: (path) => confirmSpend(pathDecision(path), () => { if (sim.setCamperPath(path)) { refreshOrg(); refreshHud(); } }),
-  onFavour: (id) => queueOrg(() => { sim.askFavour(id); syncContextProps(); refreshHud(); }),
   onAid: (kind) => queueOrg(() => {
     if (kind === 'cold') sim.warmingBus = !sim.warmingBus;
     else sim.coolingPoint = !sim.coolingPoint;
@@ -1017,15 +1016,14 @@ async function startGame(): Promise<void> {
   document.addEventListener('visibilitychange', () => { if (document.hidden) live?.flush(); });
   window.addEventListener('pagehide', () => live?.flush());
   const code = location.hash.startsWith('#g=') ? location.hash.slice(3) : '';
-  // A fresh game: a date and evening of its own (unless the address or a New game click chose them),
-  // then where it starts and how it grows, stamped with that start time.
+  // A fresh game: a date and evening of its own (unless the address or a New game click chose them).
+  // What it starts with is said by the welcome; the guide says when to open more.
   if (!resume && !linked && !code) {
     const start = startDateClock(fromUrl.date === undefined && fromUrl.clock === undefined);
-    if (start) setDateClock(start);
-    queueOrg(() => {
-      if (start) sim.configure(start);
-      sim.org.notice(sim.clockMinutes, t('You start with three services: the drop-in, the outreach camper and the club stand. Open more under Services once the money comes in steadily.'));
-    });
+    if (start) {
+      setDateClock(start);
+      queueOrg(() => sim.configure(start));
+    }
   }
   if (code) {
     const save = await unpackSave(code);
