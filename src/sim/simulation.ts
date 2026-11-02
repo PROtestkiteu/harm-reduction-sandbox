@@ -625,8 +625,11 @@ export class Simulation {
     // The district grows either way (sim/growth.ts): everyone out at night with its size, and the
     // low-threshold services with its street scene too. Neglect also brings people to the door now:
     // more of them in a crisis and while the city is stretched.
-    const grown = id === 'passerby' || id === 'club' || id === 'party' || id === 'drugChecking' ? this.growth.size : this.growth.streetNeed;
-    const need = id === 'passerby' || id === 'club' || id === 'party' ? 1 : this.surge;
+    // Traffic grows only a little with the district (most of it is passing through) and a crisis does not
+    // bring more cars: with the people's growth and surge on it, the main street jammed solid.
+    const grown = id === 'car' ? 1 + 0.2 * (this.growth.size - 1)
+      : id === 'passerby' || id === 'club' || id === 'party' || id === 'drugChecking' || id === 'leaver' ? this.growth.size : this.growth.streetNeed;
+    const need = id === 'passerby' || id === 'club' || id === 'party' || id === 'car' || id === 'leaver' ? 1 : this.surge;
     // The big crisis brings far more people in trouble to the low-threshold doors.
     const storm = this.stakes.storm.phase === 'peak' && (id === 'dropIn' || id === 'outreach' || id === 'footPatrol' || id === 'shelter' || id === 'clinic')
       ? 1 + STORM.demand * this.stakes.storm.severity : 1;

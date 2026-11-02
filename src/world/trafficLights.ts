@@ -11,14 +11,14 @@ const AMBER = 2.5;
 const ALL_RED = 1.2;
 const HALF = GREEN + AMBER + ALL_RED;
 
-interface Lamps { red: MeshLambertMaterial; amber: MeshLambertMaterial; green: MeshLambertMaterial; shown: Light | null }
+interface Lamps { red: MeshLambertMaterial; amber: MeshLambertMaterial; green: MeshLambertMaterial; top: MeshLambertMaterial; shown: Light | null }
 interface Junction { signal: Signal; offset: number; x: Lamps; z: Lamps }
 
 const LIT = { red: 2.2, amber: 2.2, green: 2.0 } as const;
 const DIM = 0.08;
 
 function lamps(): Lamps {
-  return { red: glowMat(0x3a0e0e, 0xff2a1a, DIM), amber: glowMat(0x3a2a0a, 0xffa020, DIM), green: glowMat(0x0e2a14, 0x3aff7a, DIM), shown: null };
+  return { red: glowMat(0x3a0e0e, 0xff2a1a, DIM), amber: glowMat(0x3a2a0a, 0xffa020, DIM), green: glowMat(0x0e2a14, 0x3aff7a, DIM), top: glowMat(0x1c1e20, 0xff2a1a, DIM), shown: null };
 }
 
 /** A light head: three lamps in a dark case, facing along +z of the head's group. */
@@ -26,6 +26,10 @@ function head(l: Lamps): Group {
   const g = new Group();
   add(g, box(0.34, 0.95, 0.24, mat(0x1c1e20), 0, 0, 0));
   ([['red', 0.68], ['amber', 0.4], ['green', 0.12]] as const).forEach(([k, y]) => add(g, box(0.2, 0.2, 0.04, l[k], 0, y, 0.13)));
+  // A lit cap in the colour that is showing, so the light reads from above too (the usual view).
+  add(g, box(0.3, 0.06, 0.2, l.top, 0, 0.95, 0));
+  // Larger than life: at the city's scale a true-size head is a speck.
+  g.scale.setScalar(1.35);
   return g;
 }
 
@@ -97,5 +101,7 @@ function show(l: Lamps, light: Light): boolean {
   l.red.emissiveIntensity = light === 'red' ? LIT.red : DIM;
   l.amber.emissiveIntensity = light === 'amber' ? LIT.amber : DIM;
   l.green.emissiveIntensity = light === 'green' ? LIT.green : DIM;
+  l.top.emissive.setHex(light === 'red' ? 0xff2a1a : light === 'amber' ? 0xffa020 : 0x3aff7a);
+  l.top.emissiveIntensity = 1.8;
   return true;
 }

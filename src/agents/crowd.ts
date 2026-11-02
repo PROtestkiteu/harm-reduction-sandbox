@@ -62,7 +62,13 @@ const PERSONAL_SPACE = 0.62;
 const BODY_RADIUS = 0.3;
 /** How far a figure may be drawn off its path to give way. */
 const MAX_NUDGE = 0.9;
-const MAX_CARS = 10;
+/** Cars on the main street at most: a new car holds back (it took another road) while the street is full. */
+const MAX_CARS = 7;
+/** Seconds the night bus stands at its stop. */
+const BUS_DWELL = 4;
+/** Seconds the cars may be held at a busy zebra before it is their turn, and how long their turn lasts. */
+const ZEBRA_PATIENCE = 6;
+const CARS_TURN = 5;
 /** Main-street cars start and end this far out, beyond what the camera sees, so none pops in at the district's edge. */
 const CAR_RUN = 120;
 
@@ -1390,7 +1396,7 @@ export class Crowd {
     const z = -CAR_RUN - 2.5;
     group.position.set(ROAD.laneX, 0.02, z);
     this.world.scene.add(group);
-    this.cars.push({ group, z, speed: 5, half: 4.5, cruise: 5, stopAt: BUS_STOP_Z, stopLeft: 7, rec: this.world.traffic.add(5.2), pipe: { t: this.random(), v: 5 } });
+    this.cars.push({ group, z, speed: 5, half: 4.5, cruise: 5, stopAt: BUS_STOP_Z, stopLeft: BUS_DWELL, rec: this.world.traffic.add(5.2), pipe: { t: this.random(), v: 5 } });
   }
 
   /** The bus is at the stop: people waiting board, and a few people get off. */
@@ -1457,7 +1463,15 @@ export class Crowd {
     });
   }
 
-  /** Which main-street zebras have someone on them or about to step out. */
+  /**
+   * Turn-taking at the main-street zebras: seconds the cars have been held at each, and seconds left of
+   * the cars' turn. A crowded crossing gives way to the cars after a while (those already on the road
+   * finish crossing; the rest wait at the kerb), so a busy night cannot hold the traffic for ever.
+   */
+  private readonly crossHeld = MAIN_CROSSINGS.map(() => 0);
+  private readonly carsTurn = MAIN_CROSSINGS.map(() => 0);
+
+  /** Which main-street zebras have someone on them or about to step out (not while it is the cars' turn). */
   private busyCrossings(): boolean[] {
     const busy = MAIN_CROSSINGS.map(() => false);
     for (const a of this.agents.values()) {
@@ -1467,14 +1481,23 @@ export class Crowd {
         if (busy[i] || a.pos.z < c.z0 - 0.6 || a.pos.z > c.z1 + 0.6) return;
         const next = a.route[0];
         if (a.pos.x > ROAD.x0 - 0.1 && a.pos.x < ROAD.x1 + 0.1) busy[i] = true;
-        else if (next && (next.x - a.pos.x) * (a.pos.x - (ROAD.x0 + ROAD.x1) / 2) < 0 && Math.abs(next.z - a.pos.z) < 1.2) busy[i] = true;
+        else if (this.carsTurn[i] <= 0 && next && (next.x - a.pos.x) * (a.pos.x - (ROAD.x0 + ROAD.x1) / 2) < 0 && Math.abs(next.z - a.pos.z) < 1.2) busy[i] = true;
       });
     }
     return busy;
   }
 
+  /** About to step off the kerb onto the main street at a zebra where it is the cars' turn. */
+  private waitsAtKerb(a: Agent): boolean {
+    const next = a.route[0];
+    const onRoad = (x: number) => x > ROAD.x0 - 0.1 && x < ROAD.x1 + 0.1;
+    if (!next || onRoad(a.pos.x) || !onRoad(next.x)) return false;
+    return MAIN_CROSSINGS.some((c, i) => this.carsTurn[i] > 0 && a.pos.z >= c.z0 - 0.6 && a.pos.z <= c.z1 + 0.6);
+  }
+
   private updateCars(dt: number): void {
     const busy = this.busyCrossings();
+    const held = MAIN_CROSSINGS.map(() => false);
     for (let i = 0; i < this.cars.length; i++) {
       const c = this.cars[i];
       const front = c.z + c.half;
@@ -1482,13 +1505,16 @@ export class Crowd {
       // Give way at the first busy zebra ahead.
       MAIN_CROSSINGS.forEach((x, k) => {
         const stopLine = x.z0 - 1.2;
-        if (busy[k] && front < stopLine + 0.1 && front > stopLine - 9) target = Math.min(target, Math.max(0, (stopLine - front) * 1.2));
+        if (busy[k] && front < stopLine + 0.1 && front > stopLine - 9) {
+          target = Math.min(target, Math.max(0, (stopLine - front) * 1.2));
+          if (c.speed < 0.3) held[k] = true;
+        }
       });
       if (c.stopAt !== undefined && c.stopLeft !== undefined && c.stopLeft > 0) {
         // The bus pulls in at the shelter, waits, then goes on.
         const toStop = c.stopAt - c.z;
         if (toStop < 0.3) {
-          if (c.speed < 0.2 && c.stopLeft === 7) this.busArrived();
+          if (c.speed < 0.2 && c.stopLeft === BUS_DWELL) this.busArrived();
           if (c.speed < 0.2) c.stopLeft -= dt;
           target = 0;
         } else target = Math.min(target, toStop * 1.2);
@@ -1513,7 +1539,12 @@ export class Crowd {
       c.group.position.z = c.z;
       this.world.puffs.vehicle(c.pipe, ROAD.laneX, c.z, 0, 1, c.speed, dt, c.half > 3);
     }
-    while (this.cars.length && this.cars[0].z > CAR_RUN) {
+    MAIN_CROSSINGS.forEach((_, k) => {
+      this.carsTurn[k] = Math.max(0, this.carsTurn[k] - dt);
+      this.crossHeld[k] = held[k] ? this.crossHeld[k] + dt : 0;
+      if (this.crossHeld[k] > ZEBRA_PATIENCE) { this.carsTurn[k] = CARS_TURN; this.crossHeld[k] = 0; }
+    });
+        while (this.cars.length && this.cars[0].z > CAR_RUN) {
       const gone = this.cars.shift()!;
       this.world.scene.remove(gone.group);
       this.world.traffic.remove(gone.rec);
@@ -1613,6 +1644,8 @@ export class Crowd {
   }
 
   private step(a: Agent, dt: number): void {
+    // The cars' turn at the zebra ahead: stand at the kerb until it is over.
+    const atKerb = a.mode !== 'pausing' && a.route.length > 0 && this.waitsAtKerb(a);
     if (a.mode === 'pausing') {
       a.pauseLeft -= dt;
       if (a.pauseLeft <= 0) {
@@ -1621,7 +1654,7 @@ export class Crowd {
         a.mode = 'walking';
         next?.();
       }
-    } else if (a.route.length) {
+    } else if (a.route.length && !atKerb) {
       const target = a.route[0];
       const dx = target.x - a.pos.x;
       const dz = target.z - a.pos.z;
@@ -1641,7 +1674,7 @@ export class Crowd {
       }
     }
     if (a.faceHeading !== undefined && !a.route.length) a.heading = turn(a.heading, a.faceHeading, 5, dt);
-    const moving = a.route.length > 0;
+    const moving = a.route.length > 0 && !atKerb;
     if (a.body === undefined) this.settleBody(a);
     a.rig.update(dt, moving ? 'walk' : a.dancing ? 'dance' : a.pose === 'walk' ? 'stand' : a.pose, a.speed);
     a.dog?.update(dt, moving, false);
