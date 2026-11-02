@@ -138,13 +138,22 @@ export class OrgPanel {
     this.nameInput = el('input', 'org-name');
     this.nameInput.type = 'text';
     this.nameInput.maxLength = NAME_MAX;
+    // A name, not prose: no spelling underline or autocorrect under it.
+    this.nameInput.spellcheck = false;
+    this.nameInput.autocomplete = 'off';
+    this.nameInput.setAttribute('autocorrect', 'off');
     this.nameInput.value = displayName('org', 'name', t('Your organisation'));
     this.nameInput.setAttribute('aria-label', t('Organisation name'));
     this.nameInput.title = t('Click to rename your organisation');
+    // The field is as wide as its name, so the pencil sits just after the words (style.css).
+    const fit = () => this.nameInput.style.setProperty('--chars', String(Math.max(4, this.nameInput.value.length + 1)));
+    fit();
     const saveName = () => {
       rename('org', 'name', this.nameInput.value);
       this.nameInput.value = displayName('org', 'name', t('Your organisation'));
+      fit();
     };
+    this.nameInput.addEventListener('input', fit);
     this.nameInput.addEventListener('change', saveName);
     this.nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') this.nameInput.blur(); });
     // A pencil beside the name, as for places and people: it puts the name up for editing.

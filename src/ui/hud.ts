@@ -1069,6 +1069,8 @@ export class Hud {
   private startRename(cb: HudCallbacks): void {
     if (this.renameInput) return this.renameInput.focus();
     const input = el('input', 'rename');
+    input.spellcheck = false;
+    input.setAttribute('autocorrect', 'off');
     input.type = 'text';
     input.maxLength = NAME_MAX;
     input.value = this.speaker.textContent ?? '';
