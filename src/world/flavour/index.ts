@@ -34,6 +34,13 @@ export interface FlavourContext {
   still: boolean;
   /** The street scene the simulation tracks (sim/growth.ts), 0 to 1: the chaos pack draws it. */
   street: number;
+  /** Petty thefts since the thieves pack last ran (sim/pettyCrime.ts): it takes them off this list. */
+  thefts: { kind: 'pickpocket' | 'shoplifting'; shop: number; caught: boolean }[];
+  /** Per shop (config/flavour/crime.ts shoplifting sites): a guard at the door, the shutter down. */
+  shopGuard: boolean[];
+  shopShut: boolean[];
+  /** The picket, priest or nun at the drop-in now (sim/streetVisitors.ts), if any. */
+  visit: { kind: 'picket' | 'priest' | 'nun'; stance: 'support' | 'oppose' } | null;
 }
 
 export interface SquatDoor { x: number; z: number; ax: number; az: number; nx: number; nz: number }

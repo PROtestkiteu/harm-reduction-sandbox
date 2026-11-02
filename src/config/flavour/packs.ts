@@ -6,7 +6,7 @@ import { t } from '../../i18n';
  * the same with any of them on or off. Each is built the first time it is
  * switched on and costs nothing per frame while it is off.
  */
-export type PackId = 'street' | 'guard' | 'crime' | 'vignettes' | 'lines' | 'service' | 'weather' | 'campus' | 'chaos' | 'users';
+export type PackId = 'street' | 'guard' | 'crime' | 'vignettes' | 'lines' | 'service' | 'weather' | 'campus' | 'chaos' | 'users' | 'thieves' | 'visitors';
 
 export interface PackInfo {
   id: PackId;
@@ -24,6 +24,8 @@ export const PACKS: readonly PackInfo[] = [
   { id: 'weather', label: t('Rain and fog'), hint: t('Rain some evenings and ground fog before dawn.') },
   { id: 'chaos', label: t('Street scene spiralling'), hint: t('Boarded-up shops and tags, burning bins, people slumped in doorways, fights and ambulances, as the street scene grows.') },
   { id: 'campus', label: t('University'), hint: t('A university and its students, on the south-west edge of the district.') },
+  { id: 'thieves', label: t('Petty thieves'), hint: t('Pickpockets and shoplifters from the simulation, shown where they strike; shops hit often hire a guard or pull their shutters down early.') },
+  { id: 'visitors', label: t('Pickets and clergy'), hint: t('A picket, a priest or a nun at the drop-in some evenings, as likely to be for harm reduction as against it.') },
   { id: 'users', label: t('Who uses what'), hint: t('Small groups along the inner ring: smokers and vapers, opioid users bent over in the fentanyl fold, cannabis smokers on a bench, clubbers after hours, people tripping, people slumped on benzos and stimulant users pacing.') },
 ];
 
@@ -44,7 +46,7 @@ export interface PackSettings {
 }
 
 export const defaultPacks = (): PackSettings => ({
-  on: { street: true, guard: true, crime: true, vignettes: true, lines: true, service: true, weather: true, campus: true, chaos: true, users: true },
+  on: { street: true, guard: true, crime: true, vignettes: true, lines: true, service: true, weather: true, campus: true, chaos: true, users: true, thieves: true, visitors: true },
   weather: 'auto',
 });
 

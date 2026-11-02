@@ -48,6 +48,11 @@ import { ORG, type ApplicationContext, type GrantId, type RecruitId } from '../c
 import { Organisation, SERVICE_NAMES, type OrgNotice } from './organisation';
 import { Neighbourhood } from './neighbourhood';
 import { CityLife, type CityHappening, type PasserbyKind } from './cityLife';
+import { PettyCrime, type Theft } from './pettyCrime';
+import { StreetVisitors, type Visit } from './streetVisitors';
+import { PETTY, SHOP_NAMES } from '../config/pettyCrime';
+import { VISIT_NOTICE, VISITORS } from '../config/streetVisitors';
+import { FUNDERS } from '../config/funders';
 import { Calendar } from './calendar';
 import { CALENDAR_WAVES, SEASONAL_EVENT_RATE } from '../config/populations';
 import { createRandom, nextArrival, range, type Random } from './random';
@@ -99,6 +104,10 @@ export type SimEvent =
   | { type: 'exposure'; harm: ExposureHarm }
   /** 08:00: the night just ended, scored against its goals. */
   | { type: 'nightReport'; report: NightReport }
+  /** A pickpocketing or shoplifting (sim/pettyCrime.ts), for the street to show. */
+  | { type: 'theft'; theft: Theft }
+  /** A picket, priest or nun arrives at a service or leaves (sim/streetVisitors.ts). */
+  | { type: 'visit'; what: 'arrive' | 'leave'; visit: Visit }
   /** Money moved at a place: in (positive) or out (negative), one unit at a time, for the coins over it. */
   | { type: 'money'; service: ServiceId; amount: number };
 
@@ -383,6 +392,10 @@ export class Simulation {
   camperPath: CamperPath | null = null;
   /** Per service: extra turning back from something on the street nearby, and until when. */
   private readonly localDeterrence = new Map<ServiceId, { extra: number; until: number }>();
+  /** Pickpockets and shoplifters, and the shops that answer them (its own random stream). */
+  readonly petty = new PettyCrime();
+  /** A picket, priest or nun at a service tonight, for or against (its own random stream). */
+  readonly visitors = new StreetVisitors();
   /** The outreach camper is driving to a new spot: closed until then (in `org.now` minutes). */
   private movingUntil: number | null = null;
   private movingWasOn = true;
@@ -1088,6 +1101,38 @@ export class Simulation {
     this.emit({ type: 'exposure', harm });
   }
 
+  /** Pickpockets, shoplifters and the shops' answer; a picket, priest or nun at a service. */
+  private tickStreetPeople(dtMinutes: number): void {
+    const { thefts, news } = this.petty.tick(dtMinutes, {
+      clock: this.clockMinutes,
+      now: this.org.now,
+      footfall: this.city.footfall(this.clockMinutes, this.calendar.date),
+      street: this.growth.street,
+      patrol: this.context.patrol,
+      footPatrolOpen: this.services.footPatrol.status === 'open',
+    });
+    for (const theft of thefts) {
+      // The police take the report: more of it when a guard holds someone for them.
+      this.cityStress.bump('police', 'theft', PETTY.stress * (theft.caught ? 1.5 : 1));
+      this.city.pressure += PETTY.pressure;
+      this.emit({ type: 'theft', theft });
+    }
+    for (const n of news) {
+      this.org.notice(this.clockMinutes, n.news === 'guard'
+        ? t('After a run of thefts, {shop} has hired a security guard for its door.', { shop: SHOP_NAMES[n.shop] })
+        : t('Hit again, {shop} pulls its shutters down early tonight. The street is darker for it.', { shop: SHOP_NAMES[n.shop] }));
+    }
+    const change = this.visitors.tick(this.clockMinutes, (id) => this.services[id].status === 'open' || this.services[id].status === 'opening');
+    if (change) {
+      const { what, visit } = change;
+      if (what === 'arrive') {
+        if (visit.stance === 'support') this.funders.trust = Math.min(FUNDERS.max, this.funders.trust + VISITORS.supportTrust);
+        this.org.notice(this.clockMinutes, VISIT_NOTICE[visit.stance][visit.kind](SERVICE_NAMES[visit.at]));
+      }
+      this.emit({ type: 'visit', what, visit });
+    }
+  }
+
   private tickProperty(dtMinutes: number): void {
     const cost = this.property.costPerHour * (dtMinutes / 60);
     const paid = cost <= 0 || this.org.spend(cost);
@@ -1271,10 +1316,11 @@ export class Simulation {
 
   /** Extra turning back at `id` from something nearby, now. */
   private localDeter(id: ServiceId): number {
+    const visit = this.visitors.deterAt(id, this.clockMinutes);
     const d = this.localDeterrence.get(id);
-    if (!d) return 0;
-    if (this.org.now >= d.until) { this.localDeterrence.delete(id); return 0; }
-    return d.extra;
+    if (!d) return visit;
+    if (this.org.now >= d.until) { this.localDeterrence.delete(id); return visit; }
+    return d.extra + visit;
   }
 
   mediaAttack(factor: number, nights: number, energy: number): void {
@@ -1567,6 +1613,7 @@ export class Simulation {
       if (happening.kind === 'cleaners') this.neighbourhood.state.litter *= 0.3;
       this.emit({ type: 'city', happening });
     }
+    this.tickStreetPeople(dt * this.minuteRate);
     if (started.length || ended.length) {
       this.eventsChanged();
       for (const e of started) this.emit({ type: 'eventStarted', event: e });

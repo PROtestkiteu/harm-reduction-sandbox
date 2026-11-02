@@ -9,10 +9,11 @@ type Kind = Exclude<Drift, 'none'>;
  * shrink when zoomed out and grow when zoomed in, within a pixel range that
  * keeps them from turning into dust or blobs.
  */
+// Softened after play (half the snow, smaller flakes, fewer leaves and petals): the full counts read as a blizzard.
 const KINDS: Record<Kind, { count: number; colours: number[]; size: [number, number]; px: [number, number]; fall: number; sway: number; spin: number }> = {
-  snow: { count: 2200, colours: [0xf4f6fa, 0xe6ebf4, 0xdde4f0], size: [0.16, 0.42], px: [1.5, 8], fall: 1.0, sway: 0.45, spin: 0 },
-  leaves: { count: 140, colours: [0xc0622a, 0xa8481e, 0xd8a03a, 0x8a5a2a, 0xb83a22], size: [0.4, 0.65], px: [4, 16], fall: 0.55, sway: 1.5, spin: 2.2 },
-  petals: { count: 150, colours: [0xf6d2dc, 0xfbe8ee, 0xf0b8c8], size: [0.09, 0.16], px: [2, 8], fall: 0.4, sway: 1.1, spin: 1.4 },
+  snow: { count: 1100, colours: [0xf4f6fa, 0xe6ebf4, 0xdde4f0], size: [0.12, 0.3], px: [1.5, 5.5], fall: 1.0, sway: 0.45, spin: 0 },
+  leaves: { count: 80, colours: [0xc0622a, 0xa8481e, 0xd8a03a, 0x8a5a2a, 0xb83a22], size: [0.4, 0.65], px: [4, 16], fall: 0.55, sway: 1.5, spin: 2.2 },
+  petals: { count: 90, colours: [0xf6d2dc, 0xfbe8ee, 0xf0b8c8], size: [0.09, 0.16], px: [2, 8], fall: 0.4, sway: 1.1, spin: 1.4 },
 };
 
 /** The shape of one particle, white so each gets its own colour: a soft flake, a leaf with a stem, a petal. */

@@ -153,3 +153,21 @@ export function busShelter(parent: Object3D): Group {
   g.add(s);
   return prop(parent, g);
 }
+
+/** A shop's roller shutter, pulled down over its door: 2.2 m wide, facing +z. */
+export function shutter(parent: Object3D): Group {
+  const g = new Group();
+  const steel = mat(0x5a5e62);
+  const dark = mat(0x34373a);
+  add(g, box(2.2, 2.4, 0.06, steel, 0, 1.2, 0));
+  for (let i = 0; i < 8; i++) add(g, box(2.22, 0.03, 0.07, dark, 0, 0.2 + i * 0.28, 0.005));
+  return prop(parent, g);
+}
+
+/** A hand-held placard on a stick, carried in front and above the head: the person faces +z. */
+export function placard(parent: Object3D, colour: number): Group {
+  const g = new Group();
+  add(g, box(0.035, 1.25, 0.035, mat(0x6a5038), 0.18, 1.25, 0.28));
+  add(g, box(0.7, 0.48, 0.03, mat(colour), 0.18, 2.0, 0.3));
+  return prop(parent, g);
+}

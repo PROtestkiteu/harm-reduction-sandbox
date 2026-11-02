@@ -11,7 +11,13 @@ export const FOG_CHANCE: Record<Season, number> = { spring: 0.3, summer: 0.15, a
 export const FOG_HOURS: readonly [number, number] = [1590, 1800];
 
 export const RAIN = {
-  drops: 1400,
+  /** Softened after play: 1400 bright streaks read as a storm on every rainy evening. */
+  drops: 650,
+  /** Streak length (metres) and how opaque the brightest part is. */
+  streak: 0.6,
+  opacity: 0.26,
+  /** Most evenings rain is light: the share of drops shown at full rain. */
+  heaviest: 0.75,
   /** Half size of the box of rain round the middle of the view, metres. */
   reach: 44,
   height: 26,

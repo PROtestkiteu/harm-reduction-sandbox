@@ -54,7 +54,7 @@ export type StressMeter = 'police' | 'medics' | 'sobering';
  * split by the service that turned people away.
  */
 export type StressCause =
-  | 'crime' | 'scuffle' | 'policeStop' | 'drunk' | 'overdoseAlone' | 'overdoseHelped' | 'exposure' | 'camp' | 'crisis' | 'daemon'
+  | 'crime' | 'theft' | 'scuffle' | 'policeStop' | 'drunk' | 'overdoseAlone' | 'overdoseHelped' | 'exposure' | 'camp' | 'crisis' | 'daemon'
   | `turnedAway:${ServiceId}`;
 
 export class CityStress {

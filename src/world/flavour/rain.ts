@@ -35,6 +35,7 @@ const RAIN_VERTEX = /* glsl */ `
   uniform float uReach;
   uniform float uHeight;
   uniform float uFall;
+  uniform float uLen;
   uniform float uAmount;
   uniform float uWidth;
   varying float vFade;
@@ -43,7 +44,7 @@ const RAIN_VERTEX = /* glsl */ `
     // Each drop has a fixed place in a box that follows the view, wrapped so drops never pop.
     vec2 p = mod(seed.xy * span - uCenter + uReach, span) - uReach + uCenter;
     float y = uHeight - mod(seed.z * uHeight + uTime * uFall * (0.85 + seed.x * 0.3), uHeight);
-    float len = 0.9;
+    float len = uLen;
     float side = mod(corner, 2.0) - 0.5;
     float top = step(1.5, corner);
     vec3 world = vec3(p.x, y + top * len, p.y) + uRight * side * uWidth;
@@ -55,9 +56,10 @@ const RAIN_VERTEX = /* glsl */ `
 `;
 const RAIN_FRAGMENT = /* glsl */ `
   uniform vec3 uColour;
+  uniform float uOpacity;
   varying float vFade;
   void main() {
-    gl_FragColor = vec4(uColour, 0.5 * vFade);
+    gl_FragColor = vec4(uColour, uOpacity * vFade);
   }
 `;
 
@@ -116,6 +118,8 @@ export function buildWeather({ scene, random, camera, setWetness, pool }: PackDe
     uReach: { value: RAIN.reach },
     uHeight: { value: RAIN.height },
     uFall: { value: RAIN.fall },
+    uLen: { value: RAIN.streak },
+    uOpacity: { value: RAIN.opacity },
     uAmount: { value: 0 },
     uWidth: { value: 0.04 },
     uColour: { value: new Color(0xb8c4d0) },
@@ -195,7 +199,7 @@ export function buildWeather({ scene, random, camera, setWetness, pool }: PackDe
         u.uTime.value += dt;
         u.uCenter.value.copy(centre);
         u.uRight.value.set(right.z, 0, -right.x).normalize();
-        u.uAmount.value = rainAmount * 0.999;
+        u.uAmount.value = rainAmount * RAIN.heaviest;
         // A pixel wide at any zoom: thinner vanishes in the pixel image, wider reads as rods.
         u.uWidth.value = Math.max(0.03, pool.metresPerPixel * 0.6);
       }

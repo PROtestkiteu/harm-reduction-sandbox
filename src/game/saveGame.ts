@@ -74,6 +74,10 @@ export interface SaveMore {
   funders?: { trust?: number; hours?: number[]; covered?: number };
   /** The district's size and street scene (sim/growth.ts); checked there on restore. Older saves start at the first evening's. */
   growth?: { size?: number; street?: number };
+  /** Petty theft and the shops' guards and shutters (sim/pettyCrime.ts); checked there on restore. */
+  petty?: Partial<ReturnType<Simulation['petty']['snapshot']>>;
+  /** Tonight's picket, priest or nun (sim/streetVisitors.ts). */
+  visitors?: Partial<ReturnType<Simulation['visitors']['snapshot']>>;
   /** Someone in acute crisis on the street, if they are (sim/chaosDaemon.ts); checked there on restore. */
   daemon?: { since?: number | null; fails?: number; quietUntil?: number };
   /** Nightly goals, stars and the scenario (sim/goals.ts); checked there on restore. */
@@ -183,6 +187,8 @@ function captureMore(sim: Simulation): SaveMore {
     now: r3(now),
     funders: sim.funders.snapshot(),
     growth: sim.growth.snapshot(),
+    petty: sim.petty.snapshot(),
+    visitors: sim.visitors.snapshot(),
     daemon: sim.daemon.snapshot(),
     goals: sim.goals.snapshot(),
     turnedAway: sim.turnedAwayTotal,
@@ -284,6 +290,8 @@ function parseMore(raw: unknown): SaveMore | undefined {
   return {
     funders: obj(m.funders) as SaveMore['funders'],
     growth: obj(m.growth) as SaveMore['growth'],
+    petty: obj(m.petty) as SaveMore['petty'],
+    visitors: obj(m.visitors) as SaveMore['visitors'],
     daemon: obj(m.daemon) as SaveMore['daemon'],
     goals: obj(m.goals) as SaveMore['goals'],
     turnedAway: count(m.turnedAway),
@@ -358,6 +366,8 @@ function applyMore(sim: Simulation, m: SaveMore): void {
   o.now = m.now;
   sim.funders.restore(m.funders);
   sim.growth.restore(m.growth);
+  if (m.petty) sim.petty.restore(m.petty);
+  if (m.visitors) sim.visitors.restore(m.visitors);
   sim.daemon.restore(m.daemon);
   sim.restoreGoals(m.goals);
   sim.turnedAwayTotal = m.turnedAway ?? 0;

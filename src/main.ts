@@ -270,6 +270,8 @@ sim.on((e) => {
   if (e.type === 'money' && !reducedMotion.matches) coins.pop(world.locations[e.service === 'clubHr' ? 'club' : e.service].labelAnchor, e.amount > 0);
 
   if (e.type === 'alert') props.flashAlert(e.word);
+  // A theft for the thieves pack to show; a few at most wait (the pack takes them each frame while on).
+  if (e.type === 'theft' && flavour.settings.on.thieves && flavour.context.thefts.length < 4) flavour.context.thefts.push(e.theft);
   if (e.type === 'city' && e.happening.kind === 'crime' && e.happening.crime === 'carBreakIn') cityProps.carAlarm(sim.city.incidents.carBreakIn);
   // A grant that unlocks a context option (a licence, stable funding) changes the selection like a slider would.
   if (e.type === 'orgNotice' && e.notice.unlock) {
@@ -429,6 +431,12 @@ function updateFlavour(dt: number): void {
   c.squat = sim.camp.squat;
   c.still = reducedMotion.matches;
   c.street = sim.growth.street;
+  for (let i = 0; i < sim.petty.hits.length; i++) {
+    c.shopGuard[i] = sim.petty.guarded(i, sim.org.now);
+    c.shopShut[i] = sim.petty.shut(i, sim.org.now);
+  }
+  const visit = sim.visitors.here(sim.clockMinutes);
+  c.visit = visit && visit.at === 'dropIn' ? visit : null;
   if ((flavourSquatTimer -= dt) <= 0) {
     flavourSquatTimer = 2;
     flavour.setSquats([...(world.squat === null ? [] : [world.squat]), ...sim.property.squats.map((i) => world.shopUnits[i])]);

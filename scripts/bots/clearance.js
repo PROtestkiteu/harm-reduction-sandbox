@@ -11,6 +11,7 @@ async () => {
   const vg = await import('/src/config/flavour/vignettes.ts');
   const sv = await import('/src/config/flavour/service.ts');
   const us = await import('/src/config/flavour/users.ts');
+  const sp = await import('/src/config/flavour/streetPeople.ts');
   const items = [];
   const add = (name, p, r = 0.35, still = true) => items.push({ name, x: p.x, z: p.z, r, still });
   st.DEAL_SPOTS.forEach((d, i) => { add('dealer' + i, d.at); if (d.lookout) add('lookout' + i, d.lookout); });
@@ -34,6 +35,9 @@ async () => {
   // Who uses what: every spot, the far end of each pacing line, and the smokers' bench.
   us.USER_GROUPS.forEach((g) => g.spots.forEach((sp, i) => { add(g.kind + i, sp.at, sp.liesDown ? 0.9 : 0.35); if (sp.pace) add(g.kind + i + 'pace', sp.pace); }));
   { const c = us.USER_GROUPS.find((g) => g.kind === 'cannabis'); if (c) add('usersBench', { x: (c.spots[0].at.x + c.spots[1].at.x) / 2, z: (c.spots[0].at.z + c.spots[1].at.z) / 2 + 0.05 }, 0.85); }
+  // Thieves: the shop guards where the pack stands them; pickets and clergy at the drop-in.
+  for (const a of __sandbox.flavour.packs.pool.actors) if (a.look.vest === 0x1c1c20) add('shopGuard@' + a.x.toFixed(1) + ',' + a.z.toFixed(1), a);
+  (await import('/src/world/flavour/visitors.ts')).visitSpots().forEach((p, i) => add('visit' + i, p));
   // Squat sitters and club smokers, where they stand this launch.
   for (const a of __sandbox.flavour.packs.pool.actors) if (a.voice === 'smoker' || (a.voice === 'user' && a.look.kit?.bedroll && a.shown > 0.1)) add(a.voice + '@' + a.x.toFixed(1) + ',' + a.z.toFixed(1), a);
   // Distance from a point to a segment.
@@ -49,7 +53,7 @@ async () => {
     out.push({ n: it.name, clear: +best.toFixed(2), edge, inBuilding: inB });
   }
   // The guard round and the moving actors' lines: closest approach to the crowd's lines.
-  const lines = [...gd.GUARD_ROUND.map((p, i, r) => ['guard', p, r[(i + 1) % r.length]]), ...st.DEAL_SPOTS.map((d, i) => ['approach' + i, d.approach[0], d.approach[1]])];
+  const lines = [...gd.GUARD_ROUND.map((p, i, r) => ['guard', p, r[(i + 1) % r.length]]), ...st.DEAL_SPOTS.map((d, i) => ['approach' + i, d.approach[0], d.approach[1]]), ...sp.PICKPOCKET_BEATS.map((b, i) => ['pickpocket' + i, b.from, b.to]), ...sp.PICKPOCKET_BEATS.map((b, i) => ['pickpocketAway' + i, b.from, b.away])];
   for (const [n, a, b] of lines) {
     let best = Infinity, edge = '';
     for (let k = 0; k <= 40; k++) { const p = { x: a.x + (b.x - a.x) * k / 40, z: a.z + (b.z - a.z) * k / 40 }; for (const [e0, e1] of L.EDGES) { const d = seg(p, L.NODES[e0], L.NODES[e1]) - BAND - 0.3; if (d < best) { best = d; edge = e0 + '-' + e1; } } }

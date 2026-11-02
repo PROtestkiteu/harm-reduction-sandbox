@@ -25,7 +25,8 @@ export interface CrimeInfo {
 
 export const FLAVOUR_CRIMES: Record<FlavourCrime, CrimeInfo> = {
   phoneSnatch: { label: t('phone snatches'), rate: 0.35, hours: [1200, 1620], cry: t('Hey! My phone!'), guardAttends: true, lasts: 0 },
-  shoplifting: { label: t('shoplifting'), rate: 0.45, hours: [1080, 1380], cry: t('Oi, come back here!'), guardAttends: true, lasts: 0 },
+  // Shoplifting now comes from the simulation (sim/pettyCrime.ts) and is shown by the thieves pack.
+  shoplifting: { label: t('shoplifting'), rate: 0, hours: [1080, 1380], cry: t('Oi, come back here!'), guardAttends: true, lasts: 0 },
   vandalism: { label: t('smashed glass'), rate: 0.3, hours: [1320, 1710], cry: t('Someone kicked the shelter in.'), guardAttends: true, lasts: 480 },
   flyTipping: { label: t('fly-tipping'), rate: 0.25, hours: [1260, 1740], cry: t('Who dumps a mattress here?'), guardAttends: false, lasts: 900 },
 };
