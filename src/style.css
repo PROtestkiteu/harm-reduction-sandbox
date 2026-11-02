@@ -1049,7 +1049,7 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
 
 @media (prefers-color-scheme: light) {
   .event-counts, .param[data-hinted] > label { color: var(--badge); }
-  .hint-chip { background: var(--badge); color: #fff; }
+  .hint-chip { background: var(--badge); color: #1f1b17; }
 }
 
 .param.hint-flash { animation: hint-flash 1.6s ease-out; border-radius: 8px; }
@@ -2026,3 +2026,6 @@ body:has(.sandbox-toggle[aria-expanded='true']) .portrait { display: none; }
 .svc-row[data-own='true'] .own-act { display: inline; }
 .svc-row[data-own='true'] .name, .svc-row[data-own='true'] .svc-toggle { display: none; }
 .svc-row[data-own='true'][data-on='false'] .opt { color: var(--reply); }
+
+/* "Helps with" in the settings panel: a quiet gold line under the setting, readable on the dark panel in any system theme. */
+.sandbox .hint-chip { padding: 0; border-radius: 0; background: none; color: var(--reply); font-size: 12.5px; line-height: 1.35; margin-top: 4px; }
