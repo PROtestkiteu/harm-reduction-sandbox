@@ -2,6 +2,8 @@ import { Exposure, EXPOSURE, exposureNow, type ExposureHarm } from './exposure';
 import { ServiceMix } from './serviceMix';
 import { CRISIS } from '../config/crisis';
 import { HUSTLE } from '../config/hustles';
+import { RESIDENTS } from '../config/residents';
+import { BASE_STAGE, NEW_STAGE, stageCount, stageOf } from '../config/serviceStages';
 import { CONCESSIONS, FAVOUR, FAVOURS, type ConcessionId, type FavourId } from '../config/favours';
 import { CAMP, Camp } from './camp';
 import { ParkLife } from './parkLife';
@@ -24,9 +26,7 @@ export const INVEST = {
   cost: 150,
   /** Share of the bar one investment fills. */
   step: 0.25,
-  maxLevel: 3,
-  placesPerLevel: 2,
-  /** Upkeep per level above 1, per clock hour. */
+  /** Upkeep per stage above the usual size, per clock hour. */
   upkeepPerLevelHour: 8,
   /** Share of the bar lost per clock hour without money. */
   decayPerHour: 0.12,
@@ -180,8 +180,23 @@ export class ServiceModel {
   /** Live copy: sandbox sliders change staff, waiting places and patience. */
   readonly params: ServiceParams;
 
+  /** Waiting places the stage adds or takes away (set with the stage's places). */
+  stageWaiting = 0;
+  /** Staff on shift at the usual size, and the waiting places that go with them. */
+  private readonly usualStaff: number;
+
   constructor(readonly id: ServiceId, params: ServiceParams) {
     this.params = { ...params };
+    this.usualStaff = params.staff;
+  }
+
+  /**
+   * Room to wait: the usual places, one more or fewer for each person on shift
+   * above or below the usual number, and what the stage adds. Not bought on its
+   * own: it follows the staffing and how far the place has grown.
+   */
+  get waitingRoom(): number {
+    return Math.max(1, this.params.waitingSlots + (this.params.staff - this.usualStaff) + this.stageWaiting);
   }
 
   /** Staff this service asks for: the slider, minus anyone off sick. */
@@ -196,7 +211,8 @@ export class ServiceModel {
 
   get capacity(): number {
     if (this.staffOnSite === 0) return 0;
-    return Math.max(1, Math.floor(this.staffOnSite * this.params.capacityPerStaff * this.skill)) + this.extraPlaces;
+    // A small first stage takes places away, but someone on site can always help one person.
+    return Math.max(1, Math.floor(this.staffOnSite * this.params.capacityPerStaff * this.skill) + this.extraPlaces);
   }
 
   get status(): ServiceStatus {
@@ -298,6 +314,11 @@ export class Simulation {
   driveUntil: number | null = null;
   /** The next drive can start from this time (`org.now` minutes): people do not give twice in a day. */
   driveAgainAt = 0;
+  /** Game minute from which the next sweep for discarded kit can go out. */
+  sweepAgainAt = 0;
+  /** Residents were met: safer-feeling street until this minute; the next round from `meetAgainAt`. */
+  residentsMetUntil = 0;
+  meetAgainAt = 0;
   /** How well the district is doing: grows with harm reduction that works, opens new venues. */
   readonly vitality = new Vitality();
   /** Pressure on the city's police, ambulances and sobering-up centre. */
@@ -354,8 +375,13 @@ export class Simulation {
   readonly team: Team;
   /** This game so far, for saves and the leaderboard: people served and nights run. */
   readonly totals = { helped: 0, nights: 0 };
-  /** Each service's level (1 to 3) and progress toward the next (0..1): money in fills it, going broke drains it. */
-  readonly upgrades = Object.fromEntries(SERVICE_IDS.map((id) => [id, { level: 1, progress: 0.3 }])) as Record<ServiceId, { level: number; progress: number }>;
+  /**
+   * Each service's stage (1 to its last, see SERVICE_STAGES) and progress toward the next (0..1): money in
+   * fills it, going broke drains it. The starting services begin at their usual size, the rest small.
+   */
+  readonly upgrades = Object.fromEntries(SERVICE_IDS.map((id) => [id, { level: ORG.startServices.includes(id) ? BASE_STAGE : NEW_STAGE, progress: 0.3 }])) as Record<ServiceId, { level: number; progress: number }>;
+  /** The stage wear cannot take a service below: where it started. */
+  private readonly stageFloor = Object.fromEntries(SERVICE_IDS.map((id) => [id, ORG.startServices.includes(id) ? BASE_STAGE : NEW_STAGE])) as Record<ServiceId, number>;
   readonly city: CityLife;
   readonly calendar = new Calendar();
   /** Calendar waves already started tonight. */
@@ -415,6 +441,8 @@ export class Simulation {
       clinic: this.random() * 6,
       party: Infinity,
     };
+    // Each service's places follow its starting stage from the first minute (a later service starts small).
+    this.syncExtraPlaces();
   }
 
   on(listener: (e: SimEvent) => void): () => void {
@@ -630,7 +658,7 @@ export class Simulation {
   /** Takes a place down one level of investment: less upkeep, fewer places. */
   downgrade(id: ServiceId): void {
     const u = this.upgrades[id];
-    if (u.level <= 1) return;
+    if (u.level <= this.stageFloor[id]) return;
     u.level--;
     u.progress = 0;
     this.syncExtraPlaces();
@@ -639,7 +667,7 @@ export class Simulation {
 
   /** Rents a vacant shop unit and opens a satellite of `service` in it. */
   rentUnit(unit: number, service: SatelliteService): boolean {
-    if (this.property.units[unit]?.kind !== 'vacant') return false;
+    if (this.property.units[unit]?.kind !== 'vacant' || !this.services[service].switchedOn) return false;
     if (!this.org.spend(PROPERTY.fitOut, false)) {
       this.org.notice(this.clockMinutes, t('Not enough money to fit out the unit.'));
       return false;
@@ -658,6 +686,8 @@ export class Simulation {
 
   /** Opens a harm reduction point in an ordinary building (level 0); checking only where the law allows it. */
   openPoint(building: number, service: SatelliteService): boolean {
+    // A point adds places to a service; while that service is switched off they would stand empty.
+    if (!this.services[service].switchedOn) return false;
     if (service === 'drugChecking' && !this.context.checkingAllowed) {
       this.org.notice(this.clockMinutes, t('The law does not allow drug checking here.'));
       return false;
@@ -674,7 +704,7 @@ export class Simulation {
 
   upgradePoint(building: number): boolean {
     const q = this.property.pointAt(building);
-    if (!q || q.level >= PROPERTY.point.maxLevel) return false;
+    if (!q || q.level >= PROPERTY.point.maxLevel || !this.services[q.service].switchedOn) return false;
     if (!this.org.spend(PROPERTY.point.upgrade, false)) {
       this.org.notice(this.clockMinutes, t('Not enough money to grow the point.'));
       return false;
@@ -693,6 +723,7 @@ export class Simulation {
   /** Sends another outreach camper out to spot `spot` (an index the world defines). */
   sendCamper(spot: number): boolean {
     if (this.property.extraCampers >= PROPERTY.maxExtraCampers || this.property.campers.includes(spot)) return false;
+    if (!this.services.outreach.switchedOn) return false;
     if (!this.org.spend(PROPERTY.camperCost, false)) {
       this.org.notice(this.clockMinutes, t('Not enough money for another camper.'));
       return false;
@@ -705,12 +736,16 @@ export class Simulation {
 
   private syncExtraPlaces(): void {
     for (const id of Object.keys(this.services) as ServiceId[]) {
-      this.services[id].extraPlaces = this.property.extraPlaces(id) + (this.upgrades[id].level - 1) * INVEST.placesPerLevel;
+      const stage = stageOf(id, this.upgrades[id].level);
+      this.services[id].extraPlaces = this.property.extraPlaces(id) + stage.places;
+      // A bigger place has room for more to wait; a small first stage less.
+      this.services[id].stageWaiting = stage.places;
     }
   }
 
   /** After a saved game is applied: places, rota and crew quality follow the loaded state. */
   refreshAfterLoad(): void {
+    for (const id of SERVICE_IDS) this.unlockStages(id);
     this.syncExtraPlaces();
     this.reallocate();
   }
@@ -718,21 +753,30 @@ export class Simulation {
   /** Puts money into a service: fills its level bar, and at 100% it goes up a level. */
   invest(id: ServiceId): boolean {
     const u = this.upgrades[id];
-    if (u.level >= INVEST.maxLevel && u.progress >= 1) return false;
+    const last = stageCount(id);
+    if (u.level >= last && u.progress >= 1) return false;
     if (!this.services[id].switchedOn) return false;
     if (!this.org.spend(INVEST.cost, false)) {
       this.org.notice(this.clockMinutes, t('Not enough money to invest.'));
       return false;
     }
     u.progress += INVEST.step;
-    if (u.progress >= 1 && u.level < INVEST.maxLevel) {
+    if (u.progress >= 1 && u.level < last) {
       u.level++;
       u.progress -= 1;
-      this.org.notice(this.clockMinutes, t('{service} upgraded to level {level}: {places}.', { service: SERVICE_LABEL[id], level: u.level, places: plural(INVEST.placesPerLevel, ['{n} more place', '{n} more places'], ['{n} miejsce więcej', '{n} miejsca więcej', '{n} miejsc więcej']) }));
+      const stage = stageOf(id, u.level);
+      this.org.notice(this.clockMinutes, t('{service} grows: {stage}. {does}', { service: SERVICE_LABEL[id], stage: stage.label, does: stage.does }));
+      this.unlockStages(id);
       this.syncExtraPlaces();
     }
     u.progress = Math.min(1, u.progress);
     return true;
+  }
+
+  /** What a service's stages so far set up in its mix (a spectrometer makes lab checking possible there). */
+  private unlockStages(id: ServiceId): void {
+    // Only stages built in play: a service that starts at its usual size buys its equipment as before.
+    for (let i = this.stageFloor[id] + 1; i <= this.upgrades[id].level; i++) for (const a of stageOf(id, i).unlocks ?? []) this.mix.markSetUp(id, a);
   }
 
   /**
@@ -742,7 +786,8 @@ export class Simulation {
   private tickUpgrades(dtMinutes: number): void {
     const hours = dtMinutes / 60;
     if (hours <= 0) return;
-    const upkeep = SERVICE_IDS.reduce((n, id) => n + (this.upgrades[id].level - 1), 0) * INVEST.upkeepPerLevelHour * hours;
+    // Upkeep for every stage beyond the usual size.
+    const upkeep = SERVICE_IDS.reduce((n, id) => n + Math.max(0, this.upgrades[id].level - BASE_STAGE), 0) * INVEST.upkeepPerLevelHour * hours;
     const paid = upkeep <= 0 || this.org.spend(upkeep);
     for (const id of SERVICE_IDS) {
       const neglected = this.org.broke || !paid || this.org.closedDown.has(id);
@@ -755,10 +800,10 @@ export class Simulation {
     const u = this.upgrades[id];
     u.progress -= amount;
     if (u.progress >= 0) return;
-    if (u.level > 1) {
+    if (u.level > this.stageFloor[id]) {
       u.level--;
       u.progress += 1;
-      this.org.notice(this.clockMinutes, t('{service} went down to level {level}: worn out and short of money.', { service: SERVICE_LABEL[id], level: u.level }));
+      this.org.notice(this.clockMinutes, t('{service} is back to {stage}: worn out and short of money.', { service: SERVICE_LABEL[id], stage: stageOf(id, u.level).label }));
       this.syncExtraPlaces();
     } else u.progress = 0;
   }
@@ -781,6 +826,8 @@ export class Simulation {
 
   /** Sets one activity's share of a place's visits (percent); the rest keep their proportions. */
   setMix(id: ServiceId, a: Activity, percent: number): void {
+    // A service switched off spends nothing, so there is nothing to divide.
+    if (!this.services[id].switchedOn) return;
     this.mix.setShare(id, a, percent, this.context.checkingAllowed);
   }
 
@@ -788,6 +835,7 @@ export class Simulation {
   setUpMix(id: ServiceId, a: Activity): boolean {
     const cost = ACTIVITY[a].setup ?? 0;
     if (this.mix.isSetUp(id, a)) return true;
+    if (!this.services[id].switchedOn) return false;
     if (!this.org.spend(cost, false)) {
       this.org.notice(this.clockMinutes, t('Not enough money to set up {activity} here.', { activity: ACTIVITY[a].label.toLowerCase() }));
       return false;
@@ -867,7 +915,7 @@ export class Simulation {
   /** Asks the club to pay for the stand; it may say no. */
   proposeClubContract(): boolean {
     if (this.clubContract) return true;
-    if (this.org.now < this.clubAskAgainAt) return false;
+    if (this.org.now < this.clubAskAgainAt || !this.services.clubHr.switchedOn) return false;
     if (this.random() >= this.clubAcceptChance) {
       this.clubAskAgainAt = this.org.now + HUSTLE.clubAskAgain;
       this.org.notice(this.clockMinutes, t('The club would not pay for the stand this time. Ask again in a few hours.'));
@@ -887,10 +935,38 @@ export class Simulation {
   /** Sells checks at the drug checking service, or stops. */
   setCommercialChecking(on: boolean): void {
     if (this.commercialChecking === on) return;
+    // Charging starts only where checks are running; stopping is always possible.
+    if (on && !this.services.drugChecking.switchedOn) return;
     this.commercialChecking = on;
     this.org.notice(this.clockMinutes, on
       ? t('Drug checking now charges {fee} a check. Fewer people come, and fewer results reach the early warning.', { fee: HUSTLE.checkFee })
       : t('Drug checking is free again.'));
+  }
+
+  /** A team sweeps the blocks' courtyards and stairwells for used needles and kit. */
+  sweepForKit(): boolean {
+    if (this.org.now < this.sweepAgainAt) return false;
+    if (!this.org.spend(RESIDENTS.sweepCost, false)) {
+      this.org.notice(this.clockMinutes, t('Not enough money for a sweep.'));
+      return false;
+    }
+    this.neighbourhood.sweep(RESIDENTS.sweepShare);
+    this.sweepAgainAt = this.org.now + RESIDENTS.sweepCooldownHours * 60;
+    this.org.notice(this.clockMinutes, t('The team swept courtyards and stairwells for used kit.'));
+    return true;
+  }
+
+  /** Door-knocking in the blocks: who the project is and a number to call. */
+  meetResidents(): boolean {
+    if (this.org.now < this.meetAgainAt) return false;
+    if (!this.org.spend(RESIDENTS.meetCost, false)) {
+      this.org.notice(this.clockMinutes, t('Not enough money to meet the residents.'));
+      return false;
+    }
+    this.residentsMetUntil = this.org.now + RESIDENTS.meetHours * 60;
+    this.meetAgainAt = this.org.now + RESIDENTS.meetCooldownHours * 60;
+    this.org.notice(this.clockMinutes, t('The team knocked on doors in the blocks: residents now know whom to call.'));
+    return true;
   }
 
   /** A donation drive: staff and volunteers collect for a few hours; donation boxes bring in more meanwhile. */
@@ -1111,7 +1187,7 @@ export class Simulation {
 
   /** Specialises the camper (or changes its path): pays for the kit and training. False if it cannot pay. */
   setCamperPath(path: CamperPath): boolean {
-    if (this.camperPath === path) return false;
+    if (this.camperPath === path || !this.services.outreach.switchedOn) return false;
     if (!this.org.spend(CAMPER_PATH[path].cost, false)) return false;
     this.camperPath = path;
     return true;
@@ -1328,7 +1404,7 @@ export class Simulation {
       this.admit(s, visitor, false);
       return 'admitted';
     }
-    if (s.queue.length < s.params.waitingSlots) {
+    if (s.queue.length < s.waitingRoom) {
       s.queue.push({ visitor, waited: 0 });
       return 'queued';
     }
@@ -1387,6 +1463,7 @@ export class Simulation {
       cityPressure: this.city.pressure,
       coldNight: active.has('coldNight'),
       neighbourhoodSupport: this.policy.neighbourhood,
+      residentsMet: this.org.now < this.residentsMetUntil,
       anonymous: this.policy.anonymous,
       lateNight: this.clockMinutes >= 25 * 60,
       activeEvents: active,
@@ -1429,7 +1506,7 @@ export class Simulation {
       shelterOpen: this.services.shelter.status === 'open',
       outreachOpen: this.services.outreach.status === 'open',
       crisis: this.crisis,
-      shelterCrowded: Math.min(1, this.services.shelter.queue.length / Math.max(1, this.services.shelter.params.waitingSlots)),
+      shelterCrowded: Math.min(1, this.services.shelter.queue.length / this.services.shelter.waitingRoom),
       referrals: this.camperPath === 'social' && this.services.outreach.status === 'open' ? CAMPER_PATH_EFFECT.socialCampShrink : 0,
     });
     // Partnerships with A&E and the izba: they recover from a busy night sooner.

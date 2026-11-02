@@ -213,15 +213,41 @@ button:focus-visible {
   place-content: center;
   justify-items: center;
   gap: 16px;
-  /* Dark in both themes: phone browsers take their bars' colour from this first screen, and keep it. */
-  --muted: #aaa093;
-  --text: #ece4d4;
+  /* Dark in both themes: phone browsers take their bars' colour from this first screen, and keep it,
+     so the dusk sky (the game icon's) starts from the page's near-black at the top. */
+  --muted: #d4cabb;
+  --text: #f6ecd8;
   --reply: #edb300;
   color: var(--muted);
-  background: #120f0d;
+  background: linear-gradient(#120f0d 0%, #2b2a4f 34%, #6a4a6e 72%, #d98a6a 100%) #120f0d;
   font-family: var(--body);
   font-size: 16px;
+  /* Lifts the mark and phrase clear of the skyline. In px, not viewport units: those change while
+     an installed iPhone app is given its full height, and would move the mark. */
+  padding-bottom: 120px;
   z-index: 10;
+}
+
+/* The icon's lit skyline along the bottom; its windows come on in waves while the game loads. */
+.loading::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0;
+  /* A share of the loading screen's own height, which stays put (see below). */
+  height: clamp(120px, 28%, 240px);
+  background: url('./assets/loading-skyline.svg') repeat-x left bottom / auto 100%;
+  pointer-events: none;
+}
+@media (max-height: 520px) { .loading { padding-bottom: 40px; } }
+
+/*
+ * Installed on an iPhone, the page starts one status bar short (innerHeight 812 of 874 on an
+ * iPhone 17 Pro) and the viewport grows a moment later; a screen pinned to the viewport grew with
+ * it and its mark slid down. Pinned instead to the root block, which keeps the short height, plus
+ * the status bar, the loading screen has the whole screen's size from its first frame to its last.
+ */
+@media (display-mode: standalone), (display-mode: fullscreen) {
+  .loading { position: absolute; inset: 0 0 auto; height: calc(100% + env(safe-area-inset-top)); }
 }
 
 @keyframes shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
@@ -1440,7 +1466,8 @@ body:has(.sandbox-toggle[aria-expanded='true']) .portrait { display: none; }
 .team-name { font-size: 14px; }
 .team-kind { color: var(--muted); font-size: 12px; }
 .team-traits { color: var(--reply); font-size: 12.5px; }
-.team-status { color: var(--muted); font-size: 12.5px; }
+/* Where they are and how well they work there: wraps rather than hiding the figures. */
+.team-who p.team-status { color: var(--muted); font-size: 12.5px; white-space: normal; }
 .team-assign { min-height: 44px; max-width: 9.5em; font-size: 13px; }
 .team-energy {
   grid-column: 1 / -1;
@@ -1661,10 +1688,13 @@ body:has(.sandbox-toggle[aria-expanded='true']) .portrait { display: none; }
 /* The handle is swiped: the browser must not scroll or zoom while a finger drags it. */
 .sheet-handle { touch-action: none; }
 
-/* Loading screen: the PROtestkit logo, breathing gently, over the skeleton diamond. */
-.loading-logo { width: 110px; height: auto; animation: logo-breathe 2.4s ease-in-out infinite; }
-@keyframes logo-breathe { 50% { opacity: 0.45; transform: scale(0.95); } }
-.loading-line { min-height: 1.4em; margin: 0; text-align: center; padding: 0 16px; }
+/* Loading screen: the HR mark, breathing gently, over the dusk sky. */
+.loading-logo { position: relative; z-index: 1; width: min(220px, 52vw); height: auto; animation: logo-breathe 2.8s ease-in-out infinite; }
+@keyframes logo-breathe { 50% { opacity: 0.8; transform: scale(0.97); } }
+/* A fixed box for the phrase: the script swaps in a random one (in the player's language) after the
+   first paint and the condensed face arrives a moment later; neither may move the mark or the
+   skyline, so the box keeps one width and room for two lines whatever it holds. */
+.loading-line { position: relative; z-index: 1; box-sizing: border-box; width: min(92vw, 440px); height: 2.8em; line-height: 1.4; margin: 0; text-align: center; padding: 0 16px; overflow: hidden; }
 /* A band sweeping across the words: muted, then the full text colour, with a gold glint at its centre. */
 .loading-line {
   color: transparent;
@@ -1832,6 +1862,7 @@ body:has(.sandbox-toggle[aria-expanded='true']) .portrait { display: none; }
 
 /* Reset all settings: at the bottom of the panel, apart from the close button. */
 .sandbox-reset-row { margin: 18px 0 4px; display: flex; justify-content: flex-start; }
+.sandbox-reset-row[hidden] { display: none; }
 
 /* Tags on what works against the selected place or person: red, so they read as a threat at a glance. */
 .fx-tag[data-kind^='threat'] { --fx: #ff3a2a; background: rgba(60, 8, 6, 0.88); color: #ffe4e0; box-shadow: 0 0 0 1.5px #ff3a2a, 0 2px 8px rgba(0, 0, 0, 0.5); font-size: 12px; }
@@ -1911,3 +1942,89 @@ body:has(.sandbox-toggle[aria-expanded='true']) .portrait { display: none; }
   .top-bar .stress-icon { width: 15px; height: 15px; }
   .top-bar .stress-bar { height: 5px; min-width: 20px; }
 }
+
+/* The organisation's own sheet (src/ui/sheet.ts): the settings' place and look, below the Settings button. */
+.sandbox.sheet { margin-top: 50px; }
+.sandbox.sheet:not([data-open='true']) { display: none; }
+@media (min-width: 761px) { .sheet .sandbox-body { position: relative; } }
+.sheet-head { position: absolute; top: 8px; right: 8px; }
+.sheet .org-name-row { padding-right: 44px; }
+@media (max-width: 760px) {
+  .sandbox.sheet { margin-top: 0; }
+  .sheet-head { top: 6px; right: max(6px, env(safe-area-inset-right)); }
+}
+/* The dialogue dash after the pencil belongs to speech, not to the organisation's name. */
+.org-name-row .rename-pencil::after { display: none; }
+
+/* Phones: the organisation sheet keeps the figures and actions; the top bar already shows the meters, and the explanations stay on larger screens. */
+@media (max-width: 760px) {
+  .sheet .org-meters,
+  .sheet .org > .note,
+  .sheet .org-team > .factor-summary { display: none; }
+  .sheet .org-name-row { margin-bottom: 4px; }
+  .sheet .team-member { padding: 2px 0 4px; }
+  .sheet .team-assign { min-height: 40px; }
+  .sheet .org-actions { gap: 0 12px; }
+}
+/* Where someone works reads as a gold reply with a small arrow, not a grey system box. */
+.team-assign {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 8.5em;
+  max-width: none;
+  padding: 0 18px 0 4px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--reply);
+  font: 500 14px var(--body);
+  text-align: right;
+  text-align-last: right;
+  cursor: pointer;
+}
+.team-assign option { color: #1f1b17; }
+.team-member:has(.team-assign) { position: relative; }
+.team-member::after {
+  content: '›';
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%) rotate(90deg);
+  color: var(--reply);
+  pointer-events: none;
+  font-size: 16px;
+}
+.team-assign:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* Phones: one layer of navigation at a time. While Settings or the organisation is open, the conversation sheet steps aside. */
+@media (max-width: 760px) {
+  body:has(.sandbox-body:not([hidden])) .column { display: none; }
+}
+
+/* A block's neighbourhood as icon chips, coloured like the meters at the top. */
+.building-chips[hidden] { display: none; }
+.building-chips { gap: 6px 14px; margin-top: 8px; }
+.building-chips .chip-icon { color: var(--muted); }
+.building-chips .chip[data-state='good'] .chip-icon { color: var(--open); }
+.building-chips .chip[data-state='mid'] .chip-icon { color: var(--opening); }
+.building-chips .chip[data-state='bad'] .chip-icon, .building-chips .chip[data-state='bad'] .chip-value { color: var(--closing); }
+
+/* Closed for good (switched off, shut down, not permitted): a hollow dot and a struck name, apart from closed for the night. */
+.loc-label[data-lasting='true'] .dot { background: transparent; box-shadow: inset 0 0 0 1.5px #8a8278, 0 0 0 1px rgba(0, 0, 0, 0.8); }
+.loc-label[data-lasting='true'] .loc-name { text-decoration: line-through; text-decoration-thickness: 2px; opacity: 0.75; }
+
+/* City hall favours beside the money: an icon and the count, gold while one is held. */
+.favour-count { all: unset; position: relative; display: inline-flex; align-items: center; gap: 3px; cursor: pointer; color: var(--reply); font-variant-numeric: tabular-nums; -webkit-tap-highlight-color: transparent; }
+.favour-count::after { content: ''; position: absolute; inset: -12px -8px; }
+.favour-count:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.favour-count:disabled { cursor: default; color: var(--muted); }
+.favour-icon { display: inline-flex; width: 13px; height: 13px; }
+.favour-icon svg { width: 100%; height: 100%; }
+/* Nothing said (an open place): no dialogue dash after the name or its pencil. */
+.rename-pencil:has(+ .said:empty)::after, .speaker:has(+ .rename-pencil[hidden] + .said:empty)::after { display: none; }
+
+/* A service's row on its own card: one reply, Close down or Open up; the name and the switch belong to the services list. */
+.own-act { display: none; }
+.svc-row[data-own='true'] .own-act { display: inline; }
+.svc-row[data-own='true'] .name, .svc-row[data-own='true'] .svc-toggle { display: none; }
+.svc-row[data-own='true'][data-on='false'] .opt { color: var(--reply); }

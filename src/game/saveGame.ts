@@ -1,4 +1,5 @@
 import type { Simulation } from '../sim/simulation';
+import { BASE_STAGE, stageCount } from '../config/serviceStages';
 import { SERVICE_IDS, type ServiceId } from '../sim/types';
 import { TRAITS, type Assignment, type Member, type TraitId } from '../sim/team';
 import { SATELLITE_SERVICES, type SatelliteService, type UnitState } from '../sim/property';
@@ -29,7 +30,8 @@ export interface SaveData {
   /** The services ever run this game (older saves: those switched on). */
   ran?: ServiceId[];
   team: { name: string; paid: boolean; traits: TraitId[]; energy: number; assignment: Assignment }[];
-  upgrades: Record<string, { level: number; progress: number }>;
+  /** Each service's stage (see SERVICE_STAGES) and progress; older saves wrote `level` on a scale one lower. */
+  upgrades: Record<string, { stage: number; progress: number }>;
   units: UnitState[];
   campers: number[];
   /** The outreach camper's specialisation, if any. */
@@ -63,7 +65,7 @@ export function captureSave(sim: Simulation, name: string, run?: SaveData['run']
     on: SERVICE_IDS.filter((id) => sim.services[id].switchedOn),
     ran: SERVICE_IDS.filter((id) => sim.services[id].everRun),
     team: sim.team.members.map((m) => ({ name: m.name, paid: m.paid, traits: [...m.traits], energy: Math.round(m.energy * 100) / 100, assignment: m.assignment })),
-    upgrades: Object.fromEntries(SERVICE_IDS.map((id) => [id, { level: sim.upgrades[id].level, progress: Math.round(sim.upgrades[id].progress * 1000) / 1000 }])),
+    upgrades: Object.fromEntries(SERVICE_IDS.map((id) => [id, { stage: sim.upgrades[id].level, progress: Math.round(sim.upgrades[id].progress * 1000) / 1000 }])),
     units: sim.property.units.map((u) => ({ ...u })),
     campers: [...sim.property.campers],
     camperPath: sim.camperPath ?? undefined,
@@ -81,7 +83,7 @@ export function parseSave(raw: unknown): SaveData | null {
   const org = (r.org ?? {}) as Record<string, unknown>;
   const team = Array.isArray(r.team) ? r.team.slice(0, 40) : [];
   const units = Array.isArray(r.units) ? r.units.slice(0, 16) : [];
-  const upgrades = (r.upgrades ?? {}) as Record<string, { level?: unknown; progress?: unknown }>;
+  const upgrades = (r.upgrades ?? {}) as Record<string, { stage?: unknown; level?: unknown; progress?: unknown }>;
   const street = (r.street ?? {}) as Record<string, unknown>;
   const totals = (r.totals ?? {}) as Record<string, unknown>;
   const run = r.run as Record<string, unknown> | undefined;
@@ -110,7 +112,12 @@ export function parseSave(raw: unknown): SaveData | null {
         assignment: (typeof m.assignment === 'string' && ASSIGN.has(m.assignment) ? m.assignment : 'auto') as Assignment,
       };
     }),
-    upgrades: Object.fromEntries(SERVICE_IDS.map((id) => [id, { level: int(upgrades[id]?.level, 1, 3, 1), progress: num(upgrades[id]?.progress, 0, 1, 0.3) }])),
+    upgrades: Object.fromEntries(SERVICE_IDS.map((id) => {
+      const u = upgrades[id];
+      // An older save's level 1 was the usual size, which is stage 2 now.
+      const stage = u?.stage !== undefined ? int(u.stage, 1, stageCount(id), BASE_STAGE) : int(u?.level, 1, 3, 1) + 1;
+      return [id, { stage: Math.min(stage, stageCount(id)), progress: num(u?.progress, 0, 1, 0.3) }];
+    })),
     units: units.map((u): UnitState => {
       const k = (u ?? {}) as Record<string, unknown>;
       if (k.kind === 'vacant') return { kind: 'vacant', since: num(k.since, -1e9, 1e9, 0) };
@@ -157,7 +164,7 @@ export function applySave(sim: Simulation, s: SaveData): void {
     members.push(m);
   });
   (sim.team as unknown as { nextId: number }).nextId = s.team.length + 1;
-  for (const id of SERVICE_IDS) sim.upgrades[id] = { ...s.upgrades[id] };
+  for (const id of SERVICE_IDS) sim.upgrades[id] = { level: s.upgrades[id].stage, progress: s.upgrades[id].progress };
   sim.property.units.splice(0, sim.property.units.length, ...s.units.slice(0, sim.property.units.length));
   sim.property.campers.splice(0, sim.property.campers.length, ...s.campers);
   Object.assign(sim.neighbourhood.state, s.street);

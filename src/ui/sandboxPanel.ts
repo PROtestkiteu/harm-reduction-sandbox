@@ -5,6 +5,8 @@ export interface SandboxPanelCallbacks {
   /** Fires on every input event; the caller coalesces and applies on the next sim step. */
   onChange(id: ParamId, value: number): void;
   onReset(): void;
+  /** Fires when the panel opens, so other panels in the same place can close. */
+  onOpen?(): void;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -30,7 +32,7 @@ interface Page {
 }
 
 /** Topics in menu order; anything mounted that is not listed goes at the end. */
-const ORDER = ['org-section', 'group-night', 'group-demand', 'services', 'context-section', 'random-section', 'save-section', 'language-section', 'about-section'];
+const ORDER = ['group-night', 'group-demand', 'group-org', 'services', 'context-section', 'random-section', 'save-section', 'language-section', 'about-section'];
 
 /**
  * Sandbox controls laid out like the conversation column: a short numbered
@@ -54,8 +56,10 @@ export class SandboxPanel {
   private readonly heading: HTMLElement;
   private readonly back: HTMLOListElement;
   private readonly title: HTMLElement;
+  private readonly cb: SandboxPanelCallbacks;
 
   constructor(parent: HTMLElement, initial: SandboxSettings, cb: SandboxPanelCallbacks) {
+    this.cb = cb;
     this.root = el('section', 'sandbox');
     this.root.setAttribute('aria-label', t('Sandbox settings'));
     this.toggle = el('button', 'btn sandbox-toggle');
@@ -158,30 +162,11 @@ export class SandboxPanel {
     this.show(null);
   }
 
-  /** Adds an extra section (the organisation, context factors) as its own topic. */
+  /** Adds an extra section (context factors, saves) as its own topic. */
   mount(section: HTMLElement): void {
     if (!section.id) section.id = section.classList.contains('context') ? 'context-section' : `section-${this.pages.size}`;
     // Above the Reset row, which stays at the bottom of every page.
     this.resetRow.before(section);
-    // The budget slider lives with the rest of the organisation.
-    const orgGroup = this.pages.get('group-org');
-    if (section.id === 'org-section' && orgGroup) {
-      // The budget slider is a sandbox cheat: folded away under the actions.
-      const cheat = el('details', 'sandbox-sub');
-      cheat.append(el('summary', undefined, t('Set the budget (sandbox)')), ...orgGroup.section.querySelectorAll('.param'));
-      (section.querySelector('.org-actions') ?? section.lastElementChild)?.after(cheat);
-      orgGroup.section.remove();
-      this.pages.delete('group-org');
-    }
-    // Long lists inside a topic fold behind a reply of their own.
-    for (const [selector, label] of [['.org-grants', t('Funding applications')], ['.org-log', t('What has happened')]] as const) {
-      const part = section.querySelector(selector);
-      if (!part) continue;
-      const sub = el('details', 'sandbox-sub');
-      sub.append(el('summary', undefined, label));
-      part.replaceWith(sub);
-      sub.append(part);
-    }
     const label = section.querySelector('legend')?.textContent ?? t('More');
     this.addPage(section, section.classList.contains('context') ? t('Context: law, city, police, services') : label);
     this.show(this.current);
@@ -232,8 +217,7 @@ export class SandboxPanel {
     this.back.hidden = !id;
     this.title.hidden = !!id;
     this.note.hidden = !!id;
-    // The organisation's editable name is its own heading.
-    this.heading.hidden = !id || id === 'org-section';
+    this.heading.hidden = !id;
     this.heading.textContent = page?.label ?? '';
     if (isMenu) this.fillMenu(id);
   }
@@ -258,6 +242,7 @@ export class SandboxPanel {
   }
 
   setOpen(open: boolean, returnFocus = false): void {
+    if (open && this.body.hidden) this.cb.onOpen?.();
     this.body.hidden = !open;
     this.toggle.setAttribute('aria-expanded', String(open));
     this.root.dataset.open = String(open);

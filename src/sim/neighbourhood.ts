@@ -1,4 +1,5 @@
 import type { EventId } from '../config/randomEvents';
+import { RESIDENTS } from '../config/residents';
 
 /**
  * The street around the services. Rendering-free. Everything moves slowly
@@ -48,6 +49,8 @@ export interface NeighbourhoodInputs {
   anonymous: boolean;
   lateNight: boolean;
   activeEvents: ReadonlySet<EventId>;
+  /** The project met the residents recently: they know whom to call. */
+  residentsMet: boolean;
 }
 
 const clamp = (v: number) => Math.min(1, Math.max(0, v));
@@ -70,6 +73,11 @@ export class Neighbourhood {
   private lastClock = -Infinity;
 
   constructor(private readonly random: () => number) {}
+
+  /** A sweep of courtyards and stairwells: a share of the discarded kit is picked up. */
+  sweep(share: number): void {
+    this.state.litter = clamp(this.state.litter * (1 - share));
+  }
 
   /** Records what just happened (called by the simulation as things happen). */
   note(kind: keyof Rates, n = 1): void {
@@ -116,7 +124,7 @@ export class Neighbourhood {
     if (inp.crackdown) marketTarget *= 0.3;
     s.streetMarket = approach(s.streetMarket, marketTarget, 0.5, hours);
 
-    s.safety = clamp(1 - (0.35 * s.visibleUse + 0.3 * s.litter + 0.35 * s.streetMarket) - 0.3 * Math.min(1, inp.cityPressure) + 0.05 * (inp.neighbourhoodSupport - 1));
+    s.safety = clamp(1 - (0.35 * s.visibleUse + 0.3 * s.litter + 0.35 * s.streetMarket) - 0.3 * Math.min(1, inp.cityPressure) + 0.05 * (inp.neighbourhoodSupport - 1) + (inp.residentsMet ? RESIDENTS.meetSafety : 0));
     s.shopTrade = approach(s.shopTrade, s.safety, 0.35, hours);
 
     // Reputation follows the share of demand that is met, slowly; anonymity helps.

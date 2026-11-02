@@ -1,6 +1,6 @@
 /**
- * The page's entry: the loading screen (the PROtestkit logo and an absurd
- * little phrase that changes every moment), then the game itself, loaded as
+ * The page's entry: the loading screen (the game's HR mark over a dusk skyline
+ * and an absurd little phrase that changes every moment), then the game itself, loaded as
  * its own chunk. So the phrases turn while the game downloads, which on a
  * slow connection takes a while. Stops itself once the loading screen is gone.
  */

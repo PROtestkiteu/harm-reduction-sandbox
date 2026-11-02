@@ -6,10 +6,11 @@
 import { t } from '../i18n';
 export type FavourId = 'funding' | 'police' | 'camp';
 
-export const FAVOURS: Record<FavourId, { label: string; done: string }> = {
-  funding: { label: t('Emergency funding (+300 now)'), done: t('City hall found 300 in an emergency fund.') },
-  police: { label: t('Police keep their distance for 12 hours'), done: t('Police will keep away from the services for the next 12 hours.') },
-  camp: { label: t('No clearing of the park camp for two days'), done: t('City hall will not clear the park camp for two days.') },
+/** `short` is the phone label: it has to make sense on its own. */
+export const FAVOURS: Record<FavourId, { label: string; short: string; done: string }> = {
+  funding: { label: t('Emergency funding (+300 now)'), short: t('Emergency money +300.'), done: t('City hall found 300 in an emergency fund.') },
+  police: { label: t('Police keep their distance for 12 hours'), short: t('Police keep away 12 h.'), done: t('Police will keep away from the services for the next 12 hours.') },
+  camp: { label: t('No clearing of the park camp for two days'), short: t('No camp clearing 2 days.'), done: t('City hall will not clear the park camp for two days.') },
 };
 
 export type ConcessionId = 'postedOfficer' | 'cleanUp' | 'camperOff';

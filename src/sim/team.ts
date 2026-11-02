@@ -17,17 +17,17 @@ export type TraitId = 'peer' | 'nurse' | 'chemist' | 'social' | 'languages' | 'c
 export interface Trait {
   label: string;
   detail: string;
-  /** Extra share of capacity per person at these services (0.3 = 30% more). */
+  /** Extra share of capacity per person at these services (0.3 = 30% more, -0.15 = 15% less). */
   bonus: Partial<Record<ServiceId, number>>;
   /** Applies at every service. */
   everywhere?: number;
 }
 
 export const TRAITS: Record<TraitId, Trait> = {
-  peer: { label: t('Peer worker'), detail: t('Lived experience; people open up to them'), bonus: { dropIn: 0.3, outreach: 0.3, clubHr: 0.2, shelter: 0.2 } },
+  peer: { label: t('Peer worker'), detail: t('Lived experience; people open up to them. No clinical training'), bonus: { dropIn: 0.3, outreach: 0.3, clubHr: 0.2, shelter: 0.2, clinic: -0.2 } },
   nurse: { label: t('Nurse'), detail: t('Wound care, overdose response, prescriptions'), bonus: { clinic: 0.4, footPatrol: 0.3, dropIn: 0.1 } },
-  chemist: { label: t('Chemist'), detail: t('Runs the analysis and explains results'), bonus: { drugChecking: 0.5 } },
-  social: { label: t('Social worker'), detail: t('Housing, benefits and referrals'), bonus: { shelter: 0.35, dropIn: 0.2 } },
+  chemist: { label: t('Chemist'), detail: t('Runs the analysis and explains results. Less at home on the street'), bonus: { drugChecking: 0.5, outreach: -0.15, footPatrol: -0.15, clubHr: -0.1 } },
+  social: { label: t('Social worker'), detail: t('Housing, benefits and referrals. Less used to the club floor'), bonus: { shelter: 0.35, dropIn: 0.2, clubHr: -0.15 } },
   languages: { label: t('Several languages'), detail: t('Reaches people others cannot'), bonus: {}, everywhere: 0.12 },
   calm: { label: t('Calm under pressure'), detail: t('Good with crowds and crises'), bonus: { clubHr: 0.25, outreach: 0.15 } },
   nightOwl: { label: t('Night owl'), detail: t('Tires slower after midnight'), bonus: {} },
@@ -74,12 +74,16 @@ export class Team {
     this.random = createRandom(seed ^ 0x5eed7);
   }
 
-  /** How good `m` is at `service`: 1 is ordinary, tiredness drags it down. */
-  static fit(m: Member, service: ServiceId): number {
+  /** How good `m` is at `service` by their qualities alone: 1 is ordinary. */
+  static traitFit(m: Member, service: ServiceId): number {
     let f = 1;
     for (const t of m.traits) f += (TRAITS[t].bonus[service] ?? 0) + (TRAITS[t].everywhere ?? 0);
-    if (m.energy < 0.35) f -= 0.25;
     return Math.max(0.4, f);
+  }
+
+  /** How good `m` is at `service` right now: their qualities, dragged down by tiredness. */
+  static fit(m: Member, service: ServiceId): number {
+    return Math.max(0.4, Team.traitFit(m, service) - (m.energy < 0.35 ? 0.25 : 0));
   }
 
   /** Grows or shrinks the team to the organisation's head counts. */

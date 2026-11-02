@@ -1,5 +1,6 @@
 import { Group, Vector3, type Camera, type Object3D } from 'three';
 import { MoodIcons, type Mood } from './moodIcons';
+import { CarryProps, SERVED_CARRY, type CarryKind } from './carryProps';
 import { SEASON_PROFILES } from '../config/seasons';
 import { createRandom, pick, type Random } from '../sim/random';
 import type { AcuteOutcome, Intent, SimEvent, Simulation, VisitorId } from '../sim/simulation';
@@ -155,6 +156,11 @@ interface Agent {
   mood?: Mood;
   /** Seconds the mood icon stays up (Infinity: while in this state). */
   moodLeft: number;
+  /** Something in hand or over the head that says how the visit went: a hot drink, a result card, a sigh. */
+  carry?: CarryKind;
+  /** Seconds it stays while the person is in view, and how long it has shown. */
+  carryLeft?: number;
+  carryAge?: number;
   /** Pending consequence of unmet need, carried out when the person next leaves. */
   aftermath?: { hiddenUse: boolean; adverse: boolean; acute: AcuteOutcome | null };
   intoxicated?: boolean;
@@ -218,12 +224,14 @@ export class Crowd {
   private encounterTimer = 12;
   private patrolKey = '';
   private readonly icons: MoodIcons;
+  private readonly carried: CarryProps;
   private clock = 0;
 
   constructor(private readonly sim: Simulation, private readonly world: World, seed: number) {
     this.random = createRandom(seed);
     world.scene.add(this.group);
     this.icons = new MoodIcons(this.group);
+    this.carried = new CarryProps(this.group);
     this.rings = new PoliceRings(this.group);
     sim.on((e) => this.handle(e));
   }
@@ -231,6 +239,12 @@ export class Crowd {
   /** Mood icons face this camera. */
   setCamera(camera: Camera): void {
     this.icons.setCamera(camera);
+    this.carried.setCamera(camera);
+  }
+
+  /** Reduced motion: carried things stay put (no steam, swing or drifting sigh). */
+  setStill(still: boolean): void {
+    this.carried.setStill(still);
   }
 
   get population(): number {
@@ -689,6 +703,8 @@ export class Crowd {
     const a = this.byVisitor.get(visitor);
     if (!a) return;
     this.setMood(a, 'relieved', 12);
+    // They leave with something from the visit in hand; the club stand's guests go back in line with water.
+    this.setCarry(a, SERVED_CARRY[service], 14);
     if (a.satellite) return this.exitSatellite(a);
     if (service === 'dropIn') {
       const exit = () => {
@@ -1042,6 +1058,14 @@ export class Crowd {
   private setMood(a: Agent, mood: Mood, seconds: number): void {
     a.mood = mood;
     a.moodLeft = seconds;
+    // Turned away or need unmet: a short sigh over the head as it happens.
+    if (mood === 'unmet' && a.carry !== 'sigh') this.setCarry(a, 'sigh', 3.5);
+  }
+
+  private setCarry(a: Agent, kind: CarryKind, seconds: number): void {
+    a.carry = kind;
+    a.carryLeft = seconds;
+    a.carryAge = 0;
   }
 
   /**
@@ -1066,6 +1090,8 @@ export class Crowd {
     const side = (this.random() - 0.5) * (2.4 + back * 1.1);
     const spot = { x: at.x + along.x * back - along.z * side, z: at.z + along.z * back + along.x * side };
     a.crowding = service;
+    // Waiting outside a full or closed service: the phone comes out.
+    this.setCarry(a, 'phone', Infinity);
     // A closed door gets a shorter wait than a full one.
     const closed = this.sim.services[service].status !== 'open';
     this.walk(a, [spot], () => {
@@ -1075,6 +1101,7 @@ export class Crowd {
       a.faceHeading = headingTo(a.pos, door);
       a.onArrive = () => {
         a.crowding = undefined;
+        if (a.carry === 'phone') a.carry = undefined;
         this.leaveAnywhere(a);
       };
     });
@@ -1082,7 +1109,7 @@ export class Crowd {
 
   /** Where the crowd for a service gathers: the end of its line, which way it grows, and the door it watches. */
   private overflowArea(service: ServiceId): { at: P2; along: P2; door: P2 } {
-    const slots = this.sim.services[service].params.waitingSlots;
+    const slots = this.sim.services[service].waitingRoom;
     if (service === 'outreach') return { at: queueSlot(SPOTS.camperQueueHead, CAMPER_QUEUE_DIR, 0.8, slots), along: CAMPER_QUEUE_DIR, door: SPOTS.camperCounters[0] };
     if (service === 'clubHr') return { at: queueSlot(SPOTS.standQueueHead, STAND_QUEUE_DIR, 0.75, slots), along: STAND_QUEUE_DIR, door: SPOTS.standQueueHead };
     if (service === 'dropIn') return { at: SPOTS.centerQueue, along: CENTER_QUEUE_DIR, door: SPOTS.centerDoor };
@@ -1104,6 +1131,7 @@ export class Crowd {
 
   private remove(a: Agent): void {
     this.icons.release(a.id);
+    this.carried.release(a.id);
     if (a.visitor !== undefined) this.sim.forget(a.visitor);
     this.agents.delete(a.id);
     if (a.visitor !== undefined) this.byVisitor.delete(a.visitor);
@@ -1506,7 +1534,7 @@ export class Crowd {
       this.step(a, dt);
       // Walked off the edge during this step: removed (glow released); placing them now would bring the glow back for good.
       if (!this.agents.has(a.id)) continue;
-      if (!a.visible) { this.icons.release(a.id); continue; }
+      if (!a.visible) { this.icons.release(a.id); this.carried.release(a.id); continue; }
       if (dist(a.pos, doorDrop) < 1.3 && a.route.length) this.world.locations.dropIn.openDoor();
       if (dist(a.pos, doorClub) < 1.2 && a.route.length) this.world.locations.club.openDoor();
       if (a.route.length) for (const id of WALK_IN_SERVICE_IDS) if (dist(a.pos, LOTS[id].door) < 1.3) this.world.locations[id].openDoor();
@@ -1695,6 +1723,15 @@ export class Crowd {
     } else if (a.mood) {
       a.mood = undefined;
       this.icons.release(a.id);
+    }
+    // Lying down nothing is held; otherwise the item stays its time, counted only while in view.
+    if (a.carry && (a.carryLeft ?? 0) > 0 && a.ground !== 'lying') {
+      a.carryLeft! -= dt;
+      a.carryAge = (a.carryAge ?? 0) + dt;
+      this.carried.show(a.id, a.carry, root.position, a.heading, this.clock, a.carryAge);
+    } else if (a.carry) {
+      a.carry = undefined;
+      this.carried.release(a.id);
     }
   }
 }

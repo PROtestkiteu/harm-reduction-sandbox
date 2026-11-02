@@ -191,7 +191,7 @@ export class EventFeed {
       const b = el('button', 'btn hint', `${h.label}${'param' in h ? (h.direction === 'up' ? ' ↑' : ' ↓') : ''}`);
       if ('org' in h) b.dataset.org = 'true';
       b.type = 'button';
-      b.title = t('Open this setting in the Sandbox panel');
+      b.title = t('Open this setting');
       b.addEventListener('click', () => this.cb.onHint(h));
       hints.append(b);
     }

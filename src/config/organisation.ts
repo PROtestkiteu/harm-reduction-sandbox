@@ -85,6 +85,9 @@ export const RECRUIT: Record<RecruitId, RecruitOption> = {
   volunteerDrive: { id: 'volunteerDrive', label: t('Look for volunteers'), cost: 40, minutes: 90, chance: 0.4, tries: 3, summary: t('Cheap, but nobody may come, and volunteers drift away over the night.') },
 };
 
+/** Chance a recruitment brings at least one person: one try for a paid post, several for volunteers. */
+export const recruitChance = (id: RecruitId): number => 1 - (1 - RECRUIT[id].chance) ** RECRUIT[id].tries;
+
 /** What the simulation knows when an application is decided. */
 export interface ApplicationContext {
   /** 0 opposed, 1 tolerant, 2 supportive. */

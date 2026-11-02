@@ -1,12 +1,12 @@
 import { serviceNeeds, type Need } from '../config/needs';
 import { METER_ORDER, NEED_ICONS, meterState, needsFor } from './needIcons';
-import { GRANT_IDS, GRANTS, ORG, RECRUIT, type ApplicationContext, type GrantId, type RecruitId } from '../config/organisation';
+import { GRANT_IDS, GRANTS, ORG, RECRUIT, recruitChance, type ApplicationContext, type GrantId, type RecruitId } from '../config/organisation';
 import { price } from './money';
 import { LOCALE, plural, t } from '../i18n';
 import type { Organisation } from '../sim/organisation';
 import type { ServiceModel } from '../sim/simulation';
 import { SERVICE_IDS, type ServiceId } from '../sim/types';
-import { TRAITS, TIRED, type Assignment, type Team } from '../sim/team';
+import { Team, TRAITS, TIRED, type Assignment } from '../sim/team';
 import { formatClock } from '../sim/clock';
 import { displayName, NAME_MAX, rename } from './names';
 
@@ -18,7 +18,7 @@ export interface OrgPanelCallbacks {
   onReopen(id: ServiceId): void;
   /** Send a named worker somewhere, to rest, or back to automatic placement. */
   onAssign(member: number, to: Assignment): void;
-  /** Open the Sandbox panel at this section. */
+  /** Open the organisation's sheet. */
   onOpen(): void;
 }
 
@@ -60,7 +60,6 @@ const RELAUNCH: Record<Relaunchable, { offer: string; pending: string }> = {
 };
 const SHORT_NAMES: Record<ServiceId, string> = { dropIn: t('drop-in'), outreach: t('camper'), clubHr: t('stand'), footPatrol: t('patrol'), drugChecking: t('checking'), shelter: t('shelter'), clinic: t('clinic') };
 /** Where a worker is, as in "At the stand · energy 80%". */
-const AT_NAMES: Record<ServiceId, string> = { dropIn: t('at the drop-in'), outreach: t('at the camper'), clubHr: t('at the stand'), footPatrol: t('at the patrol'), drugChecking: t('at the checking'), shelter: t('at the shelter'), clinic: t('at the clinic') };
 /** Options in a worker's "where they work" picker. */
 const PICK_NAMES: Record<ServiceId, string> = { dropIn: t('Drop-in'), outreach: t('Camper'), clubHr: t('Stand'), footPatrol: t('Patrol'), drugChecking: t('Checking'), shelter: t('Shelter'), clinic: t('Clinic') };
 
@@ -85,7 +84,7 @@ const WORKS_AT: [Assignment, string][] = [['auto', t('Automatic')], ...SERVICE_I
 
 /**
  * The organisation: an always-visible status bar (budget and staff) and a
- * Sandbox panel section to recruit, let staff go and apply for funding.
+ * sheet of its own to recruit, let staff go and apply for funding.
  */
 export class OrgPanel {
   readonly bar: HTMLButtonElement;
@@ -115,7 +114,7 @@ export class OrgPanel {
     this.cb = cb;
     this.bar = el('button', 'org-bar');
     this.bar.type = 'button';
-    this.bar.title = t('Organisation: money and staff. Opens the Sandbox panel.');
+    this.bar.title = t('Organisation: money and staff.');
     this.bar.addEventListener('click', () => cb.onOpen());
 
     this.section = el('fieldset', 'sandbox-group org');
@@ -180,7 +179,11 @@ export class OrgPanel {
     const actions = el('div', 'org-actions');
     for (const id of Object.keys(RECRUIT) as RecruitId[]) {
       const r = RECRUIT[id];
-      const b = el('button', 'btn org-action', id === 'hirePaid' ? t('Hire paid ({price})', { price: price(r.cost) }) : t('Find volunteers ({price})', { price: price(r.cost) }));
+      const b = el('button', 'btn org-action', id === 'hirePaid'
+        // What hiring costs now and what it adds to the outgoings every hour after.
+        // The chance that someone comes, always in brackets before the money is spent.
+        ? t('Hire paid: {price}, then {wage}/h ({chance}%)', { price: price(r.cost), wage: price(ORG.wagePerHour), chance: Math.round(recruitChance(id) * 100) })
+        : t('Find volunteers: {price}, unpaid ({chance}%)', { price: price(r.cost), chance: Math.round(recruitChance(id) * 100) }));
       b.type = 'button';
       b.id = `org-${id}`;
       b.title = t('{label}: about {hours} h. {summary}', { label: r.label, hours: (Math.round(r.minutes / 60 * 10) / 10).toLocaleString(LOCALE), summary: r.summary });
@@ -248,7 +251,13 @@ export class OrgPanel {
     team.append(this.teamSummary, el('p', 'factor-summary', t('Pin someone to a service or send them to rest. Automatic places people where they fit best, paid staff first; tired people go home until rested.')));
     this.teamList = el('ul', 'team-list');
     team.append(this.teamList);
-    this.section.append(this.nameRow, this.meterRow, stats, this.summary, this.recruiting, actions, team, this.closed, grants, this.log, note);
+    // The long lists fold behind a reply of their own.
+    const fold = (label: string, part: HTMLElement) => {
+      const sub = el('details', 'sandbox-sub');
+      sub.append(el('summary', undefined, label), part);
+      return sub;
+    };
+    this.section.append(this.nameRow, this.meterRow, stats, this.summary, this.recruiting, actions, team, this.closed, fold(t('Funding applications'), grants), fold(t('What has happened'), this.log), note);
   }
 
   /** Per-refresh update; text-only writes. */
@@ -289,11 +298,16 @@ export class OrgPanel {
     this.shiftStat.dataset.state = short ? 'short' : 'ok';
     setText(this.summary, t('In {total}/h (funding {funding}, grants {grants}) · wages {wages}/h · running costs {running}/h', { total: money(v.incomePerHour + o.grantIncome), funding: money(v.incomePerHour), grants: money(o.grantIncome), wages: money(v.payroll * ORG.wagePerHour), running: money(v.runningPerHour) }));
     const recruiting = o.recruiting.length ? t('Recruiting: {list}.', { list: o.recruiting.map((r) => t('{what} until {time}', { what: RECRUIT[r.id].label.toLowerCase(), time: formatClock(o.clockAt(r.readyAt, v.clock)) })).join('; ') }) : '';
-    setText(this.recruiting, recruiting);
+    // A paid hire on the way: the wage bill once they start.
+    const hires = o.recruiting.filter((r) => r.id === 'hirePaid').length;
+    const after = hires ? ` ${t('Wages rise to {wages}/h when they start.', { wages: money((o.paid + hires) * ORG.wagePerHour) })}` : '';
+    setText(this.recruiting, recruiting + after);
     if (this.recruiting.hidden !== !recruiting) this.recruiting.hidden = !recruiting;
     for (const id of GRANT_IDS) {
       const state = o.applications[id];
-      const chance = Math.round(GRANTS[id].chance(v.applicationContext) * 100);
+      // As the decision weighs it: the grant's own odds, lowered after a media attack.
+      const chance = Math.round(GRANTS[id].chance(v.applicationContext) * (v.applicationContext.reputation ?? 1) * 100);
+      setText(this.grants[id].button, t('Apply ({price}, {chance}%)', { price: price(GRANTS[id].fee), chance }));
       const text =
         state.status === 'pending' ? t('Pending: decision at {time}. Chance now about {chance}%.', { time: formatClock(o.clockAt(state.decidesAt, v.clock)), chance })
         : state.status === 'approved' ? t('Approved at {time}.', { time: formatClock(state.at) })
@@ -327,18 +341,20 @@ export class OrgPanel {
       this.teamList.replaceChildren(...team.members.map((m) => {
         const row = el('li', 'team-member');
         const who = el('div', 'team-who');
+        // Two short lines: who and what they are good at, then their contract and where they work.
         const name = el('p', 'team-name');
-        name.append(el('strong', undefined, m.name), el('span', 'team-kind', ` ${m.paid ? t('paid') : t('volunteer')}`));
-        const traits = el('p', 'team-traits', m.traits.map((x) => TRAITS[x].label).join(', '));
-        traits.title = m.traits.map((x) => `${TRAITS[x].label}: ${TRAITS[x].detail}`).join('\n');
+        name.append(el('strong', undefined, m.name), el('span', 'team-traits', ` · ${m.traits.map((x) => TRAITS[x].label).join(', ')}`));
+        name.title = m.traits.map((x) => `${TRAITS[x].label}: ${TRAITS[x].detail}`).join('\n');
         const status = el('p', 'team-status');
-        who.append(name, traits, status);
+        who.append(name, status);
         const energy = el('span', 'team-energy');
         energy.setAttribute('role', 'img');
         const select = el('select', 'team-assign');
         select.setAttribute('aria-label', t('Where {name} works', { name: m.name }));
+        // Each service shows how well this person works there, so strengths and weak spots are visible.
         for (const [value, text] of WORKS_AT) {
-          const o = el('option', undefined, text);
+          const svc = value === 'auto' || value === 'rest' ? null : value;
+          const o = el('option', undefined, svc ? t('{place} ({pct}%)', { place: text, pct: Math.round(Team.traitFit(m, svc) * 100) }) : text);
           o.value = value;
           select.append(o);
         }
@@ -353,9 +369,13 @@ export class OrgPanel {
     for (const m of team.members) {
       const r = this.memberRows.get(m.id);
       if (!r) continue;
-      const where = m.workingAt ? AT_NAMES[m.workingAt] : m.assignment === 'rest' ? t('resting') : m.worn ? t('gone home tired') : t('off shift');
+      const kind = m.paid ? t('paid') : t('volunteer');
+      // Energy is the bar under the row; the line names the place and how well they work there.
+      const where = m.workingAt
+        ? t('{place} {fit}%', { place: PICK_NAMES[m.workingAt], fit: Math.round(Team.fit(m, m.workingAt) * 100) })
+        : m.assignment === 'rest' ? t('resting') : m.worn ? t('gone home tired') : t('off shift');
       const pct = Math.round(m.energy * 100);
-      setText(r.status, t('{where} · energy {pct}%', { where: `${where[0].toUpperCase()}${where.slice(1)}`, pct }));
+      setText(r.status, `${kind[0].toUpperCase()}${kind.slice(1)} · ${where}`);
       setAttr(r.energy, 'aria-label', t('Energy {pct}%', { pct }));
       r.energy.style.setProperty('--energy', String(m.energy));
       r.energy.dataset.low = String(m.energy < TIRED + 0.1);

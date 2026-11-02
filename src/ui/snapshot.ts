@@ -9,38 +9,43 @@ import { HUSTLE } from '../config/hustles';
 import { FAVOURS, type FavourId } from '../config/favours';
 import { camperSpot } from '../world/layout';
 import { INVEST } from '../sim/simulation';
+import { stageCount, stageOf } from '../config/serviceStages';
 import { PROPERTY } from '../sim/property';
 import { LOCATION_NAMES, SERVICE_TEXT } from '../config/places';
 import { PARAM_BY_ID, type ParamId } from '../config/sandboxParams';
 import { formatClock, pastMidnight } from '../sim/clock';
 import { formatDate } from '../sim/calendar';
-import type { ClosedReason, ServiceModel, Simulation } from '../sim/simulation';
+import type { ServiceModel, Simulation } from '../sim/simulation';
 import { LOCATION_IDS, SERVICE_IDS, serviceAt, type LocationId, type ServiceId } from '../sim/types';
 import type { HudSnapshot, LocationSnapshot, PlaceLevers } from './hud';
 
 /** Builds the HUD's view of the simulation. Pure: reads state, changes nothing. */
 
-/** Why a place is closed, in a few words: what to do about it is in the replies below (hire, relaunch...). */
-const CLOSED_TEXT: Record<ClosedReason, string> = {
-  switchedOff: t('switched off'),
-  hours: t('outside opening hours'),
-  notPermitted: t('not permitted'),
-  outOfService: t('out of action'),
-  noStaff: t('no staff'),
-  closedDown: t('out of money'),
-};
 
-/** Why a place is closed, when it is: the one fact worth a sentence. */
-function contextFacts(s: ServiceModel): [string, string][] {
-  return s.closedReason ? [[t('Closed'), CLOSED_TEXT[s.closedReason]]] : [];
+/**
+ * Closed, said in two words: for now (it opens again by itself) or for good
+ * (until the player switches it on, relaunches it or the law changes).
+ */
+function closedNote(s: ServiceModel): LocationSnapshot['closed'] {
+  if (s.status !== 'closed' || !s.closedReason) return undefined;
+  switch (s.closedReason) {
+    case 'hours': return { text: s.id === 'clubHr' ? t('Closed till evening') : t('Closed till morning'), lasting: false };
+    case 'noStaff':
+    case 'outOfService': return { text: t('Closed for now'), lasting: false };
+    // Switched off is the player's own choice and shows on the card's Open up reply: nothing to say.
+    case 'switchedOff': return { text: t('Switched off'), lasting: true, ownChoice: true };
+    case 'closedDown': return { text: t('Shut down'), lasting: true };
+    case 'notPermitted': return { text: t('Not permitted'), lasting: true };
+  }
 }
+
 
 type Chip = LocationSnapshot['chips'][number];
 /** Who is being helped, who waits, staff on site, and who turned back: as icon chips. */
 function serviceChips(s: ServiceModel, servedAt: string): Chip[] {
   return [
     { icon: 'inside', value: `${s.inService.size}/${s.capacity}`, label: t('{n} {where}, {cap} at a time', { n: s.inService.size, where: servedAt, cap: s.capacity }) },
-    { icon: 'queue', value: `${s.queue.length}/${s.params.waitingSlots}`, label: t('{n} waiting, {waiting} waiting places', { n: s.queue.length, waiting: s.params.waitingSlots }) },
+    { icon: 'queue', value: `${s.queue.length}/${s.waitingRoom}`, label: t('{n} waiting, {waiting} waiting places', { n: s.queue.length, waiting: s.waitingRoom }) },
     { icon: 'staff', value: `${s.staffOnSite}/${s.params.staff}`, label: t('Staff on site: {n} of {max}', { n: s.staffOnSite, max: s.params.staff }) },
     { icon: 'back', value: String(s.turnedBack), label: t('{n} set out but turned back before arriving', { n: s.turnedBack }) },
   ];
@@ -52,30 +57,31 @@ function serviceSnapshot(id: LocationId, s: ServiceModel, sim?: Simulation): Loc
     name: displayName('location', id, LOCATION_NAMES[id]),
     service: text.label,
     status: s.status,
+    closed: closedNote(s),
     chips: serviceChips(s, text.servedAt),
-    facts: contextFacts(s),
+    // The stage it has grown to, of how many, as the first fact.
+    // Why it is closed is said once, under the name; the facts keep the stage.
+    facts: sim ? [[t('Stage'), t('{stage} ({n} of {max})', { stage: stageOf(s.id, sim.upgrades[s.id].level).label, n: sim.upgrades[s.id].level, max: stageCount(s.id) })]] : [],
     metrics: { ...s.metrics },
     metricsLabel: t('Tonight so far'),
     blockedByLaw: s.closedReason === 'notPermitted',
-    level: sim && { level: sim.upgrades[s.id].level, progress: sim.upgrades[s.id].progress, max: INVEST.maxLevel },
+    level: sim && { level: sim.upgrades[s.id].level, progress: sim.upgrades[s.id].progress, max: stageCount(s.id) },
     actions: sim && {
       service: s.id,
       wanted: s.params.staff,
       staffMax: PARAM_BY_ID[`${s.id}.staff` as ParamId]?.max ?? 6,
-      waiting: s.params.waitingSlots,
-      waitingMax: PARAM_BY_ID[`${s.id}.waiting` as ParamId]?.max ?? 10,
       closedDown: sim.org.closedDown.has(s.id),
       reopening: sim.org.reopening.some((r) => r.id === s.id),
       budget: sim.org.budget,
       closedReason: s.closedReason,
-      invest: { cost: INVEST.cost, level: sim.upgrades[s.id].level, progress: sim.upgrades[s.id].progress, max: INVEST.maxLevel },
+      invest: { cost: INVEST.cost, level: sim.upgrades[s.id].level, progress: sim.upgrades[s.id].progress, max: stageCount(s.id), stage: stageOf(s.id, sim.upgrades[s.id].level).label, next: sim.upgrades[s.id].level < stageCount(s.id) ? stageOf(s.id, sim.upgrades[s.id].level + 1) : null },
       mix: mixLevers(sim, s.id),
       hustle: s.id === 'clubHr'
         ? sim.clubContract
           ? { on: true, enabled: true, short: t('End the club deal.'), label: t('Club pays +{price}/h', { price: price(HUSTLE.clubFeePerHour) }), hint: t('The club pays while the stand is open. Click to end the deal.') }
           : sim.org.now < sim.clubAskAgainAt
-            ? { on: false, enabled: false, short: t('Club refused: ask later.'), label: t('The club said no: ask again later'), hint: t('The club turned the stand down for now. It can be asked again in a few hours.') }
-            : { on: false, enabled: true, short: t('Ask the club to pay.'), label: t('Ask the club to pay ({chance}% yes)', { chance: Math.round(sim.clubAcceptChance * 100) }), hint: t('The club may say no. If it agrees, it pays {price} an hour while the stand is open. Fewer say yes while the street is in crisis.', { price: price(HUSTLE.clubFeePerHour) }) }
+            ? { on: false, enabled: false, short: t('Club refused: ask later ({chance}%).', { chance: Math.round(sim.clubAcceptChance * 100) }), label: t('The club said no: ask again later ({chance}% yes)', { chance: Math.round(sim.clubAcceptChance * 100) }), hint: t('The club turned the stand down for now. It can be asked again in a few hours.') }
+            : { on: false, enabled: true, short: t('Ask the club to pay ({chance}%).', { chance: Math.round(sim.clubAcceptChance * 100) }), label: t('Ask the club to pay ({chance}% yes)', { chance: Math.round(sim.clubAcceptChance * 100) }), hint: t('The club may say no. If it agrees, it pays {price} an hour while the stand is open. Fewer say yes while the street is in crisis.', { price: price(HUSTLE.clubFeePerHour) }) }
         // Charging only makes sense where there are lab checks to charge for.
         : s.id === 'drugChecking' && sim.context.checkingAllowed
           ? {
@@ -147,7 +153,7 @@ export function buildSnapshot(sim: Simulation, people: number): HudSnapshot {
   };
   return { clock: `${formatDate(date)} · ${formatClock(sim.clockMinutes)}`, clockMinutes: sim.clockMinutes, people, enabled, locations, money: { budget: sim.org.budget, perHour: sim.org.netPerHour }, aid: aid || undefined, unmet: { day: sim.unmet24, crisis: sim.crisis },
     stress: { police: sim.cityStress.police, medics: sim.cityStress.medics, sobering: sim.cityStress.sobering, district: sim.vitality.level },
-    favours: { held: sim.favours, owed: sim.concessionAt !== null, items: (Object.keys(FAVOURS) as FavourId[]).map((id) => ({ id, label: FAVOURS[id].label })) },
+    favours: { held: sim.favours, owed: sim.concessionAt !== null, items: (Object.keys(FAVOURS) as FavourId[]).map((id) => ({ id, label: FAVOURS[id].label, short: FAVOURS[id].short })) },
     drive: {
       until: sim.driveUntil === null ? null : formatClock(sim.org.clockAt(sim.driveUntil, sim.clockMinutes)),
       again: sim.driveUntil === null && sim.org.now < sim.driveAgainAt ? formatClock(sim.org.clockAt(sim.driveAgainAt, sim.clockMinutes)) : null,

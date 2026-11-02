@@ -16,7 +16,7 @@ import { LOCALE, plural, t } from '../i18n';
 export type ParamGroup = 'org' | 'night' | 'demand' | ServiceId;
 
 export const PARAM_GROUPS: readonly { id: ParamGroup; label: string }[] = [
-  { id: 'org', label: t('Organisation') },
+  { id: 'org', label: t('Budget') },
   { id: 'night', label: t('Night and season') },
   { id: 'demand', label: t('Street and venue') },
   { id: 'dropIn', label: t('Drop-in centre') },

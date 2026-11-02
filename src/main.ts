@@ -14,6 +14,7 @@ import { CameraRig, MIN_ZOOM, PHONE_MIN_ZOOM } from './render/cameraRig';
 import { Highlight, OVERLAY_LAYER } from './render/highlight';
 import { ScenePipeline } from './render/scenePipeline';
 import { DynamicResolution } from './render/dynamicResolution';
+import { whenViewportSettled } from './render/viewportSettle';
 import { CoinPops } from './render/coinPops';
 import { dayFactor, nightFactor } from './sim/clock';
 import { createRandom } from './sim/random';
@@ -57,6 +58,7 @@ import { price } from './ui/money';
 import { Interaction } from './ui/interaction';
 import { EventFeed, HINT_ROW, hintInputId, markHintedRows } from './ui/eventFeed';
 import { OrgPanel } from './ui/orgPanel';
+import { Sheet } from './ui/sheet';
 import { FACTOR_BY_ID } from './config/contextFactors';
 import type { PolicyInfo } from './sim/simulation';
 import { EVENTS, type EventId } from './config/randomEvents';
@@ -114,6 +116,9 @@ crowd.setCamera(camera);
 const marker = new SelectionMarker();
 world.scene.add(marker.group);
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+// Reduced motion: what people carry stays still (no steam, swing or drifting sigh).
+crowd.setStill(reducedMotion.matches);
+reducedMotion.addEventListener('change', () => crowd.setStill(reducedMotion.matches));
 const hazeDir = new Vector3();
 const hazePoint = new Vector3();
 const rig = new CameraRig(world.frame.full.getCenter(new Vector3()), DISTRICT - 4);
@@ -407,6 +412,8 @@ function personCamperOffer(p: PersonState): PersonCamperOffer | null {
   if (spot !== null && !sim.outreachMoving && sim.services.outreach.switchedOn) {
     return { label: t('Send the camper near them'), hint: t('The outreach camper drives to {spot}; outreach closes while it moves.', { spot: near }), enabled: true };
   }
+  // Outreach switched off: no camper goes anywhere until it is on again.
+  if (!sim.services.outreach.switchedOn) return { label: t('Send the camper near them'), hint: t('Switch the service on to use this.'), enabled: false };
   const canBuy = spot !== null && sim.property.extraCampers < PROPERTY.maxExtraCampers;
   return {
     label: t('Send another camper near them ({price})', { price: price(PROPERTY.camperCost) }),
@@ -435,6 +442,8 @@ function queueBuildingAction(action: string): void {
     if (action.startsWith('point:')) sim.openPoint(building, action.slice(6) as SatelliteService);
     else if (action === 'pointUp') sim.upgradePoint(building);
     else if (action === 'pointClose') sim.closePoint(building);
+    else if (action === 'sweep') sim.sweepForKit();
+    else if (action === 'meet') sim.meetResidents();
     else if (action === 'partner') sim.partnerVenue(world.nightlife.indexOf(building));
     else if (action.startsWith('quest:')) {
       const id = action.slice(6) as InstitutionId;
@@ -458,6 +467,7 @@ function setPaused(p: boolean): void {
 
 // Service state drives each location's visuals: staffed = lit and unfolded.
 const LEVEL: Record<ServiceStatus, number> = { open: 1, closing: 0.45, opening: 0.12, closed: 0 };
+let stagesShown = false;
 function syncServiceVisuals(): void {
   for (const id of LOCATION_IDS) {
     const s = sim.services[serviceAt(id)];
@@ -465,10 +475,11 @@ function syncServiceVisuals(): void {
     // Grow with staff above the usual number, shrink below it (closed counts as short).
     const usual = ILLUSTRATIVE.services[s.id].staff;
     const onSite = s.status === 'closed' ? 0 : s.staffOnSite;
-    // Upgrades build on too: each level above 1 adds to what the crane puts up.
-    const level = sim.upgrades[s.id].level - 1;
-    world.setStaffing(id, onSite - usual + level, usual - onSite, s.status === 'open');
+    world.setStaffing(id, onSite - usual, usual - onSite, s.status === 'open');
+    // Stages show as pieces beside the place; the first sync (and a load) places them without animation.
+    world.setStage(s.id, sim.upgrades[s.id].level, !stagesShown);
   }
+  stagesShown = true;
 }
 
 function refreshHud(): void {
@@ -522,6 +533,8 @@ const sandbox = new SandboxPanel(hudRoot, settings, {
     for (const id of Object.keys(defaults) as ParamId[]) queueSetting(id, defaults[id]);
     setContext(defaultContext(), null);
   },
+  // One panel at a time in the settings' place.
+  onOpen: () => orgSheet.setOpen(false),
 });
 
 // Context factors (national law down to service design) follow the same path:
@@ -584,12 +597,17 @@ const feed = new EventFeed(hud.eventsSlot, {
   },
   onFocus: (id) => focusPlace(EVENT_PLACE[id]),
   onHint: (hint) => {
-    sandbox.setOpen(true);
     const input = document.getElementById(hintInputId(hint));
     const row = input?.closest(HINT_ROW) as HTMLElement | null;
     if (!input || !row) return;
-    // Open the topic that holds it, so it is on screen before scrolling to it.
-    sandbox.reveal(input);
+    // Open the panel and topic that hold it, so it is on screen before scrolling to it.
+    if (org.section.contains(input)) {
+      orgSheet.setOpen(true);
+      input.closest('details')?.setAttribute('open', '');
+    } else {
+      sandbox.setOpen(true);
+      sandbox.reveal(input);
+    }
     input.scrollIntoView({ block: 'center', behavior: reducedMotion.matches ? 'auto' : 'smooth' });
     input.focus({ preventScroll: true });
     row.classList.remove('hint-flash');
@@ -613,12 +631,10 @@ const org = new OrgPanel({
   onAssign: (member, to) => queueOrg(() => sim.assignMember(member, to)),
   onOpen: () => openOrg(),
 });
-sandbox.mount(org.section);
-/** The organisation and budget page in the settings, from the money figure or the organisation bar. */
+// The organisation has its own sheet, opened from the money in the top bar or the organisation bar.
+const orgSheet = new Sheet(hudRoot, org.section, { label: t('Organisation'), onOpen: () => sandbox.setOpen(false) });
 function openOrg(): void {
-  sandbox.setOpen(true);
-  sandbox.reveal(org.section);
-  org.section.scrollIntoView({ block: 'start', behavior: reducedMotion.matches ? 'auto' : 'smooth' });
+  orgSheet.setOpen(true);
 }
 
 // Saves, shared links and the leaderboard.
@@ -750,6 +766,8 @@ function checkGameOver(): void {
 /** After any load: the world, the panels and the crowd's destinations follow the new state. */
 function afterLoad(): void {
   syncProperty();
+  // A loaded game's stages appear in place, not growing one by one.
+  stagesShown = false;
   syncServiceVisuals();
   refreshOrg();
   refreshHud();
@@ -994,7 +1012,6 @@ function queuePlaceAction(service: ServiceId, action: PlaceAction): void {
       }
     };
     if (action === 'moreStaff') bump(`${service}.staff`, 1, 6);
-    else if (action === 'moreWaiting') bump(`${service}.waiting`, 2, 10);
     else if (action === 'hire') { sim.recruit('hirePaid'); bump(`${service}.staff`, 1, 6); }
     else if (action === 'volunteer') { sim.recruit('volunteerDrive'); bump(`${service}.staff`, 1, 6); }
     else if (action === 'relaunch') { sim.reopen(service); syncContextProps(); }
@@ -1186,9 +1203,21 @@ const STARTING_TROUBLE = ['staffIllness', 'kitShortage', 'busyNight', 'withdrawa
 sim.triggerEvent(sim.season === 'winter' && eventRandom() < 0.5 ? 'coldNight' : STARTING_TROUBLE[Math.floor(eventRandom() * STARTING_TROUBLE.length)]);
 syncNight();
 refreshHud();
+// The framing reserves room for the HUD (hud.insets), which only now holds tonight's events and
+// options: re-aim, or the next re-aim (any resize) slides the scene up by the sheet's new height.
+applyView();
 pipeline.render(world.scene, camera);
-loading?.remove();
-welcome.showIfNew();
+// Installed on an iPhone the page gets its full height just after launch: the loading screen stays
+// up until then, so the first frame shown is already framed for the whole screen. One more re-aim
+// for whatever the HUD settled into meanwhile, drawn by the main loop before the screen lifts.
+// The welcome (a modal, drawn above everything) opens with the game, not over the loading screen.
+void whenViewportSettled(canvas).then(() => {
+  applyView();
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    loading?.remove();
+    welcome.showIfNew();
+  }));
+});
 void startGame();
 // The Quaternius kits load after the first frame, so a phone is never kept waiting for them.
 // The scenery kits are 2 MB: skipped on weak phones and slow or data-saving connections.

@@ -1,10 +1,11 @@
 import { CAMPER_PATH, CAMPER_PATH_IDS, type CamperPath } from '../config/camperPaths';
 import { ACTIVITY, type Activity } from '../config/serviceMix';
 import type { FavourId } from '../config/favours';
-import { ORG, RECRUIT } from '../config/organisation';
+import { ORG, RECRUIT, recruitChance } from '../config/organisation';
 import { ACTIVITY_NEEDS, AID_NEEDS, PATH_NEEDS, serviceNeeds, type Need } from '../config/needs';
 import { NEED_ICONS, meterState, needTag, needsFor, setNeeds } from './needIcons';
 import { price } from './money';
+import type { ServiceStage } from '../config/serviceStages';
 import { SERVICE_TEXT } from '../config/places';
 import type { Insets } from '../render/camera';
 import { LOCATION_IDS, SERVICE_IDS, serviceAt, type LocationId, type ServiceId, type ServiceStatus } from '../sim/types';
@@ -54,7 +55,7 @@ export interface HudCallbacks {
 }
 
 /** What can be done at a place, free or paid from the organisation's budget. */
-export type PlaceAction = 'moreStaff' | 'moreWaiting' | 'hire' | 'volunteer' | 'relaunch' | 'camper' | 'move' | 'path' | 'mix' | 'hustle' | 'invest' | `camper:${number}`;
+export type PlaceAction = 'moreStaff' | 'hire' | 'volunteer' | 'relaunch' | 'camper' | 'move' | 'path' | 'mix' | 'hustle' | 'invest' | `camper:${number}`;
 
 /** The selected place's levers, for its action replies. */
 /** One activity in a place's budget mix. */
@@ -73,15 +74,13 @@ export interface PlaceLevers {
   service: ServiceId;
   wanted: number;
   staffMax: number;
-  waiting: number;
-  waitingMax: number;
   closedDown: boolean;
   reopening: boolean;
   budget: number;
   /** Why it is closed now, if it is: decides which replies can still help. */
   closedReason?: string | null;
   /** Investing: cost, level and progress. */
-  invest: { cost: number; level: number; progress: number; max: number };
+  invest: { cost: number; level: number; progress: number; max: number; stage: string; next: ServiceStage | null };
   /** A side income this place can bring in (the club's fee for the stand, sold checks), on or off. */
   /** Side income here: what it is now, in full and short (all a phone shows), and whether it can be pressed. */
   hustle?: { label: string; short: string; hint: string; on: boolean; enabled: boolean };
@@ -97,6 +96,8 @@ export interface LocationSnapshot {
   name: string;
   service: string;
   status: ServiceStatus;
+  /** When closed: why, in two words, and whether it lasts until the player acts (switched off, shut down). */
+  closed?: { text: string; lasting: boolean; ownChoice?: boolean };
   /** Counts as icon chips: `value` on screen, `label` the full sentence (tooltip and screen readers). */
   chips: { icon: ChipIcon; value: string; label: string }[];
   /** Things worth a sentence (why it is closed). */
@@ -124,12 +125,15 @@ export interface HudSnapshot {
   /** Pressure on the city's police, medics and sobering-up centre, 0 to 1 each. */
   stress?: { police: number; medics: number; sobering: number; district: number };
   /** Favours with city hall: held (0 or 1), whether city hall is owed one, and what can be asked. */
-  favours?: { held: number; owed: boolean; items: { id: FavourId; label: string }[] };
+  favours?: { held: number; owed: boolean; items: { id: FavourId; label: string; short: string }[] };
   /** A donation drive: running until a clock time, resting until one (`again`), or what starting one costs. */
   drive?: { until: string | null; again: string | null; cost: number; hours: number };
   /** In winter (or on a cold night) the warming bus, in summer water and shade: on or off, and the running cost. */
   aid?: { kind: 'cold' | 'heat'; on: boolean; perHour: number };
 }
+
+/** A place's status in a word or two; closed says for now or for good. */
+const statusText = (loc: LocationSnapshot) => loc.closed?.text ?? STATUS_TEXT[loc.status];
 
 export const STATUS_TEXT: Record<ServiceStatus, string> = {
   open: t('Open'),
@@ -153,7 +157,9 @@ const NARROW = '(max-width: 760px)';
 
 
 /** A place's counts as icons: people being helped, people waiting, staff, people who turned back, the venue's crowd, the door. */
-export type ChipIcon = 'inside' | 'queue' | 'staff' | 'back' | 'venue' | 'door';
+export type ChipIcon = 'inside' | 'queue' | 'staff' | 'back' | 'venue' | 'door' | 'safety' | 'litter' | 'seen' | 'shops' | 'reputation' | 'rough';
+/** How a chip's value reads: coloured as the meters at the top colour good, middling and bad. */
+export type ChipState = 'good' | 'mid' | 'bad';
 const CHIP_ICONS: Record<ChipIcon, string> = {
   inside: '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M5.5 2.5a2.2 2.2 0 1 1 0 4.4 2.2 2.2 0 0 1 0-4.4zm5.5 1a1.9 1.9 0 1 1 0 3.8 1.9 1.9 0 0 1 0-3.8zM1 13.5c0-2.9 2-4.8 4.5-4.8S10 10.6 10 13.5zm10-.1c0-1.4-.4-2.6-1.1-3.6.4-.1.7-.2 1.1-.2 2.2 0 4 1.6 4 3.8z"/></svg>',
   queue: '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M4 1.5h8v1.5h-1v1.6c0 1.4-.8 2.5-2 3.4 1.2.9 2 2 2 3.4V13h1v1.5H4V13h1v-1.6c0-1.4.8-2.5 2-3.4-1.2-.9-2-2-2-3.4V3H4zm2.5 1.5v1.6c0 .9.6 1.7 1.5 2.4.9-.7 1.5-1.5 1.5-2.4V3z"/></svg>',
@@ -161,6 +167,13 @@ const CHIP_ICONS: Record<ChipIcon, string> = {
   back: '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M6 2L1.5 6 6 10V7.5h4a2.5 2.5 0 0 1 0 5H6V14h4a4 4 0 0 0 0-8H6z"/></svg>',
   venue: '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M13.5 1.5v9.2a2.3 2.3 0 1 1-1.5-2.1V4.6L6.5 5.9v6.8a2.3 2.3 0 1 1-1.5-2.1V3.3z"/></svg>',
   door: '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M3 1.5h8.5V14.5H13V16H1.5v-1.5H3zm6.2 6a.9.9 0 1 0 0 1.8.9.9 0 0 0 0-1.8z"/></svg>',
+  // The neighbourhood around a block: safe at home, discarded kit, use in view, shops, the services' name, sleeping rough.
+  safety: '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 1 1.5 6.5V15H6v-4h4v4h4.5V6.5z"/></svg>',
+  litter: '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M12.6 1.3l2.1 2.1-1 1-.7-.7-1.4 1.4 1.4 1.4-1 1-.7-.7-5.6 5.6H3.6l-1.9 1.9-.7-.7 1.9-1.9v-2.1l5.6-5.6-.7-.7 1-1 1.4 1.4 1.4-1.4-.7-.7z"/></svg>',
+  seen: '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 3C4.4 3 1.7 5.4.5 8c1.2 2.6 3.9 5 7.5 5s6.3-2.4 7.5-5C14.3 5.4 11.6 3 8 3zm0 8.2a3.2 3.2 0 1 1 0-6.4 3.2 3.2 0 0 1 0 6.4zM8 6.4a1.6 1.6 0 1 0 0 3.2 1.6 1.6 0 0 0 0-3.2z"/></svg>',
+  shops: '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M2 1.5h12l1.5 4c0 1.2-.9 2-2 2s-2-.8-2-2c0 1.2-.9 2-2 2s-2-.8-2-2c0 1.2-.9 2-2 2s-2-.8-2-2c0 1.2-.9 2-2 2s-1.5-.8-1.5-2zM2.5 8.6c.8.3 1.6.2 2.3-.2.6.4 1.3.6 2 .6V14.5H2.5zm5.8.4c.7 0 1.4-.2 2-.6.6.4 1.4.6 2.2.6.4 0 .7 0 1-.1v5.6H8.3z"/></svg>',
+  reputation: '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 1.2l2.1 4.3 4.7.7-3.4 3.3.8 4.7L8 12l-4.2 2.2.8-4.7L1.2 6.2l4.7-.7z"/></svg>',
+  rough: '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M1 9.5c0-1.4 1.1-2.5 2.5-2.5h9C13.9 7 15 8.1 15 9.5V13H1zM4 3.5a2 2 0 1 1 0 4 2 2 0 0 1 0-4zM1 13.5h14V15H1z"/></svg>',
 };
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -198,13 +211,15 @@ export interface BuildingCard {
   title: string;
   said: string;
   facts: [string, string][];
+  /** The neighbourhood's measures as icon chips: `value` on screen, `label` the full sentence. */
+  chips?: { icon: ChipIcon; value: string; label: string; state?: ChipState }[];
   /** Things to do here (rent a closed shop, give it back). */
   actions?: { id: string; label: string; short: string; enabled: boolean; helps?: readonly Need[] }[];
   /** False for things with no name of their own to change (a passing police car). */
   renamable?: boolean;
 }
 
-const BUILDING_SLOTS = 4;
+const BUILDING_SLOTS = 6;
 
 /**
  * HUD laid out like a conversation: a borderless dark column on the right
@@ -228,6 +243,7 @@ export class Hud {
   private readonly aside: HTMLElement;
   private readonly locationView: HTMLElement;
   private readonly buildingView: HTMLElement;
+  private readonly buildingChips: HTMLElement;
   private readonly facts: HTMLElement;
   private readonly chips: HTMLElement;
   private chipKeys = '';
@@ -245,6 +261,9 @@ export class Hud {
   private readonly worksText: HTMLSpanElement;
   private readonly speedBtn: HTMLButtonElement;
   private readonly money: HTMLElement;
+  /** City hall favours held, beside the money: a small icon and the count. */
+  private readonly favourCount: HTMLButtonElement;
+  private readonly favourNum: HTMLElement;
   private readonly unmet: HTMLElement;
   private readonly crisisLine: HTMLElement;
   private readonly stressRow: HTMLElement;
@@ -253,6 +272,8 @@ export class Hud {
   private speed: number = SPEEDS[0];
   private readonly switches = {} as Record<ServiceId, HTMLButtonElement>;
   private readonly switchState = {} as Record<ServiceId, HTMLElement>;
+  /** On a place's own card the row is one reply: Close down or Open up. */
+  private readonly ownAct = {} as Record<ServiceId, HTMLElement>;
   private readonly switchOpts = {} as Record<ServiceId, HTMLElement>;
   private readonly reviewOpt: HTMLElement;
   private readonly aidOpt: HTMLElement;
@@ -261,7 +282,7 @@ export class Hud {
   private readonly favourOpt: HTMLElement;
   private readonly favourBtn: HTMLButtonElement;
   private readonly favourLong: HTMLElement;
-  private readonly favourOpts: { li: HTMLLIElement; long: HTMLElement; id: string }[] = [];
+  private readonly favourOpts: { li: HTMLLIElement; long: HTMLElement; short: HTMLElement; id: string }[] = [];
   private favourOpen = false;
   private readonly driveBtn: HTMLButtonElement;
   private readonly driveLong: HTMLElement;
@@ -349,10 +370,24 @@ export class Hud {
     const right = el('div', 'column-right');
     // Pressing the money opens the organisation and budget page; the figure inside stays a live status.
     const moneyBtn = button('money-btn');
-    moneyBtn.title = t('Organisation: money and staff. Opens the Sandbox panel.');
+    moneyBtn.title = t('Organisation: money and staff.');
     moneyBtn.addEventListener('click', () => cb.onMoney());
     moneyBtn.append(this.money);
-    right.append(moneyBtn);
+    // Favours with city hall beside the money: pressing it opens the favours on offer.
+    this.favourCount = button('favour-count');
+    const hall = el('span', 'favour-icon');
+    hall.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 1 1 4.5V6h14V4.5zM2.5 7h2v5.5h-2zm4.5 0h2v5.5H7zm4.5 0h2v5.5h-2zM1 13.5h14V15H1z"/></svg>';
+    this.favourNum = el('span', 'favour-num', '0');
+    this.favourCount.append(hall, this.favourNum);
+    this.favourCount.addEventListener('click', () => {
+      // Back to the overview, where the favours are, with them open.
+      if (this.mode) cb.onSelect(null);
+      this.favourOpen = true;
+      this.setFolded(false);
+      queueMicrotask(() => this.syncDrill());
+      if (this.lastSnapshot) this.update(this.lastSnapshot);
+    });
+    right.append(moneyBtn, this.favourCount);
     top.append(time, right);
     // Phones: a handle folds the sheet down to the clock and the Pause bar.
     this.foldBtn = button('sheet-handle');
@@ -436,7 +471,9 @@ export class Hud {
     this.profileView = el('div', 'profile');
     this.personNote = el('p', 'note', t('People here are archetypes drawn from research on people who use drugs. Each figure is illustrative, not a real person.'));
     this.buildingView = el('dl', 'facts building-facts');
-    this.log.append(this.idle, line, this.aside, this.locationView, this.buildingView, this.profileView, this.personNote);
+    this.buildingChips = el('ul', 'chips building-chips');
+    this.buildingChips.setAttribute('role', 'list');
+    this.log.append(this.idle, line, this.aside, this.locationView, this.buildingChips, this.buildingView, this.profileView, this.personNote);
 
     // Replies: every control is a numbered option; number keys choose them.
     this.options = el('ol', 'options');
@@ -639,8 +676,11 @@ export class Hud {
     for (let i = 0; i < 3; i++) {
       const b = button('opt');
       const long = el('span', 'long');
-      b.append(long);
-      const o = { li: opt(b), long, id: '' };
+      // Phones show the short label: without it the reply would be just its number.
+      const short = el('span', 'short');
+      short.setAttribute('aria-hidden', 'true');
+      b.append(long, short);
+      const o = { li: opt(b), long, short, id: '' };
       o.li.classList.add('nested');
       o.li.hidden = true;
       b.addEventListener('click', () => { if (o.id) cb.onFavour(o.id as FavourId); this.favourOpen = false; });
@@ -664,7 +704,9 @@ export class Hud {
       const short = el('span', 'short', SERVICE_TEXT[id].short);
       short.setAttribute('aria-hidden', 'true');
       name.append(el('span', 'long', SERVICE_TEXT[id].label), short);
-      b.append(name);
+      const own = el('span', 'own-act');
+      this.ownAct[id] = own;
+      b.append(name, own);
       b.addEventListener('click', () => {
         if (!this.servicesOpen && this.mode?.kind === 'location' && serviceAt(this.mode.id) === id) {
           cb.onService(id, this.switches[id].getAttribute('aria-checked') !== 'true');
@@ -881,6 +923,29 @@ export class Hud {
       setNeeds(o.needs, a.helps);
       if (o.button.disabled === a.enabled) o.button.disabled = !a.enabled;
     });
+    // Chips are rebuilt only when their set changes; values and colours update in place.
+    const chips = card.chips ?? [];
+    const chipKeys = chips.map((c) => c.icon).join('|');
+    if (this.buildingChips.dataset.keys !== chipKeys) {
+      this.buildingChips.dataset.keys = chipKeys;
+      this.buildingChips.replaceChildren(...chips.map((c) => {
+        const li = el('li', 'chip');
+        li.dataset.icon = c.icon;
+        const icon = el('span', 'chip-icon');
+        icon.innerHTML = CHIP_ICONS[c.icon];
+        li.append(icon, el('span', 'chip-value'));
+        return li;
+      }));
+    }
+    if (this.buildingChips.hidden !== !chips.length) this.buildingChips.hidden = !chips.length;
+    chips.forEach((c, i) => {
+      const li = this.buildingChips.children[i] as HTMLElement;
+      setText(li.lastElementChild as HTMLElement, c.value);
+      if (li.title !== c.label) li.title = c.label;
+      setAttr(li, 'aria-label', c.label);
+      const state = c.state ?? '';
+      if ((li.dataset.state ?? '') !== state) li.dataset.state = state;
+    });
     const text = card.facts.map(([k, v]) => `${k}:${v}`).join('|');
     if (this.buildingView.dataset.text !== text) {
       this.buildingView.dataset.text = text;
@@ -926,7 +991,7 @@ export class Hud {
   tooltipFor(id: LocationId, part?: 'stand'): { title: string; body: string; status: ServiceStatus } | null {
     const loc = this.lastSnapshot?.locations[id];
     if (!loc) return null;
-    const status = STATUS_TEXT[loc.status];
+    const status = statusText(loc);
     if (part === 'stand') return { title: loc.service, body: status, status: loc.status };
     return { title: loc.name, body: `${loc.service}: ${status}`, status: loc.status };
   }
@@ -1100,6 +1165,13 @@ export class Hud {
     }
     const f = s.favours;
     if (f) {
+      setText(this.favourNum, String(f.held));
+      const label = f.held ? t('City hall favours: {n}. Press to use one.', { n: f.held }) : f.owed ? t('No favour now: city hall is owed one.') : t("No favour now: agree to city hall's next request to earn one.");
+      if (this.favourCount.title !== label) this.favourCount.title = label;
+      setAttr(this.favourCount, 'aria-label', label);
+      const state = f.held ? 'held' : f.owed ? 'owed' : 'none';
+      if (this.favourCount.dataset.state !== state) this.favourCount.dataset.state = state;
+      if (this.favourCount.disabled === !!f.held) this.favourCount.disabled = !f.held;
       setText(this.favourLong, f.held ? t('Ask city hall a favour') : f.owed ? t('City hall is owed a favour') : t('No favour with city hall'));
       this.favourBtn.title = f.held ? t('One favour now; city hall asks something back later.') : t("Agree to city hall's next request to earn a favour.");
       if (this.favourBtn.disabled === !!f.held) this.favourBtn.disabled = !f.held;
@@ -1108,7 +1180,7 @@ export class Hud {
       this.favourOpts.forEach((o, i) => {
         const item = f.items[i];
         o.id = item?.id ?? '';
-        if (item) setText(o.long, item.label);
+        if (item) { setText(o.long, item.label); setText(o.short, item.short); }
       });
     }
     const favourHidden = !f || this.servicesOpen || this.mode !== null;
@@ -1125,6 +1197,7 @@ export class Hud {
       setAttr(this.switches[id], 'aria-checked', String(s.enabled[id]));
       if (this.switchOpts[id].dataset.on !== String(s.enabled[id])) this.switchOpts[id].dataset.on = String(s.enabled[id]);
       setText(this.switchState[id], s.enabled[id] ? t('On') : t('Off'));
+      setText(this.ownAct[id], s.enabled[id] ? t('Close down.') : t('Open up.'));
     }
     let renamed = false;
     for (const id of LOCATION_IDS) {
@@ -1138,6 +1211,8 @@ export class Hud {
         renamed = true;
       }
       if (label.dataset.status !== loc.status) label.dataset.status = loc.status;
+      const lasting = String(!!loc.closed?.lasting);
+      if (label.dataset.lasting !== lasting) label.dataset.lasting = lasting;
       if (loc.level) {
         // The bar under the name: progress to the next level; empty means a downgrade is near.
         const p = loc.level.progress.toFixed(3);
@@ -1145,14 +1220,15 @@ export class Hud {
         const lv = String(loc.level.level);
         if (label.dataset.level !== lv) label.dataset.level = lv;
       }
-      setAttr(label, 'aria-label', t('{name}, {service} {status}. Show details', { name: loc.name, service: loc.service, status: STATUS_TEXT[loc.status].toLowerCase() }));
+      setAttr(label, 'aria-label', t('{name}, {service} {status}. Show details', { name: loc.name, service: loc.service, status: statusText(loc).toLowerCase() }));
     }
     // A new name changes the label width, so re-clamp it against the screen edge.
     if (renamed && this.labelPoints) this.placeLabels(this.labelPoints);
     if (this.mode?.kind !== 'location') return;
     const loc = s.locations[this.mode.id];
     setText(this.speaker, loc.name);
-    setText(this.said, `${loc.service}: ${loc.blockedByLaw ? t('not permitted') : STATUS_TEXT[loc.status].toLowerCase()}.`);
+    // Open says nothing: the switch and the counts below already show it. Anything else is said once, here.
+    setText(this.said, (loc.status === 'open' || loc.closed?.ownChoice) && !loc.blockedByLaw ? '' : `${loc.service}: ${loc.blockedByLaw ? t('not permitted') : statusText(loc).toLowerCase()}.`);
     const law = String(!!loc.blockedByLaw);
     if (this.said.dataset.alert !== law) this.said.dataset.alert = law;
     if (this.column.dataset.status !== loc.status) this.column.dataset.status = loc.status;
@@ -1167,7 +1243,6 @@ export class Hud {
     // everything but leaving is locked. Closed for want of staff: only staffing helps.
     const why = a?.closedReason ?? null;
     const locked = !!why && why !== 'noStaff' && why !== 'closedDown';
-    const onlyStaff = why === 'noStaff';
     const groupHidden = !a || a.closedDown || this.servicesOpen;
     setAttr(this.staffGroupBtn, 'aria-disabled', String(locked));
     if (this.staffGroupBtn.disabled !== locked) this.staffGroupBtn.disabled = locked;
@@ -1188,19 +1263,25 @@ export class Hud {
       return;
     }
     const afford = (cost: number) => a.budget >= cost;
+    // Switched off: nothing is spent on or changed in a service that is not running; switching it on is the way back.
+    const running = why !== 'switchedOff';
+    const offHint = t('Switch the service on to use this.');
     // Every spend here eases what people turned away from this service would have needed.
     const helps = serviceNeeds(a.service);
     for (const action of SPEND_ACTIONS) setNeeds(this.actionOpts[action].needs, helps);
     setNeeds(this.staffGroupNeeds, helps);
     const staffRoom = a.wanted < a.staffMax;
-    const waitRoom = a.waiting < a.waitingMax;
     show('moreStaff', !a.closedDown && !locked, staffRoom ? t('One more on shift ({n})', { n: a.wanted }) : t('{n} on shift, the most', { n: a.wanted }), staffRoom, t('Ask for one more staff member on shift here.'));
-    show('moreWaiting', !a.closedDown, waitRoom ? t('More waiting places ({n})', { n: a.waiting }) : plural(a.waiting, ['{n} waiting place, the most', '{n} waiting places, the most'], ['{n} miejsce oczekiwania, więcej się nie da', '{n} miejsca oczekiwania, więcej się nie da', '{n} miejsc oczekiwania, więcej się nie da']), waitRoom && !locked && !onlyStaff, t('Set out more places for people to wait.'));
-    show('hire', !a.closedDown && staffRoom, t('Hire paid {price}', { price: price(ACTION_COST.hire) }), afford(ACTION_COST.hire), t('Hire a paid worker for here: about 2 hours to find one.'));
-    show('volunteer', !a.closedDown && staffRoom, t('Find a volunteer {price}', { price: price(ACTION_COST.volunteer) }), afford(ACTION_COST.volunteer), t('About an hour and a half to find one.'));
+    // Recruiting may find nobody: the chance stands in brackets on both labels.
+    const hireChance = Math.round(recruitChance('hirePaid') * 100);
+    const volChance = Math.round(recruitChance('volunteerDrive') * 100);
+    show('hire', !a.closedDown && staffRoom, t('Hire paid {price} ({chance}%)', { price: price(ACTION_COST.hire), chance: hireChance }), afford(ACTION_COST.hire), t('Hire a paid worker for here: about 2 hours to find one.'));
+    show('volunteer', !a.closedDown && staffRoom, t('Find a volunteer {price} ({chance}%)', { price: price(ACTION_COST.volunteer), chance: volChance }), afford(ACTION_COST.volunteer), t('About an hour and a half to find one.'));
+    setText(this.actionOpts.hire.short, t('Hire a paid worker ({chance}%).', { chance: hireChance }));
+    setText(this.actionOpts.volunteer.short, t('Find a volunteer ({chance}%).', { chance: volChance }));
     const c = a.campers;
-    const canSend = !!c && c.out < c.max && afford(c.cost);
-    show('camper', !!c && !a.closedDown, c ? (c.out < c.max ? t('Another camper {price}', { price: price(c.cost) }) : plural(c.out, ['{n} camper out, all there are', '{n} campers out, all there are'], ['{n} kamper w trasie, więcej nie ma', '{n} kampery w trasie, więcej nie ma', '{n} kamperów w trasie, więcej nie ma'])) : '', canSend, c ? t('Send another camper out: {price}, then {perHour} an hour.', { price: price(c.cost), perHour: price(c.perHour) }) : '');
+    const canSend = !!c && running && c.out < c.max && afford(c.cost);
+    show('camper', !!c && !a.closedDown, c ? (c.out < c.max ? t('Another camper {price}', { price: price(c.cost) }) : plural(c.out, ['{n} camper out, all there are', '{n} campers out, all there are'], ['{n} kamper w trasie, więcej nie ma', '{n} kampery w trasie, więcej nie ma', '{n} kamperów w trasie, więcej nie ma'])) : '', canSend, !c ? '' : running ? t('Send another camper out: {price}, then {perHour} an hour.', { price: price(c.cost), perHour: price(c.perHour) }) : offHint);
     if (!canSend) this.camperOpen = false;
     setAttr(this.actionOpts.camper.button, 'aria-expanded', String(this.camperOpen));
     this.spotOpts.forEach((o, i) => {
@@ -1216,7 +1297,8 @@ export class Hud {
     // Moving the first camper: picked on the map; it closes while it drives, then opens at the new spot.
     // The camper's specialisation: a reply that opens the three paths.
     const path = a.path;
-    show('path', !!path && !a.closedDown, path?.current ? t('Specialised: {path}', { path: CAMPER_PATH[path.current].label }) : t('Specialise the camper'), true, t('Pick what the camper is best at; changing later costs again.'));
+    show('path', !!path && !a.closedDown, path?.current ? t('Specialised: {path}', { path: CAMPER_PATH[path.current].label }) : t('Specialise the camper'), running, running ? t('Pick what the camper is best at; changing later costs again.') : offHint);
+    if (!running) this.pathOpen = false;
     setAttr(this.actionOpts.path.button, 'aria-expanded', String(this.pathOpen));
     for (const o of this.pathOpts) {
       const hidden = !path || !this.pathOpen || this.servicesOpen || a.closedDown;
@@ -1227,19 +1309,23 @@ export class Hud {
       const off = now || a.budget < CAMPER_PATH[o.id].cost;
       if (o.button.disabled !== off) o.button.disabled = off;
     }
-    show('move', !!c && !a.closedDown, c ? (c.moving ? t('Camper on the move') : t('Move the camper')) : '', !!c && !c.moving, t('Pick a free kerb spot on the map; it reopens there once parked.'));
+    show('move', !!c && !a.closedDown, c ? (c.moving ? t('Camper on the move') : t('Move the camper')) : '', !!c && !c.moving && running, running ? t('Pick a free kerb spot on the map; it reopens there once parked.') : offHint);
     const inv = a.invest;
     const full = inv.level >= inv.max && inv.progress >= 1;
     // Building work goes on whether or not the place is open tonight, but not into a service switched off.
-    const switchedOn = this.lastSnapshot?.enabled[a.service] ?? true;
-    show('invest', !a.closedDown, full ? t('Fully upgraded') : t('Invest {price}', { price: price(inv.cost) }), !full && switchedOn && afford(inv.cost), switchedOn ? t('Build on: more places here once the work is done.') : t('Switch the service on to invest in it.'));
+    // The label names the stage the money builds towards; the hint says what it is.
+    const nextHint = inv.next ? t('Next: {stage}. {does}', { stage: inv.next.label, does: inv.next.does }) : t('This service is at its full size.');
+    show('invest', !a.closedDown, full || !inv.next ? t('Full size: {stage}', { stage: inv.stage }) : t('Invest {price}: towards {stage}', { price: price(inv.cost), stage: inv.next.label }), !full && !!inv.next && running && afford(inv.cost), running ? nextHint : t('Switch the service on to invest in it.'));
     if (a.hustle) {
       setText(this.actionOpts.hustle.short, a.hustle.short);
       setAttr(this.actionOpts.hustle.button, 'aria-pressed', String(a.hustle.on));
     }
-    show('hustle', !!a.hustle && !a.closedDown, a.hustle?.label ?? '', a.hustle?.enabled ?? true, a.hustle?.hint ?? '');
+    // A running deal or fee can always be ended; a new one waits until the service is on.
+    const hustleOk = (a.hustle?.enabled ?? true) && (running || !!a.hustle?.on);
+    show('hustle', !!a.hustle && !a.closedDown, a.hustle?.label ?? '', hustleOk, hustleOk || !a.hustle?.enabled ? a.hustle?.hint ?? '' : offHint);
     // Budget mix: what visits here are spent on.
-    show('mix', !a.closedDown, t('Budget mix ({price} a visit)', { price: price(a.mix.visitCost) }), true, a.mix.items.filter((m) => m.share > 0).map((m) => `${ACTIVITY[m.id].short} ${Math.round(m.share * 100)}%`).join(', ') || t('Nothing on offer'));
+    if (!running) this.mixOpen = false;
+    show('mix', !a.closedDown, t('Budget mix ({price} a visit)', { price: price(a.mix.visitCost) }), running, !running ? offHint : a.mix.items.filter((m) => m.share > 0).map((m) => `${ACTIVITY[m.id].short} ${Math.round(m.share * 100)}%`).join(', ') || t('Nothing on offer'));
     setAttr(this.actionOpts.mix.button, 'aria-expanded', String(this.mixOpen));
     const now = performance.now();
     const shown = wholePercents(a.mix.items.map((m) => (m.lock ? 0 : m.share)));
@@ -1299,6 +1385,7 @@ export class Hud {
     (this.speaker.parentElement as HTMLElement).hidden = m === null;
     this.aside.hidden = m?.kind !== 'person';
     this.buildingView.hidden = m?.kind !== 'building';
+    this.buildingChips.hidden = m?.kind !== 'building' || !this.buildingChips.childElementCount;
     this.locationView.hidden = m?.kind !== 'location';
     this.personNote.hidden = m?.kind !== 'person';
     if (m?.kind !== 'person') this.profileView.hidden = true;
@@ -1326,7 +1413,12 @@ export class Hud {
     this.favourOpt.hidden = open || m !== null || !this.lastSnapshot?.favours;
     this.backOpt.hidden = !open;
     const own = m?.kind === 'location' ? serviceAt(m.id) : null;
-    for (const id of SERVICE_IDS) this.switchOpts[id].hidden = !(open || id === own);
+    for (const id of SERVICE_IDS) {
+      this.switchOpts[id].hidden = !(open || id === own);
+      // On its own card the row is the one action; in the services list, the name and the switch.
+      const single = String(!open && id === own);
+      if (this.switchOpts[id].dataset.own !== single) this.switchOpts[id].dataset.own = single;
+    }
   }
 
   /** Opens or closes the services list; focus moves into or back out of it. */
@@ -1401,7 +1493,7 @@ function wholePercents(shares: readonly number[]): number[] {
   return out;
 }
 
-const ACTIONS: readonly PlaceAction[] = ['moreStaff', 'hire', 'volunteer', 'camper', 'moreWaiting', 'move', 'path', 'mix', 'hustle', 'invest', 'relaunch'];
+const ACTIONS: readonly PlaceAction[] = ['moreStaff', 'hire', 'volunteer', 'camper', 'move', 'path', 'mix', 'hustle', 'invest', 'relaunch'];
 /** Most camper spots the replies offer. */
 const MAX_SPOTS = 6;
 /** The most activities any place offers. */
@@ -1409,6 +1501,6 @@ const MIX_SLOTS = 5;
 /** Actions nested under the Staffing reply. */
 const STAFF_ACTIONS: readonly PlaceAction[] = ['moreStaff', 'hire', 'volunteer', 'camper'];
 /** Phone labels: short, but each one says what it does without the rest of the menu. */
-const ACTION_SHORT: Record<PlaceAction, string> = { moreStaff: t('One more on shift.'), moreWaiting: t('More waiting places.'), hire: t('Hire a paid worker.'), volunteer: t('Find a volunteer.'), camper: t('Send another camper.'), move: t('Move the camper.'), path: t('Specialise the camper.'), mix: t('Budget mix.'), hustle: t('Side income.'), invest: t('Invest: more places.'), relaunch: t('Reopen the service.') };
+const ACTION_SHORT: Record<PlaceAction, string> = { moreStaff: t('One more on shift.'), hire: t('Hire a paid worker.'), volunteer: t('Find a volunteer.'), camper: t('Send another camper.'), move: t('Move the camper.'), path: t('Specialise the camper.'), mix: t('Budget mix.'), hustle: t('Side income.'), invest: t('Invest: more places.'), relaunch: t('Reopen the service.') };
 /** Costs shown on the replies; the organisation charges the same (config/organisation.ts). */
 const ACTION_COST = { hire: RECRUIT.hirePaid.cost, volunteer: RECRUIT.volunteerDrive.cost, relaunch: ORG.reopen.cost };

@@ -30,7 +30,9 @@ import {
 } from './details';
 import { add, bench, bin, bollard, box, cylinder, planter, signBoard, setFoliageSeason, setLampNight, streetLight, tree } from './kit';
 import { setPuddleLight, tickPuddles } from './puddles';
-import { AID_BUS, CAMPER_SPOTS, DISTRICT, SQUAT_SPOT, STATION_CAMP, moveCamper as moveCamperFrame, CROSSING, HALF, HOME_CAMPER, HOME_CLUB, LOTS, NODES, PAVE_E, PAVE_W, ROAD, VENUE_FACE, VENUES_AT_HOME, type P2 } from './layout';
+import { AID_BUS, CAMPER_SPOTS, DISTRICT, SQUAT_SPOT, STATION_CAMP, moveCamper as moveCamperFrame, CROSSING, HALF, HOME_CAMPER, HOME_CLUB, LOTS, NODES, PAVE_E, PAVE_W, ROAD, VENUE_FACE, VENUE_FRAME, VENUES_AT_HOME, PATROL, toWorld, type Frame, type P2, type PlaceLot } from './layout';
+import { StageProps } from './stageProps';
+import type { ServiceId } from '../sim/types';
 import { buildBlockGround, buildOutskirts, buildStreets } from './district';
 import { lightPool, setPoolDaylight } from './dressing';
 import { buildInfill } from './infill';
@@ -83,6 +85,8 @@ export interface World {
   setStill(still: boolean): void;
   /** Staff above (`extra`) or below (`short`) a service's usual number: its building grows or shrinks. */
   setStaffing(id: LocationId, extra: number, short: number, open: boolean): void;
+  /** Each service's stage (SERVICE_STAGES): its pieces spring up beside the place; `instant` for a load. */
+  setStage(id: ServiceId, stage: number, instant: boolean): void;
   /** Building ids of the shop units the property model tracks, nearest the services first. */
   readonly shopUnits: readonly number[];
   /** What shop unit `i` shows: trading, TO LET, or a rented service's sign. */
@@ -370,6 +374,30 @@ export function buildWorld(random: Random): World {
   const expansions = Object.fromEntries(
     (Object.keys(locations) as LocationId[]).map((id) => [id, new Expansion(locations[id].root, EXPANSION_ACCENT[id], EXPANSION[id].kind, EXPANSION[id].front, locations[id].roofSign, EXPANSION[id].roof)]),
   ) as Record<LocationId, Expansion>;
+  // Each service's stages: a row of pieces beside the place, away from its door and queue.
+  const stageRoot = add(scene, new Group());
+  const lotSlots = (lot: PlaceLot) => {
+    const n = lot.face === '+x' ? { x: 1, z: 0 } : { x: 0, z: 1 };
+    const q = lot.queueDir;
+    const rot = lot.face === '+x' ? Math.PI / 2 : 0;
+    // Along the front, on the side of the door away from the queue, a little out on the pavement.
+    return [-3.8, -8.2, -12.6].map((along) => ({ x: lot.door.x + q.x * (along + 1) + n.x * 1.6, z: lot.door.z + q.z * (along + 1) + n.z * 1.6, rot }));
+  };
+  const p2 = (x: number, z: number): P2 => ({ x, z });
+  const designSlots = (f: Frame, faceRot: number, pts: P2[]) => pts.map((q) => ({ ...toWorld(f, q), rot: f.rot + faceRot }));
+  const stageProps: Record<ServiceId, StageProps> = {
+    drugChecking: new StageProps(stageRoot, 'drugChecking', lotSlots(LOTS.drugChecking)),
+    shelter: new StageProps(stageRoot, 'shelter', lotSlots(LOTS.shelter)),
+    clinic: new StageProps(stageRoot, 'clinic', lotSlots(LOTS.clinic)),
+    // The drop-in's front faces +z in its design; pieces stand on the square west of the door.
+    dropIn: new StageProps(stageRoot, 'dropIn', designSlots(VENUE_FRAME.dropIn, 0, [p2(3.4, -5.9), p2(11.4, -2.2), p2(-0.6, -10.6)])),
+    // The club's front faces +x; pieces stand north of the door, clear of the queue.
+    clubHr: new StageProps(stageRoot, 'clubHr', designSlots(VENUE_FRAME.club, Math.PI / 2, [p2(-6.6, -6.2), p2(-6.6, -9.6), p2(-6.6, -12.8)])),
+    // The foot patrol works by the squat: pieces beyond the staff side of its table.
+    footPatrol: new StageProps(stageRoot, 'footPatrol', designSlots(PATROL.frame, -Math.PI / 2, [p2(1.6, HOME_CAMPER.z1 + 7.2), p2(1.8, HOME_CAMPER.z1 + 9.0), p2(1.6, HOME_CAMPER.z1 + 10.8)])),
+    // The camper's pieces ride on the van's own root, so they move with it: behind and beside the rear.
+    outreach: new StageProps(locations.outreach.root, 'outreach', [{ x: 1.6, z: 3.9, rot: Math.PI / 2 }, { x: 1.9, z: 5.6, rot: Math.PI / 2 }, { x: 0, z: 9.4, rot: 0 }]),
+  };
   // Ground-floor shop units nearest the services: closed ones show TO LET, rented ones a service sign.
   const lettingRoot = new Group();
   scene.add(lettingRoot);
@@ -564,6 +592,9 @@ export function buildWorld(random: Random): World {
     setStaffing(id, extra, short, open) {
       expansions[id].set(extra, short, open);
     },
+    setStage(id, stage, instant) {
+      stageProps[id].set(stage, instant || still);
+    },
     shopUnits: shopUnits.map(({ b }) => b.id),
     setShops(kinds) {
       shopSigns.forEach((sign, i) => {
@@ -702,6 +733,7 @@ export function buildWorld(random: Random): World {
     },
     update(dt, time) {
       for (const id in expansions) expansions[id as LocationId].update(dt);
+      for (const id in stageProps) stageProps[id as ServiceId].update(dt, still);
       for (const l of lettings) l.update(dt, still);
       for (const l of shopSigns) l.update(dt, still);
       opening.update(dt);

@@ -249,6 +249,21 @@ export const VENUE_RECTS: readonly Rect[] = [
   ...Object.values(SITED_LOTS).map((l) => l.rect),
 ];
 
+/**
+ * Centre sites no venue took this launch, clipped to the centre block: the
+ * city infill never builds inside the centre, so these get an ordinary
+ * building of their own instead of standing bare.
+ */
+export const SPARE_CENTRE_LOTS: readonly Rect[] = (['centreWest', 'centreEast'] as const)
+  .filter((site) => !Object.values(SITE_OF).includes(site))
+  .map((site) => {
+    // Set back two metres from the pavement, clear of the walk node in front.
+    const q = rectOn(site, SITES[site].along, SITES[site].depth);
+    if (SITES[site].face === '+x') q.x1 -= 2; else q.z1 -= 2;
+    return r(Math.max(q.x0, -HALF + 0.8), Math.min(q.x1, HALF - 0.8), Math.max(q.z0, -HALF + 0.8), Math.min(q.z1, HALF - 0.8));
+  })
+  .filter((q) => q.x1 - q.x0 >= 4.5 && q.z1 - q.z0 >= 4.5);
+
 /** Which way the club's and the drop-in's fronts face this launch. */
 export const VENUE_FACE = { club: SITES[SITE_OF.club].face, dropIn: SITES[SITE_OF.dropIn].face };
 

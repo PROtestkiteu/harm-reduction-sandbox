@@ -5,12 +5,14 @@ import { PROPERTY, SATELLITE_SERVICES, type SatelliteService } from '../sim/prop
 import { plural, t } from '../i18n';
 import { QUESTS, type InstitutionId } from '../config/institutionQuests';
 import { PARTNER_NEEDS, QUEST_NEEDS, serviceNeeds } from '../config/needs';
-import type { BuildingCard } from '../ui/hud';
+import type { BuildingCard, ChipState } from '../ui/hud';
 import { price } from '../ui/money';
 import { displayName } from '../ui/names';
 import { cityBuilding, type BuildingUse } from '../world/cityBuildings';
 import { DISTRICT, NODES, SQUAT_SPOT, camperSpot } from '../world/layout';
 import { VENUE_KINDS, VITALITY, type VenueKind } from '../sim/vitality';
+import { RESIDENTS } from '../config/residents';
+import { formatClock } from '../sim/clock';
 
 /** The new venues' names on their cards. */
 const VENUE_TITLES: Record<VenueKind, string> = { bar: t('New bar'), cafe: t('New café'), club: t('New club'), live: t('Live music venue') };
@@ -26,7 +28,7 @@ const USE_TITLE: Record<BuildingUse, string> = {
   shopfront: t('Shopfront'),
   'flats over shops': t('Flats over shops'),
   flats: t('Block of flats'),
-  tenement: t('Tenement block'),
+  tenement: t('Old block of flats'),
 };
 const level = (v: number, words: [string, string, string]) => (v < 0.33 ? words[0] : v < 0.66 ? words[1] : words[2]);
 const percent = (v: number) => `${Math.round(v * 100)}%`;
@@ -226,22 +228,56 @@ export class CityCards {
       households: plural(b.households, ['{n} household', '{n} households'], ['{n} gospodarstwo domowe', '{n} gospodarstwa domowe', '{n} gospodarstw domowych']),
       residents: plural(residents, ['{n} person', '{n} people'], ['{n} osoba', '{n} osoby', '{n} osób']),
     }) : t('A shop on the street, nobody lives here.'));
+    // Where people live, the project can work with them: residents' actions come first.
+    const homes = b.households > 0 && id !== world.squat ? this.residentActions() : [];
+    // Good, middling or bad, as the meters at the top colour them.
+    const band = (v: number, goodHigh: boolean): ChipState => {
+      const g = goodHigh ? v : 1 - v;
+      return g >= 0.66 ? 'good' : g >= 0.33 ? 'mid' : 'bad';
+    };
     return {
       title: displayName('building', id, USE_TITLE[b.use]),
       said,
-      actions: unit.actions ?? point.actions,
+      actions: [...homes, ...(unit.actions ?? point.actions ?? [])],
       facts: [
         ...(unit.fact ? [unit.fact] : []),
         ...(point.fact ? [point.fact] : []),
-        [t('Feels safe to residents'), percent(n.safety)],
-        [t('Litter and discarded kit'), level(n.litter, [t('Little'), t('Some'), t('A lot')])],
-        [t('Use seen on the street'), level(n.visibleUse, [t('Rare'), t('Sometimes'), t('Often')])],
-        [t('Shops nearby'), level(n.shopTrade, [t('Struggling'), t('Getting by'), t('Trading well')])],
+      ],
+      chips: [
+        { icon: 'safety', value: percent(n.safety), label: t('Feels safe to residents: {v}', { v: percent(n.safety) }), state: band(n.safety, true) },
+        { icon: 'litter', value: level(n.litter, [t('Little'), t('Some'), t('A lot')]), label: t('Litter and discarded kit: {v}', { v: level(n.litter, [t('Little'), t('Some'), t('A lot')]) }), state: band(n.litter, false) },
+        { icon: 'seen', value: level(n.visibleUse, [t('Rare'), t('Sometimes'), t('Often')]), label: t('Use seen on the street: {v}', { v: level(n.visibleUse, [t('Rare'), t('Sometimes'), t('Often')]) }), state: band(n.visibleUse, false) },
+        { icon: 'shops', value: level(n.shopTrade, [t('Struggling'), t('Getting by'), t('Trading well')]), label: t('Shops nearby: {v}', { v: level(n.shopTrade, [t('Struggling'), t('Getting by'), t('Trading well')]) }), state: band(n.shopTrade, true) },
         // How the people who use them speak of the services: those who come and get served spread the word.
-        [t("Your services' reputation"), level(n.reputation, [t('Poor'), t('Mixed'), t('Good')])],
-        [t('Sleeping rough nearby'), String(n.roughSleepers)],
+        { icon: 'reputation', value: level(n.reputation, [t('Poor'), t('Mixed'), t('Good')]), label: t("Your services' reputation: {v}", { v: level(n.reputation, [t('Poor'), t('Mixed'), t('Good')]) }), state: band(n.reputation, true) },
+        { icon: 'rough', value: String(n.roughSleepers), label: t('Sleeping rough nearby: {n}', { n: n.roughSleepers }), state: n.roughSleepers ? 'bad' : 'good' },
       ],
     };
+  }
+
+  /** Sweeping for used kit and meeting the residents: each with its cost, or when it can go again. */
+  private residentActions(): NonNullable<BuildingCard['actions']> {
+    const { sim } = this;
+    const at = (minute: number) => formatClock(sim.org.clockAt(minute, sim.clockMinutes));
+    const sweepWait = sim.org.now < sim.sweepAgainAt;
+    const metNow = sim.org.now < sim.residentsMetUntil;
+    const meetWait = sim.org.now < sim.meetAgainAt;
+    return [
+      {
+        id: 'sweep',
+        label: sweepWait ? t('Next sweep for used kit from {time}', { time: at(sim.sweepAgainAt) }) : t('Sweep for used kit ({price})', { price: price(RESIDENTS.sweepCost) }),
+        short: sweepWait ? t('Sweep again later.') : t('Sweep for used kit.'),
+        enabled: !sweepWait && sim.org.budget >= RESIDENTS.sweepCost,
+        helps: ['district'],
+      },
+      {
+        id: 'meet',
+        label: metNow ? t('Residents met: next round from {time}', { time: at(sim.meetAgainAt) }) : meetWait ? t('Next door-knocking from {time}', { time: at(sim.meetAgainAt) }) : t('Meet the residents ({price})', { price: price(RESIDENTS.meetCost) }),
+        short: meetWait ? t('Meet them again later.') : t('Meet the residents.'),
+        enabled: !meetWait && sim.org.budget >= RESIDENTS.meetCost,
+        helps: ['district'],
+      },
+    ];
   }
 
   /**
@@ -288,7 +324,7 @@ export class CityCards {
       return {
         fact: [t('Harm reduction point'), t('{point}, level {level}', { point: POINT_NAME[q.service], level: q.level })],
         actions: [
-          ...(q.level < p.maxLevel ? [{ id: 'pointUp', label: t('Grow the point to level {level} ({price}; {places})', { level: q.level + 1, price: price(p.upgrade), places: placesPlus(p.placesPerLevel) }), short: t('Grow the point.'), enabled: sim.org.budget >= p.upgrade, helps: serviceNeeds(q.service) }] : []),
+          ...(q.level < p.maxLevel ? [{ id: 'pointUp', label: t('Grow the point to level {level} ({price}; {places})', { level: q.level + 1, price: price(p.upgrade), places: placesPlus(p.placesPerLevel) }), short: t('Grow the point.'), enabled: sim.org.budget >= p.upgrade && sim.services[q.service].switchedOn, helps: serviceNeeds(q.service) }] : []),
           { id: 'pointClose', label: t('Close the point.'), short: t('Close the point.'), enabled: true },
         ],
       };
@@ -301,7 +337,8 @@ export class CityCards {
           ? t('A drug checking point: not allowed by law.')
           : t('Open a {point} ({fitOut}, then {rent}/h; {places}).', { point: POINT_NAME[s], fitOut: price(p.fitOut), rent: price(p.rentPerHour), places: placesPlus(p.placesAtZero) }),
         short: t('Open a {point}.', { point: POINT_NAME[s] }),
-        enabled: sim.org.budget >= p.fitOut && (s !== 'drugChecking' || allowed),
+        // Only for services switched on: a point adds places to its service.
+        enabled: sim.org.budget >= p.fitOut && (s !== 'drugChecking' || allowed) && sim.services[s].switchedOn,
         helps: serviceNeeds(s),
       })),
     };
@@ -324,7 +361,7 @@ export class CityCards {
           id: `rent:${s}`,
           label: t('Rent it and open a {unit} ({cost}; {places}).', { unit: UNIT_NAME[s], cost, places: placesPlus(PROPERTY.satellitePlaces) }),
           short: t('Open a {point}.', { point: POINT_NAME[s] }),
-          enabled: sim.org.budget >= PROPERTY.fitOut,
+          enabled: sim.org.budget >= PROPERTY.fitOut && sim.services[s].switchedOn,
           helps: serviceNeeds(s),
         })),
       };

@@ -6,7 +6,7 @@ import { acUnit, antenna, drainpipe, roofVent, waterTank, windowTrim } from './d
 import { awning, balcony, graffiti, laundryLine, lightPool, poster, rubbish, shopSign, shutters } from './dressing';
 import { askew, bladeSign, boardedWindow, neonSign, roofClutter, scaffolding, wallClutter } from './grit';
 import { add, bench, box, gableRoof, mansard, tree } from './kit';
-import { BLOCKS, HALF, VENUE_RECTS, type Rect } from './layout';
+import { BLOCKS, HALF, SPARE_CENTRE_LOTS, VENUE_RECTS, type Rect } from './layout';
 import { glowMat, mat } from './materials';
 import { mergeStatic } from './mergeStatic';
 import { registerBuilding } from './cityBuildings';
@@ -376,5 +376,13 @@ export function buildInfill(scene: Object3D, random: Random): WindowBank[] {
   const want = random() < 0.5 ? 1 : 2;
   while (parks.size < want) parks.add(names[Math.floor(random() * names.length)]);
   for (const [name, block] of Object.entries(BLOCKS)) fillBlock(scene, block, windows, random, parks.has(name));
+  // A centre site the club or the drop-in left this launch: an ordinary building, never a bare lot.
+  for (const q of SPARE_CENTRE_LOTS) {
+    const g = add(scene, new Group());
+    const h = inFrontOfService(q) ? 3.2 + random() * 1.4 : 6.2 + Math.floor(random() * 2) * 3;
+    building(g, q, h, WALLS[Math.floor(random() * WALLS.length)], windows, random);
+    registerBuilding(q.x0, q.x1, q.z0, q.z1, h);
+    mergeStatic(g);
+  }
   return [new WindowBank(windows, 1.0, 0.05, random)];
 }
