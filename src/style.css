@@ -1382,7 +1382,10 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
 body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
 @media (max-width: 760px) {
   /* Phones: the sheet covers the bottom, so the portrait sits under the title. */
-  .portrait { bottom: auto; top: calc(max(12px, var(--safe-top)) + 96px); width: 96px; }
+  /* Bottom left, just above the sheet (its height measured into --sheet-h), never up into the title. */
+  .portrait { top: auto; bottom: min(calc(var(--sheet-h, 220px) - 22px), calc(100dvh - 340px)); width: 96px; }
+  /* Folded, the sheet is a thin strip: the portrait stands just clear of it, caption and all. */
+  .column[data-folded] ~ .portrait { bottom: calc(var(--sheet-h, 40px) + 6px); }
   /* Under every panel: a tall sheet slides over it rather than the other way round. */
   .portrait { z-index: 0; }
   .column { z-index: 1; }
@@ -2392,7 +2395,6 @@ body:has(.sandbox-body:not([hidden])) .layers-toggle { display: none; }
 .map-legend[hidden] { display: none; }
 .map-legend-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .map-legend h3 { margin: 0; font: 600 12px var(--body); text-transform: uppercase; letter-spacing: 0.06em; color: #edb300; }
-.map-legend-close { min-width: 36px; min-height: 36px; margin: -6px -8px -6px 0; background: none; border: 0; color: #f2ead8; font-size: 20px; cursor: pointer; }
 .map-legend ul { list-style: none; margin: 2px 0 0; padding: 0; display: grid; gap: 3px; }
 .map-legend li { display: flex; align-items: baseline; gap: 7px; }
 .map-legend .swatch { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--c); transform: translateY(1px); }

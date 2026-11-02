@@ -779,6 +779,11 @@ export class Hud {
     };
     placeIndicators();
     window.matchMedia(NARROW).addEventListener('change', placeIndicators);
+    // The sheet's height, for what sits just above it on phones (the portrait): measured as it folds and opens.
+    new ResizeObserver(() => {
+      const h = `${Math.round(this.column.offsetHeight)}px`;
+      if (this.root.style.getPropertyValue('--sheet-h') !== h) this.root.style.setProperty('--sheet-h', h);
+    }).observe(this.column);
 
     const labelLayer = el('div', 'labels');
     for (const id of LOCATION_IDS) {

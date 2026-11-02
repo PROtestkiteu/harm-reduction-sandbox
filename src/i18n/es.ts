@@ -1871,7 +1871,6 @@ export const ES: Record<string, string> = {
   "Street scene": "Escena de calle",
   "Reach": "Alcance",
   "Map overlay": "Capa del mapa",
-  "Turn the overlay off": "Quitar la capa",
-  "Map overlay: off": "Capa del mapa: ninguna",
-  "Map overlay: {name}": "Capa del mapa: {name}",
+  "Map overlay: off. Press to choose one.": "Capa del mapa: ninguna. Pulsa para elegir una.",
+  "Map overlay: {name}. Press to turn it off.": "Capa del mapa: {name}. Pulsa para quitarla.",
 };

@@ -28,8 +28,8 @@ const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 /**
  * The layers button floating over the map and the legend that goes with an
  * overlay. The button opens a menu of the overlays (the one on is marked);
- * the legend says what the colours mean and the numbers behind them, and its
- * close button turns the overlay off. The choice is remembered on this device.
+ * the legend says what the colours mean and the numbers behind them; pressing
+ * the button again turns the overlay off. The choice is remembered on this device.
  */
 export class MapLayers {
   readonly button: HTMLButtonElement;
@@ -45,13 +45,32 @@ export class MapLayers {
     this.button.className = 'layers-toggle';
     this.button.setAttribute('aria-haspopup', 'menu');
     this.button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M12 3 2 8.5 12 14l10-5.5L12 3zM2 13l10 5.5L22 13M2 17.5 12 23l10-5.5"/></svg>';
-    this.button.addEventListener('click', () => {
+    // A tap opens the menu of overlays; with one on, a tap turns it off. Right-click or a long press
+    // always opens the menu, to switch straight to another.
+    const menu = () => {
       const r = this.button.getBoundingClientRect();
-      openMenu(r.left, r.bottom + 4, t('Map overlay'), (Object.keys(LABEL) as OverlayKind[]).map((k) => ({
+      openMenu(r.left, r.bottom + 4, t('Map overlay'), (Object.keys(LABEL) as OverlayKind[]).filter((k) => k !== 'off').map((k) => ({
         label: `${k === this.kind ? '✓ ' : ''}${LABEL[k]}`,
         disabled: false,
         run: () => this.set(k),
       })));
+    };
+    let press = 0;
+    let pressed = false;
+    this.button.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse') return;
+      pressed = false;
+      press = window.setTimeout(() => { pressed = true; menu(); }, 500);
+    });
+    const cancel = () => clearTimeout(press);
+    this.button.addEventListener('pointerup', cancel);
+    this.button.addEventListener('pointercancel', cancel);
+    this.button.addEventListener('pointerleave', cancel);
+    this.button.addEventListener('contextmenu', (e) => { e.preventDefault(); cancel(); menu(); });
+    this.button.addEventListener('click', () => {
+      if (pressed) { pressed = false; return; }
+      if (this.kind !== 'off') this.set('off');
+      else menu();
     });
 
     this.legend = document.createElement('section');
@@ -61,13 +80,7 @@ export class MapLayers {
     const head = document.createElement('div');
     head.className = 'map-legend-head';
     this.title = document.createElement('h3');
-    const close = document.createElement('button');
-    close.type = 'button';
-    close.className = 'map-legend-close';
-    close.textContent = '×';
-    close.setAttribute('aria-label', t('Turn the overlay off'));
-    close.addEventListener('click', () => this.set('off'));
-    head.append(this.title, close);
+    head.append(this.title);
     this.rows = document.createElement('ul');
     this.legend.append(head, this.rows);
     parent.append(this.legend);
@@ -94,7 +107,7 @@ export class MapLayers {
 
   private label(): void {
     this.button.dataset.on = String(this.kind !== 'off');
-    this.button.setAttribute('aria-label', this.kind === 'off' ? t('Map overlay: off') : t('Map overlay: {name}', { name: LABEL[this.kind] }));
+    this.button.setAttribute('aria-label', this.kind === 'off' ? t('Map overlay: off. Press to choose one.') : t('Map overlay: {name}. Press to turn it off.', { name: LABEL[this.kind] }));
     this.button.title = this.button.getAttribute('aria-label') ?? '';
   }
 

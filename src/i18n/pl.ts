@@ -1914,7 +1914,6 @@ export const PL: Record<string, string> = {
   "Street scene": "Scena uliczna",
   "Reach": "Zasięg",
   "Map overlay": "Nakładka na mapę",
-  "Turn the overlay off": "Wyłącz nakładkę",
-  "Map overlay: off": "Nakładka na mapę: wyłączona",
-  "Map overlay: {name}": "Nakładka na mapę: {name}",
+  "Map overlay: off. Press to choose one.": "Nakładka na mapę: wyłączona. Naciśnij, żeby wybrać.",
+  "Map overlay: {name}. Press to turn it off.": "Nakładka na mapę: {name}. Naciśnij, żeby wyłączyć.",
 };
