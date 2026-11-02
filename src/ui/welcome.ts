@@ -1,7 +1,8 @@
 import { t } from '../i18n';
 import { playerBadge, type PlayerPicture } from './playerBadge';
 
-const SEEN_KEY = 'hrp-welcome-seen';
+/** Renamed with the three-page welcome, so players who closed the old box see this one once. */
+const SEEN_KEY = 'hrp-welcome-seen-2';
 
 interface Page {
   title: string;
