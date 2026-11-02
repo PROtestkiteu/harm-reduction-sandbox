@@ -31,16 +31,16 @@ export class FxTags {
     parent.prepend(this.layer);
   }
 
-  /** Shows a tag per event at its screen point (`x`, `y` in CSS pixels). */
-  set(items: readonly { kind: FxKind; theme: RaveTheme | null; x: number; y: number }[]): void {
-    const key = items.map((i) => `${i.kind}:${i.theme}`).join('|');
+  /** Shows a tag per event at its screen point (`x`, `y` in CSS pixels); `note` adds a word in brackets (till when). */
+  set(items: readonly { kind: FxKind; theme: RaveTheme | null; x: number; y: number; note?: string }[]): void {
+    const key = items.map((i) => `${i.kind}:${i.theme}:${i.note ?? ''}`).join('|');
     if (key !== this.key) {
       this.key = key;
       this.layer.replaceChildren(...items.map((i) => {
         const tag = document.createElement('span');
         tag.className = 'fx-tag';
         tag.dataset.kind = i.kind;
-        tag.textContent = TEXT(i.kind, i.theme);
+        tag.textContent = i.note ? `${TEXT(i.kind, i.theme)} (${i.note})` : TEXT(i.kind, i.theme);
         return tag;
       }));
     }

@@ -142,9 +142,21 @@ function visitorActivity(p: PersonState): string {
   }
 }
 
+/**
+ * For a posted officer: until when they stand here and why, and what would move them. Set by the
+ * app from the simulation (sim.policeStatus, favours, the police quest); null before it is wired.
+ */
+let policeLine: (() => string | null) | null = null;
+export function setPoliceLine(line: () => string | null): void {
+  policeLine = line;
+}
+
 /** Officers and residents with placards come from the context factors (policing, neighbourhood). */
 function contextActivity(p: PersonState): string {
   if (p.role === 'police') {
+    // Posted (or on the way to their post): say till when and what would move them.
+    const line = p.mode === 'leaving' ? null : policeLine?.() ?? null;
+    if (line) return line;
     if (p.mode === 'standing') return t('Posted on the street');
     if (p.mode === 'leaving') return t('Leaving the area');
     return t('On patrol');

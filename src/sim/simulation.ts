@@ -1415,8 +1415,28 @@ export class Simulation {
     if (!step || !this.org.spend(step.cost, false)) return null;
     this.quests[id] = done + 1;
     const finished = done + 1 === q.steps.length;
+    if (finished && id === 'police') this.applyContext();
     this.org.notice(this.clockMinutes, finished ? `${step.lesson} ${q.done}` : step.lesson);
     return { lesson: step.lesson, finished };
+  }
+
+  /**
+   * Why officers stand posted by the services now, and until when (clock minutes; null when it lasts
+   * as long as the city's policing does): a favour keeping them away, an event, a deal with city hall,
+   * or the city's policing itself. For the officer's card and the tag over them.
+   */
+  policeStatus(): { reason: 'away' | 'agreement' | 'event' | 'concession' | 'policy' | 'none'; until: number | null; event?: string } {
+    const clock = (t: number) => this.org.clockAt(t, this.clockMinutes);
+    if (this.org.now < this.policeAwayUntil) return { reason: 'away', until: clock(this.policeAwayUntil) };
+    const posted = this.events.active.filter((e) => EVENTS[e.id].effects.posted);
+    const style = this.context.patrolStyle;
+    if (this.allied('police') && style !== 'posted') return { reason: 'agreement', until: null };
+    if (posted.length) {
+      const last = posted.reduce((a, b) => (b.endsAt > a.endsAt ? b : a));
+      return { reason: 'event', until: last.endsAt, event: EVENTS[last.id].label };
+    }
+    if (this.org.now < this.policePostedUntil) return { reason: 'concession', until: clock(this.policePostedUntil) };
+    return this.context.patrol > 0 && style === 'posted' ? { reason: 'policy', until: null } : { reason: 'none', until: null };
   }
 
   /** Whether an institution's side quest is complete. */
@@ -1514,6 +1534,11 @@ export class Simulation {
       c.patrol = Math.min(c.patrol, 1);
       c.patrolStyle = 'clear';
       c.deterrence = 0;
+    }
+    // The police agreement (the side quest at the station, finished): patrols keep clear of the entrances.
+    if (this.allied('police') && c.patrolStyle === 'posted') {
+      c.patrolStyle = 'clear';
+      c.deterrence *= 0.4;
     }
     if (m.closesAt !== null) c.closesAt = c.closesAt === null ? m.closesAt : Math.min(c.closesAt, m.closesAt);
     // Without money there are no analyses or kits.

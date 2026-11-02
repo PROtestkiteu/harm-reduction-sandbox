@@ -3,6 +3,10 @@ import { locationOf, nextStep, type GuideView } from './game/guide';
 import { QUALITY } from './render/quality';
 import { Vector3, WebGLRenderer, type Object3D } from 'three';
 import { DaemonFigure } from './agents/daemonFigure';
+import { formatClock } from './sim/clock';
+import { FAVOUR } from './config/favours';
+import { QUESTS } from './config/institutionQuests';
+import { setPoliceLine } from './ui/personInfo';
 import type { PersonRole } from './agents/crowd';
 import { MapOverlays } from './world/mapOverlays';
 import { MapLayers, type OverlayKind } from './ui/mapLayers';
@@ -231,7 +235,10 @@ function placeThreatTags(): void {
   for (const t of threats) if (t.follow) { t.x = t.follow.position.x; t.z = t.follow.position.z; }
   const seen = new Set<string>();
   const one = threats.filter((t) => !seen.has(t.kind) && seen.add(t.kind));
-  threatTags.set(one.map((t) => ({ kind: t.kind, theme: null, ...worldToClient(new Vector3(t.x, t.y, t.z), camera, pipeline.frame) })));
+  // Officers say till when they stand there (or that it is the city's policing, with no end).
+  const police = one.some((t) => t.kind === 'threatOfficer') ? sim.policeStatus() : null;
+  const policeNote = police ? (police.until !== null ? t('till {time}', { time: formatClock(police.until) }) : police.reason === 'policy' ? t('city policy') : undefined) : undefined;
+  threatTags.set(one.map((th) => ({ kind: th.kind, theme: null, note: th.kind === 'threatOfficer' ? policeNote : undefined, ...worldToClient(new Vector3(th.x, th.y, th.z), camera, pipeline.frame) })));
 }
 let fxVersion = -1;
 /** Name tags over the events on screen: placed when the view moves or an event starts or ends. */
@@ -277,6 +284,27 @@ function showSpectacle(s: Spectacle): void {
 }
 // What happens to people shows where it happens: a skull, handcuffs, a red cross (none with reduced motion).
 crowd.onMark = (at, icon) => { if (!reducedMotion.matches) coins.mark(at, icon); };
+/**
+ * Early warning of a service falling behind: an hourglass pops over its door every few seconds while
+ * people queue, amber once the queue is half its waiting places, red when it is nearly full or the
+ * service has fewer staff on site than asked for. Refreshed with the HUD.
+ */
+const queueMarkAt: Partial<Record<ServiceId, number>> = {};
+function markQueues(): void {
+  if (reducedMotion.matches) return;
+  const now = performance.now();
+  for (const id of SERVICE_IDS) {
+    const s = sim.services[id];
+    if (s.status !== 'open' || !s.queue.length) continue;
+    const fill = s.queue.length / Math.max(1, s.waitingRoom);
+    const short = s.staffOnSite < s.params.staff;
+    if (fill < 0.5 && !(short && fill >= 0.25)) continue;
+    if (now < (queueMarkAt[id] ?? 0)) continue;
+    queueMarkAt[id] = now + (fill >= 0.85 ? 3000 : 5000);
+    const f = footprintOf(id);
+    coins.mark({ x: f.x, z: f.z }, short || fill >= 0.85 ? 'queueShort' : 'queue');
+  }
+}
 // City cars stop for people crossing in front of them.
 world.setTrafficYield((x, z, dx, dz) => crowd.someoneAhead(x, z, dx, dz));
 sim.on((e) => {
@@ -521,6 +549,27 @@ function portraitOpen(): void {
   if (p) rig.lookAt(p.root.position);
 }
 
+// A posted officer's card says until when they stand there and why, and what would move them.
+setPoliceLine(() => {
+  const s = sim.policeStatus();
+  const at = s.until === null ? '' : formatClock(s.until);
+  const why = s.reason === 'event' ? t('Posted here till {time}: {event}.', { time: at, event: s.event ?? '' })
+    : s.reason === 'concession' ? t('Posted here till {time}: city hall asked for it.', { time: at })
+      : s.reason === 'policy' ? t('Posted here for as long as the city polices this way.')
+        : s.reason === 'away' ? t('Keeping their distance till {time}: your favour.', { time: at })
+          : s.reason === 'agreement' ? t('Keeping clear of your doors: your agreement with the police.')
+            : null;
+  // Officers on an ordinary round: nothing to explain.
+  if (why === null) return null;
+  // The card adds the closing full stop itself.
+  if (s.reason === 'away' || s.reason === 'agreement') return why.replace(/\.$/, '');
+  const steps = QUESTS.police.steps.length;
+  const done = sim.quests.police;
+  const favour = sim.favours > 0 ? t('A city hall favour sends them off for {h} hours (you hold {n}).', { h: FAVOUR.policeHours, n: sim.favours }) : t('A city hall favour would send them off for {h} hours (you hold none).', { h: FAVOUR.policeHours });
+  const ally = t('The police agreement keeps them off your doors for good: {done} of {steps} steps done, at the police station.', { done, steps });
+  return `${why} ${favour} ${ally}`.replace(/\.$/, '');
+});
+
 /** Opens the portrait's menu at (x, y): the selected person's actions, or yours. */
 function portraitMenu(x: number, y: number): void {
   if (portraitBox.dataset.who === 'player') {
@@ -696,6 +745,7 @@ function syncServiceVisuals(): void {
 
 function refreshHud(): void {
   checkBigEvent();
+  markQueues();
   refreshOverlay(mapLayers.kind);
   world.setParkLife(sim.neighbourhood.state.streetMarket, sim.context.patrol);
   // The warming bus and the water point are out only in the hours they work.
