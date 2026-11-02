@@ -56,6 +56,7 @@ import { Goals, type NightReport } from './goals';
 import { scenarioById } from '../config/scenarios';
 import { NIGHT_RAMP, ramp } from '../config/difficulty';
 import { Growth } from './growth';
+import { ChaosDaemon, DAEMON, type DaemonAnswer } from './chaosDaemon';
 import { SERVICE_IDS, WALK_IN_SERVICE_IDS, type ServiceId, type ServiceStatus, type WalkInServiceId } from './types';
 import { plural, t } from '../i18n';
 
@@ -330,6 +331,8 @@ export class Simulation {
   readonly vitality = new Vitality();
   /** How many people the district holds against the first evening, and how much of it is street scene (sim/growth.ts). */
   readonly growth = new Growth();
+  /** Someone in acute crisis roaming the street, when things are bad (sim/chaosDaemon.ts). */
+  readonly daemon = new ChaosDaemon();
   /** The street scene's band last announced (0 calm, 1 growing, 2 crisis), and whether all-shut was said. */
   private streetBand = 0;
   private allShutSaid = false;
@@ -889,6 +892,33 @@ export class Simulation {
   raid(arrests: number): void {
     for (let i = 0; i < arrests; i++) this.emit({ type: 'policeStop', arrest: true });
     this.triggerEvent('crackdown');
+  }
+
+  /**
+   * The player answers the person in crisis: outreach staff talk them down, the
+   * crisis team comes, or the police take them. Pays the price, rolls the odds,
+   * and says what happened (for the box and the feed). Null when nobody is
+   * roaming or the money is short.
+   */
+  answerDaemon(a: DaemonAnswer): string | null {
+    if (!this.daemon.active) return null;
+    const cost = DAEMON[a].cost;
+    if (cost > this.org.budget) return null;
+    this.org.budget -= cost;
+    if (a === 'police') {
+      this.cityStress.bump('police', 'daemon', DAEMON.police.load);
+      this.neighbourhood.state.reputation = Math.max(0, this.neighbourhood.state.reputation - DAEMON.police.reputation);
+    }
+    const ok = this.daemon.answer(a, this.org.now);
+    const text = ok
+      ? a === 'talk' ? t('Your outreach staff talked them down: water, a quiet corner, then a lift to the clinic.')
+        : a === 'crisisTeam' ? t('The crisis team calmed them and took them somewhere safe to come down.')
+          : t('The police took them in. The street is quieter; the people who saw it trust you a little less.')
+      : a === 'talk' ? t('They would not listen and ran off down the street, more worked up.')
+        : a === 'crisisTeam' ? t('The crisis team could not get near: they bolted.')
+          : t('They slipped away from the police and are still out there.');
+    this.org.notice(this.clockMinutes, text);
+    return text;
   }
 
   /** Uses the favour held: done now, and city hall will ask for a concession later. */
@@ -1582,6 +1612,28 @@ export class Simulation {
           : t('The street scene is easing.'));
         this.streetBand = streetBand;
       }
+    }
+    // Someone in acute crisis: turns up when the street is bad, loads the city while they roam, ends badly if left.
+    const daemonNews = this.daemon.tick(dt * this.minuteRate, this.org.now, { street: this.growth.street, crisis: this.crisis, nights: this.totals.nights });
+    if (this.daemon.active) {
+      const h = (dt * this.minuteRate) / 60;
+      const d = DAEMON.perHour;
+      this.cityStress.bump('police', 'daemon', d.police * h);
+      this.cityStress.bump('medics', 'daemon', d.medics * h);
+      const st = this.neighbourhood.state;
+      st.safety = Math.max(0, st.safety - d.safety * h);
+      st.reputation = Math.max(0, st.reputation - d.reputation * h);
+    }
+    if (daemonNews?.kind === 'arrived') {
+      this.org.notice(this.clockMinutes, t('Someone in acute crisis is roaming the street: wired, sleepless, frightened and frightening. The police and the medics are being called. Tap them to act.'));
+    } else if (daemonNews?.kind === 'endedAlone') {
+      const e = DAEMON.ending;
+      this.cityStress.bump('medics', 'daemon', e.medics);
+      this.cityStress.bump('police', 'daemon', e.police);
+      this.neighbourhood.state.reputation = Math.max(0, this.neighbourhood.state.reputation - e.reputation);
+      this.org.notice(this.clockMinutes, daemonNews.arrest
+        ? t('Nobody reached the person in crisis: the police held them down and took them in. People saw it.')
+        : t('Nobody reached the person in crisis: they collapsed in the street and the ambulance took them.'));
     }
     // Everything the organisation started with shut for money: said once, with the way back.
     const allShut = this.org.closedDown.size >= ORG.closeDownAfter.length;

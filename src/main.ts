@@ -3,6 +3,8 @@ import { TIRED } from './sim/team';
 import { locationOf, nextStep, type GuideView } from './game/guide';
 import { QUALITY } from './render/quality';
 import { Vector3, WebGLRenderer } from 'three';
+import { DaemonFigure } from './agents/daemonFigure';
+import { DAEMON, type DaemonAnswer } from './sim/chaosDaemon';
 import { cityBuilding } from './world/cityBuildings';
 import { LANG, LANG_KEY, t } from './i18n';
 import { ILLUSTRATIVE } from './config/illustrative';
@@ -885,6 +887,82 @@ function buildingDecision(action: string): Decision | null {
   return a?.cost ? { title: a.label, cost: a.cost, lines: a.detail ? [a.detail] : [] } : null;
 }
 
+/**
+ * Someone in acute crisis on the street (sim/chaosDaemon.ts): the figure roams the pavements
+ * (agents/daemonFigure.ts) with a tag over their head that opens the answers. When they turn up,
+ * the camera goes to them and the box opens; it waits if another box is open.
+ */
+const daemonFigure = new DaemonFigure(world.scene, () => sim.season);
+const daemonTag = document.createElement('button');
+daemonTag.type = 'button';
+daemonTag.className = 'daemon-tag';
+daemonTag.hidden = true;
+const daemonName = Object.assign(document.createElement('span'), { className: 'daemon-name', textContent: t('Person in crisis') });
+const daemonShout = Object.assign(document.createElement('span'), { className: 'daemon-shout' });
+daemonTag.append(daemonName, daemonShout);
+daemonTag.addEventListener('click', () => showDaemonBox());
+hudRoot.append(daemonTag);
+const DAEMON_SHOUTS = [t('Get away from me!'), t('They are following me!'), t('I have not slept in days!'), t('Do not touch me!'), t('Where is everybody going?')];
+let daemonOpenPending = false;
+let daemonShoutAt = 0;
+const daemonPoint = new Vector3();
+
+function updateDaemon(dt: number): void {
+  const active = sim.daemon.active;
+  if (active && !daemonFigure.shown) {
+    daemonFigure.setActive(true);
+    daemonFigure.update(0, reducedMotion.matches);
+    rig.lookAt(daemonPoint.set(daemonFigure.x, 0, daemonFigure.z));
+    daemonOpenPending = true;
+  } else if (!active && daemonFigure.shown) daemonFigure.setActive(false);
+  if (!daemonFigure.shown) return;
+  daemonFigure.update(dt, reducedMotion.matches);
+  if (daemonOpenPending && !document.querySelector('dialog[open]')) {
+    daemonOpenPending = false;
+    showDaemonBox();
+  }
+  placeDaemonTag();
+}
+
+/** Keeps the tag over their head, and shows a shouted line while they stop to shout. */
+function placeDaemonTag(): void {
+  const on = daemonFigure.shown;
+  if (daemonTag.hidden === on) daemonTag.hidden = !on;
+  if (!on) return;
+  const p = worldToClient(daemonPoint.set(daemonFigure.x, 2.3, daemonFigure.z), camera, pipeline.frame);
+  daemonTag.style.transform = `translate(${Math.round(p.x)}px, ${Math.round(p.y)}px) translate(-50%, -100%)`;
+  if (daemonFigure.shouting && !daemonShout.textContent) daemonShout.textContent = DAEMON_SHOUTS[daemonShoutAt++ % DAEMON_SHOUTS.length];
+  else if (!daemonFigure.shouting && daemonShout.textContent) daemonShout.textContent = '';
+}
+
+/** The answers, each with its price and odds; the box says what came of it. */
+function showDaemonBox(): void {
+  if (!sim.daemon.active || eventPopup.open) return;
+  rig.lookAt(daemonPoint.set(daemonFigure.x, 0, daemonFigure.z));
+  const pct = (a: DaemonAnswer) => Math.round(sim.daemon.chance(a) * 100);
+  const answer = (a: DaemonAnswer) => () => {
+    let text = '';
+    queueOrg(() => { text = sim.answerDaemon(a) ?? ''; });
+    applyPending();
+    return text;
+  };
+  eventPopup.show({
+    id: 'daemon',
+    title: t('Someone in acute crisis'),
+    lines: [
+      t('Wired, sleepless and terrified, they are striding the street shouting at people who are not there. Passers-by are scared, and the police and the medics are being pulled in.'),
+      t('Left alone, it ends badly within a few hours: a collapse or an arrest. A failed try makes the next one harder.'),
+    ],
+    eligible: () => true,
+    choices: [
+      { label: t('Send outreach staff to talk them down ({chance}%)', { chance: pct('talk') }), cost: DAEMON.talk.cost, helps: ['police', 'medics'], apply: answer('talk') },
+      { label: t('Call the mobile crisis team ({chance}%)', { chance: pct('crisisTeam') }), cost: DAEMON.crisisTeam.cost, helps: ['police', 'medics'], apply: answer('crisisTeam') },
+      { label: t('Call the police ({chance}%): costs trust', { chance: pct('police') }), apply: answer('police') },
+      { label: t('Not now'), apply: () => '' },
+    ],
+  }, sim.org.budget, (choice) => choice.apply(eventWorld));
+}
+
 const eventPopup = new EventPopup(document.body, (open) => {
   if (open) { pausedBeforeEvent = paused; setPaused(true); }
   else { if (!pausedBeforeEvent) setPaused(false); refreshOrg(); refreshHud(); }
@@ -1385,6 +1463,7 @@ function applyView(): void {
     points[id] = { ...worldToClient(loc.labelAnchor, camera, frame), below: loc.labelBelow };
   }
   hud.placeLabels(points);
+  placeDaemonTag();
   placeFxTags();
   placeThreatTags();
   hud.setViewChanged(!rig.atDefault);
@@ -1483,6 +1562,8 @@ function frame(now: number): void {
     marks.update(realDt);
     seasonProps.update(realDt * speed);
     if (flavour.packs.running) updateFlavour(realDt * speed);
+    // The person in crisis keeps a walking pace at any clock speed: at 16x they would only flicker past.
+    updateDaemon(realDt * Math.min(speed, 4));
     dirty = true;
     hudTimer -= realDt;
     if (hudTimer <= 0) {

@@ -19,6 +19,7 @@ const SERVICE_NAME: Record<ServiceId, string> = {
 const CAUSE: Record<Exclude<StressCause, `turnedAway:${string}`>, string> = {
   crime: t('Street crime the police answered'),
   scuffle: t('Scuffles at closing time'),
+  daemon: t('Someone in acute crisis on the street'),
   policeStop: t('Police stops'),
   drunk: t('Drunk club leavers'),
   overdoseAlone: t('Overdoses nobody reached in time'),

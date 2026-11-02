@@ -74,6 +74,8 @@ export interface SaveMore {
   funders?: { trust?: number; hours?: number[]; covered?: number };
   /** The district's size and street scene (sim/growth.ts); checked there on restore. Older saves start at the first evening's. */
   growth?: { size?: number; street?: number };
+  /** Someone in acute crisis on the street, if they are (sim/chaosDaemon.ts); checked there on restore. */
+  daemon?: { since?: number | null; fails?: number; quietUntil?: number };
   /** Nightly goals, stars and the scenario (sim/goals.ts); checked there on restore. */
   goals?: Partial<ReturnType<Goals['snapshot']>>;
   /** People turned away over the whole run (the night report's count). */
@@ -181,6 +183,7 @@ function captureMore(sim: Simulation): SaveMore {
     now: r3(now),
     funders: sim.funders.snapshot(),
     growth: sim.growth.snapshot(),
+    daemon: sim.daemon.snapshot(),
     goals: sim.goals.snapshot(),
     turnedAway: sim.turnedAwayTotal,
     org: {
@@ -281,6 +284,7 @@ function parseMore(raw: unknown): SaveMore | undefined {
   return {
     funders: obj(m.funders) as SaveMore['funders'],
     growth: obj(m.growth) as SaveMore['growth'],
+    daemon: obj(m.daemon) as SaveMore['daemon'],
     goals: obj(m.goals) as SaveMore['goals'],
     turnedAway: count(m.turnedAway),
     now: num(m.now, 0, 1e9, 0),
@@ -354,6 +358,7 @@ function applyMore(sim: Simulation, m: SaveMore): void {
   o.now = m.now;
   sim.funders.restore(m.funders);
   sim.growth.restore(m.growth);
+  sim.daemon.restore(m.daemon);
   sim.restoreGoals(m.goals);
   sim.turnedAwayTotal = m.turnedAway ?? 0;
   o.broke = m.org.broke;

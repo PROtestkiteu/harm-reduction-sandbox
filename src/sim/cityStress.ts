@@ -54,7 +54,7 @@ export type StressMeter = 'police' | 'medics' | 'sobering';
  * split by the service that turned people away.
  */
 export type StressCause =
-  | 'crime' | 'scuffle' | 'policeStop' | 'drunk' | 'overdoseAlone' | 'overdoseHelped' | 'exposure' | 'camp' | 'crisis'
+  | 'crime' | 'scuffle' | 'policeStop' | 'drunk' | 'overdoseAlone' | 'overdoseHelped' | 'exposure' | 'camp' | 'crisis' | 'daemon'
   | `turnedAway:${ServiceId}`;
 
 export class CityStress {
@@ -69,6 +69,12 @@ export class CityStress {
     this[meter] += amount;
     const m = this.recent[meter];
     m.set(cause, (m.get(cause) ?? 0) + amount);
+  }
+
+  /** Load from outside the usual events (someone in acute crisis roaming the street): `amount` on `meter`, as `cause`. */
+  bump(meter: StressMeter, cause: StressCause, amount: number): void {
+    this.add(meter, cause, amount);
+    this.clamp();
   }
 
   /** What is pushing `meter` up now, largest first, as shares of the recent total (0..1). */

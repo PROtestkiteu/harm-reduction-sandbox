@@ -2299,3 +2299,21 @@ button.event-card:focus-visible { outline: 2px solid var(--focus); outline-offse
 }
 .event-detail .sources { margin: 8px 0 14px; font-size: 13px; }
 .event-detail .sources > summary { cursor: pointer; color: var(--muted); min-height: 36px; display: flex; align-items: center; }
+
+/* The person in crisis: a red tag over their head that opens the answers, with what they shout under it. */
+.daemon-tag {
+  position: absolute; left: 0; top: 0; z-index: 2;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  min-height: 44px; min-width: 44px; padding: 4px 10px;
+  background: none; border: 0; cursor: pointer; pointer-events: auto;
+  font: 600 13px var(--body); color: #fff; text-shadow: var(--outline);
+  -webkit-tap-highlight-color: transparent;
+}
+.daemon-tag[hidden] { display: none; }
+.daemon-name { padding: 3px 9px; border-radius: 999px; background: #c8322a; box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.55); animation: daemon-pulse 1.2s ease-in-out infinite; }
+.daemon-name::before { content: '!'; display: inline-block; margin-right: 6px; font-weight: 800; }
+.daemon-shout { font: italic 500 14px var(--body); white-space: nowrap; }
+.daemon-shout:empty { display: none; }
+.daemon-tag:focus-visible .daemon-name { outline: 2px solid var(--focus); outline-offset: 2px; }
+@keyframes daemon-pulse { 50% { box-shadow: 0 0 0 5px rgba(200, 50, 42, 0.35); } }
+@media (prefers-reduced-motion: reduce) { .daemon-name { animation: none; } }
