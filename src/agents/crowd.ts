@@ -260,6 +260,11 @@ export class Crowd {
     return a && this.view(a);
   }
 
+  /** Visits every person drawn with their ground position and role, allocating nothing (map overlays, every frame). */
+  forEachVisiblePosition(visit: (x: number, z: number, role: PersonRole) => void): void {
+    for (const a of this.agents.values()) if (a.visible) visit(a.pos.x, a.pos.z, a.role);
+  }
+
   /** Visits every person currently drawn, for picking. */
   forEachVisible(visit: (p: PersonState) => void): void {
     for (const a of this.agents.values()) if (a.visible) visit(this.view(a));

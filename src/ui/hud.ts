@@ -270,6 +270,8 @@ export class Hud {
   private readonly worksFill: HTMLSpanElement;
   private readonly worksText: HTMLSpanElement;
   private readonly speedBtn: HTMLButtonElement;
+  /** The clock's row: the speed toggle, and room for the map's layers button. */
+  readonly timeRow: HTMLElement;
   private readonly money: HTMLElement;
   /** City hall favours held, beside the money: a small icon and the count. */
   private readonly favourCount: HTMLButtonElement;
@@ -364,6 +366,7 @@ export class Hud {
     this.speedBtn = button('speed-toggle', '1x');
     this.speedBtn.addEventListener('click', () => cb.onSpeed(this.paused ? SPEEDS[0] : this.speed === SPEEDS[SPEEDS.length - 1] ? 0 : SPEEDS[SPEEDS.indexOf(this.speed as (typeof SPEEDS)[number]) + 1]));
     const time = el('div', 'column-time');
+    this.timeRow = time;
     time.append(this.clock, this.speedBtn);
     // Money on hand, always in view: everything priced is greyed out when it runs short.
     this.money = el('span', 'money');

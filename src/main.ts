@@ -3,6 +3,10 @@ import { locationOf, nextStep, type GuideView } from './game/guide';
 import { QUALITY } from './render/quality';
 import { Vector3, WebGLRenderer } from 'three';
 import { DaemonFigure } from './agents/daemonFigure';
+import type { PersonRole } from './agents/crowd';
+import { MapOverlays } from './world/mapOverlays';
+import { MapLayers, type OverlayKind } from './ui/mapLayers';
+import { OTHER_COLOUR, ROLE_COLOUR, overlayView } from './game/overlayData';
 import { DAEMON, type DaemonAnswer } from './sim/chaosDaemon';
 import { cityBuilding } from './world/cityBuildings';
 import { LANG, LANG_KEY, t } from './i18n';
@@ -680,6 +684,7 @@ function syncServiceVisuals(): void {
 
 function refreshHud(): void {
   checkBigEvent();
+  refreshOverlay(mapLayers.kind);
   world.setParkLife(sim.neighbourhood.state.streetMarket, sim.context.patrol);
   // The warming bus and the water point are out only in the hours they work.
   const exposure = exposureNow(sim.season, sim.clockMinutes, sim.events.isActive('coldNight'));
@@ -1022,6 +1027,38 @@ function placeDaemonTag(): void {
   if (daemonFigure.shouting && !daemonShout.textContent) daemonShout.textContent = DAEMON_SHOUTS[daemonShoutAt++ % DAEMON_SHOUTS.length];
   else if (!daemonFigure.shouting && daemonShout.textContent) daemonShout.textContent = '';
 }
+
+/**
+ * Map overlays (src/ui/mapLayers.ts, world/mapOverlays.ts, game/overlayData.ts): a layers button beside
+ * the speed toggle picks one view of the district's numbers. Ground marks and the legend follow the HUD's
+ * refresh; the people dots move every frame while Who is where is on. Off, none of it runs.
+ */
+const overlays = new MapOverlays(world.scene);
+const peopleByRole = new Map<PersonRole, number>();
+function refreshOverlay(kind: OverlayKind): void {
+  overlays.visible = kind !== 'off';
+  if (kind === 'off') return;
+  const view = overlayView(kind, sim, world, { daemon: daemonFigure.shown ? { x: daemonFigure.x, z: daemonFigure.z } : null, people: peopleByRole });
+  overlays.setMarks(view.marks);
+  mapLayers.setLegend(view.legend);
+  dirty = true;
+}
+function updatePeopleOverlay(): void {
+  if (mapLayers.kind !== 'people') return;
+  peopleByRole.clear();
+  overlays.beginPeople();
+  crowd.forEachVisiblePosition((x, z, role) => {
+    overlays.person(x, z, ROLE_COLOUR[role] ?? OTHER_COLOUR);
+    peopleByRole.set(role, (peopleByRole.get(role) ?? 0) + 1);
+  });
+  overlays.endPeople();
+}
+const mapLayers = new MapLayers(hudRoot, (kind) => {
+  if (kind !== 'people') overlays.clearPeople();
+  else updatePeopleOverlay();
+  refreshOverlay(kind);
+}, (x, y, title, items) => actionMenu.show(x, y, title, items));
+hud.timeRow.append(mapLayers.button);
 
 /** The answers, each with its price and odds; the box says what came of it. */
 function showDaemonBox(): void {
@@ -1669,6 +1706,7 @@ function frame(now: number): void {
     if (flavour.packs.running) updateFlavour(realDt * speed);
     // The person in crisis keeps a walking pace at any clock speed: at 16x they would only flicker past.
     updateDaemon(realDt * Math.min(speed, 4));
+    updatePeopleOverlay();
     dirty = true;
     hudTimer -= realDt;
     if (hudTimer <= 0) {
