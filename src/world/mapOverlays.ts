@@ -19,6 +19,8 @@ export interface GroundMark {
   alpha: number;
   /** A ring (an outline) instead of a filled disc. */
   ring?: boolean;
+  /** Height in metres, for a mark over a roof; on the ground by default. */
+  y?: number;
 }
 
 const DISCS = 48;
@@ -68,7 +70,7 @@ export class MapOverlays {
       const mesh = k.ring ? this.rings[r++] : this.fills[f++];
       if (!mesh) continue;
       mesh.visible = true;
-      mesh.position.set(k.x, Y, k.z);
+      mesh.position.set(k.x, k.y ?? Y, k.z);
       mesh.scale.setScalar(Math.max(0.1, k.r));
       mesh.material.color.setHex(k.color);
       mesh.material.opacity = k.alpha;

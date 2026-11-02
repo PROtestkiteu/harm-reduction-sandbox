@@ -2389,6 +2389,10 @@ body:has(.sandbox-body:not([hidden])) .layers-toggle { display: none; }
 .map-legend h3 { margin: 0; font: 600 12px var(--body); text-transform: uppercase; letter-spacing: 0.06em; color: #edb300; }
 .map-legend ul { list-style: none; margin: 2px 0 0; padding: 0; display: grid; gap: 3px; }
 .map-legend li { display: flex; align-items: baseline; gap: 7px; }
+.map-legend li:has(> .legend-go) { display: block; }
+.map-legend .legend-go { display: flex; align-items: baseline; gap: 7px; width: 100%; min-height: 26px; padding: 3px 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.map-legend .legend-go::after { content: '›'; margin-left: auto; padding-left: 6px; color: #edb300; font-weight: 700; }
+.map-legend .legend-go:hover, .map-legend .legend-go:focus-visible { color: #fff; text-decoration: underline; text-underline-offset: 2px; }
 .map-legend .swatch { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--c); transform: translateY(1px); }
 .map-legend .swatch.ring { background: none; box-shadow: inset 0 0 0 2px var(--c); }
 /* Phones: under the top bar on the right, clear of the title and your portrait. */
@@ -2398,6 +2402,7 @@ body:has(.sandbox-body:not([hidden])) .layers-toggle { display: none; }
 }
 @media (max-width: 760px) {
   .map-legend li.minor { display: none; }
+  .map-legend .legend-go { min-height: 34px; align-items: center; }
   .map-legend { font-size: 11.5px; line-height: 1.3; padding: 4px 8px 6px; max-height: 34dvh; overflow-y: auto; }
 }
 

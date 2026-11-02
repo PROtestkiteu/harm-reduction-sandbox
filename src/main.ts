@@ -609,15 +609,20 @@ function portraitOpen(): void {
 }
 
 // A posted officer's card says until when they stand there and why, and what would move them.
-setPoliceLine(() => {
+/** Why the police stand where they do, and till when: null on an ordinary round. */
+function policeWhy(): string | null {
   const s = sim.policeStatus();
   const at = s.until === null ? '' : formatClock(s.until);
-  const why = s.reason === 'event' ? t('Posted here till {time}: {event}.', { time: at, event: s.event ?? '' })
+  return s.reason === 'event' ? t('Posted here till {time}: {event}.', { time: at, event: s.event ?? '' })
     : s.reason === 'concession' ? t('Posted here till {time}: city hall asked for it.', { time: at })
       : s.reason === 'policy' ? t('Posted here for as long as the city polices this way.')
         : s.reason === 'away' ? t('Keeping their distance till {time}: your favour.', { time: at })
           : s.reason === 'agreement' ? t('Keeping clear of your doors: your agreement with the police.')
             : null;
+}
+setPoliceLine(() => {
+  const s = sim.policeStatus();
+  const why = policeWhy();
   // Officers on an ordinary round: nothing to explain.
   if (why === null) return null;
   // The card adds the closing full stop itself.
@@ -1159,26 +1164,34 @@ const peopleByRole = new Map<PersonRole, number>();
 function refreshOverlay(kind: OverlayKind): void {
   overlays.visible = kind !== 'off';
   if (kind === 'off') return;
-  const view = overlayView(kind, sim, world, { daemon: daemonFigure.shown ? { x: daemonFigure.x, z: daemonFigure.z } : null, people: peopleByRole });
+  const view = overlayView(kind, sim, world, { daemon: daemonFigure.shown ? { x: daemonFigure.x, z: daemonFigure.z } : null, people: peopleByRole, policeWhy: kind === 'police' ? policeWhy() : null });
   overlays.setMarks(view.marks);
   mapLayers.setLegend(view.legend);
   dirty = true;
 }
 function updatePeopleOverlay(): void {
-  if (mapLayers.kind !== 'people') return;
+  const kind = mapLayers.kind;
+  if (kind !== 'people' && kind !== 'police') return;
   peopleByRole.clear();
   overlays.beginPeople();
   crowd.forEachVisiblePosition((x, z, role) => {
-    overlays.person(x, z, ROLE_COLOUR[role] ?? OTHER_COLOUR);
     peopleByRole.set(role, (peopleByRole.get(role) ?? 0) + 1);
+    // The police view shows the officers only.
+    if (kind === 'police' && role !== 'police') return;
+    overlays.person(x, z, ROLE_COLOUR[role] ?? OTHER_COLOUR);
   });
   overlays.endPeople();
 }
 const mapLayers = new MapLayers(hudRoot, (kind) => {
-  if (kind !== 'people') overlays.clearPeople();
+  if (kind !== 'people' && kind !== 'police') overlays.clearPeople();
   else updatePeopleOverlay();
   refreshOverlay(kind);
-}, (x, y, title, items) => actionMenu.show(x, y, title, items));
+}, (x, y, title, items) => actionMenu.show(x, y, title, items), (x, z) => {
+  // Not closer than the opening view; a place past the edge the camera can pan to (the city's own
+  // buildings) is brought in by zooming out instead.
+  const past = Math.max(Math.abs(x), Math.abs(z)) > DISTRICT - 4;
+  rig.lookAt(new Vector3(x, 0, z), Math.min(rig.zoom, past ? 0.5 : 1));
+});
 // A round button of its own over the map, clear of the top bar and the panel.
 hudRoot.append(mapLayers.button);
 

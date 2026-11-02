@@ -1,14 +1,18 @@
 import { t } from '../i18n';
 import type { MenuItem } from './actionMenu';
 
-/** The map overlays: off, or one of four views of the district's numbers. */
-export type OverlayKind = 'off' | 'load' | 'people' | 'street' | 'reach';
+/** The map overlays: off, or one of the views of the district's numbers. */
+export type OverlayKind = 'off' | 'load' | 'staff' | 'people' | 'police' | 'street' | 'shops' | 'city' | 'reach';
 
 const LABEL: Record<OverlayKind, string> = {
   off: t('No overlay'),
   load: t('Services load'),
+  staff: t('Staffing'),
   people: t('Who is where'),
+  police: t('Police'),
   street: t('Street scene'),
+  shops: t('Shops and property'),
+  city: t('City institutions'),
   reach: t('Reach'),
 };
 
@@ -20,6 +24,8 @@ export interface LegendRow {
   /** A line of little weight (a closed service): left out on small screens. */
   minor?: boolean;
   text: string;
+  /** Where on the map it is: the line becomes a button that takes the camera there. */
+  at?: { x: number; z: number };
 }
 
 const KEY = 'hrp-overlay';
@@ -29,7 +35,8 @@ const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
  * The layers button floating over the map and the legend that goes with an
  * overlay. The button opens a menu of the overlays (the one on is marked);
  * the legend says what the colours mean and the numbers behind them; pressing
- * the button again turns the overlay off. The choice is remembered on this device.
+ * the button again turns the overlay off. A line naming a place takes the camera
+ * there. The choice is remembered on this device.
  */
 export class MapLayers {
   readonly button: HTMLButtonElement;
@@ -39,7 +46,7 @@ export class MapLayers {
   private rowsKey = '';
   kind: OverlayKind = 'off';
 
-  constructor(parent: HTMLElement, private readonly onChange: (kind: OverlayKind) => void, openMenu: (x: number, y: number, title: string, items: MenuItem[]) => void) {
+  constructor(parent: HTMLElement, private readonly onChange: (kind: OverlayKind) => void, openMenu: (x: number, y: number, title: string, items: MenuItem[]) => void, private readonly focus: (x: number, z: number) => void) {
     this.button = document.createElement('button');
     this.button.type = 'button';
     this.button.className = 'layers-toggle';
@@ -113,19 +120,26 @@ export class MapLayers {
 
   /** The legend's lines; the DOM is touched only when they changed. */
   setLegend(rows: readonly LegendRow[]): void {
-    const key = rows.map((r) => `${r.color ?? ''}|${r.ring ?? ''}|${r.minor ?? ''}|${r.text}`).join('\n');
+    const key = rows.map((r) => `${r.color ?? ''}|${r.ring ?? ''}|${r.minor ?? ''}|${r.at ? `${r.at.x},${r.at.z}` : ''}|${r.text}`).join('\n');
     if (key === this.rowsKey) return;
     this.rowsKey = key;
     this.rows.replaceChildren(...rows.map((r) => {
       const li = document.createElement('li');
       if (r.minor) li.className = 'minor';
+      // A line with a place becomes a button that shows it, as the place may be off screen.
+      const box = r.at ? Object.assign(document.createElement('button'), { type: 'button', className: 'legend-go', title: t('Show on the map') }) : li;
       if (r.color !== undefined) {
         const sw = document.createElement('span');
         sw.className = r.ring ? 'swatch ring' : 'swatch';
         sw.style.setProperty('--c', hex(r.color));
-        li.append(sw);
+        box.append(sw);
       }
-      li.append(document.createTextNode(r.text));
+      box.append(document.createTextNode(r.text));
+      if (r.at) {
+        const { x, z } = r.at;
+        box.addEventListener('click', () => this.focus(x, z));
+        li.append(box);
+      }
       return li;
     }));
   }
