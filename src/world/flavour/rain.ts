@@ -182,7 +182,8 @@ export function buildWeather({ scene, random, camera, setWetness, pool }: PackDe
       // Weather comes and goes over several seconds.
       rainAmount = Math.min(1, Math.max(0, rainAmount + (wantRain ? dt : -dt) / 8));
       fogAmount = Math.min(1, Math.max(0, fogAmount + (wantFog ? dt : -dt) / 12));
-      rain.visible = enabled && rainAmount > 0.01;
+      // Reduced motion: no falling drops (drops hanging in the air read as a fault), only the wet streets.
+      rain.visible = enabled && rainAmount > 0.01 && !ctx.still;
       fog.visible = enabled && fogAmount > 0.01;
       setWetness(RAIN.wetness * rainAmount);
       if (!rain.visible && !fog.visible) return;
@@ -191,7 +192,7 @@ export function buildWeather({ scene, random, camera, setWetness, pool }: PackDe
       const dist = camera.position.y / Math.max(0.2, -right.y);
       centre.set(camera.position.x + right.x * dist, camera.position.z + right.z * dist);
       if (rain.visible) {
-        if (!ctx.still) u.uTime.value += dt;
+        u.uTime.value += dt;
         u.uCenter.value.copy(centre);
         u.uRight.value.set(right.z, 0, -right.x).normalize();
         u.uAmount.value = rainAmount * 0.999;

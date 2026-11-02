@@ -2206,3 +2206,53 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
   .portrait { width: 96px; bottom: max(10px, env(safe-area-inset-bottom)); }
   .portrait figcaption { font-size: 12px; }
 }
+
+/* The welcome as three pages: a step count, Back beside Next. */
+.intro { font-size: 17px; }
+.intro-step { margin: 0 0 4px; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.intro ul { gap: 8px; margin-bottom: 18px; }
+.intro .player-badge { margin: 8px 0 12px; }
+.intro-nav { display: flex; gap: 10px; }
+.intro-nav .welcome-start { flex: 1; }
+.intro-nav .intro-back { flex: 0 0 34%; background: none; color: var(--reply); border: 1px solid currentColor; }
+.intro-nav [hidden] { display: none; }
+
+/*
+ * Tonight's goals as a quest card: a gold rule down the side, the heading and the stars in gold,
+ * the lines at reading size, a met goal in gold. Larger news lines too.
+ */
+.goals-strip { margin-top: 8px; padding: 2px 0 4px 10px; border-left: 3px solid var(--reply); font-size: 15px; }
+.goals-head { color: var(--reply); font-size: 13px; font-weight: 600; }
+.goals-stars { font-size: 16px; }
+.goals-strip li { color: var(--text); }
+.goals-strip li[data-met='true'] { color: var(--reply); }
+.notice-strip { font-size: 14px; }
+
+/* The first night's walk-through: the guide's line stands out in a gold-ruled box. */
+.column[data-mode='idle'][data-tutorial='true'] .line {
+  padding: 6px 10px 8px;
+  border-left: 3px solid var(--reply);
+  background: color-mix(in srgb, var(--reply) 12%, transparent);
+  font-size: 17px;
+}
+.column[data-mode='idle'][data-tutorial='true'] .speaker { color: var(--reply); }
+/* The control a step names glows gold until it is used. */
+#hud[data-guide='try:speed'] .speed-toggle,
+#hud[data-guide='try:org'] .money-btn { outline: 2px solid var(--reply); outline-offset: 4px; border-radius: 3px; animation: guide-glow 1.6s ease-in-out infinite; }
+@keyframes guide-glow { 50% { outline-color: transparent; } }
+@media (prefers-reduced-motion: reduce) {
+  #hud[data-guide='try:speed'] .speed-toggle, #hud[data-guide='try:org'] .money-btn { animation: none; }
+}
+
+/* Larger reading text on small screens. */
+@media (max-width: 760px), (max-height: 520px) {
+  .column[data-mode='idle'] .line { font-size: 16px; }
+  .column[data-mode='idle'][data-tutorial='true'] .line { font-size: 17px; }
+  .goals-head { min-height: 36px; font-size: 13px; }
+  .notice-strip li { color: var(--text); }
+}
+@media (min-width: 761px) and (max-height: 520px) {
+  .column { font-size: 15px; }
+  .column .line { font-size: 16px; }
+}
+.welcome-lead[hidden] { display: none; }

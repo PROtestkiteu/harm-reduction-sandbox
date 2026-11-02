@@ -307,6 +307,7 @@ const hud = new Hud(hudRoot, {
   onSpeed: (s) => {
     speed = s;
     hud.setSpeed(s);
+    if (s > 1) markTried('speed');
     if (paused) setPaused(false);
   },
   onService: (id, on) => {
@@ -1076,7 +1077,7 @@ sim.on((e) => {
 /** First steps the guide asks for once, remembered per viewer so a returning player is not walked through them again. */
 const TRIED_KEY = 'hrp-guide-tried';
 const tried = ((): GuideView['tried'] => {
-  try { return { place: false, person: false, org: false, ...JSON.parse(localStorage.getItem(TRIED_KEY) ?? '{}') }; } catch { return { place: false, person: false, org: false }; }
+  try { return { place: false, person: false, org: false, speed: false, ...JSON.parse(localStorage.getItem(TRIED_KEY) ?? '{}') }; } catch { return { place: false, person: false, org: false, speed: false }; }
 })();
 function markTried(k: keyof GuideView['tried']): void {
   if (tried[k]) return;

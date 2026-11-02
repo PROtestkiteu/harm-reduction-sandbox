@@ -903,8 +903,13 @@ export class Hud {
   private showGuide(): void {
     const g = this.guide;
     if (!g) return;
-    setText(this.speaker, g.who);
+    const tut = g.step.tutorial;
+    setText(this.speaker, tut ? t('{who}: first steps, {n} of {all}', { who: g.who, n: tut.n, all: tut.of }) : g.who);
     setText(this.said, g.step.said);
+    const tutorial = String(!!tut);
+    if (this.column.dataset.tutorial !== tutorial) this.column.dataset.tutorial = tutorial;
+    // The control a walk-through step names is lit up (the money, the speed toggle).
+    if (this.root.dataset.guide !== g.step.id) this.root.dataset.guide = g.step.id;
     const alert = String(!!g.step.urgent);
     if (this.said.dataset.alert !== alert) this.said.dataset.alert = alert;
     if (g.step.act) {
@@ -1446,6 +1451,7 @@ export class Hud {
     this.idle.hidden = m !== null;
     (this.speaker.parentElement as HTMLElement).hidden = m === null && !this.guide;
     if (m === null) this.showGuide();
+    else delete this.root.dataset.guide;
     this.aside.hidden = m?.kind !== 'person';
     this.buildingView.hidden = m?.kind !== 'building';
     this.buildingChips.hidden = m?.kind !== 'building' || !this.buildingChips.childElementCount;

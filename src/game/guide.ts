@@ -24,6 +24,8 @@ export interface GuideStep {
   act?: GuideAct & { label: string; short: string };
   /** Something is going wrong now: the line is shown in the alert colour. */
   urgent?: boolean;
+  /** A step of the first night's walk-through: which of how many. */
+  tutorial?: { n: number; of: number };
 }
 
 export interface GuideView {
@@ -49,7 +51,7 @@ export interface GuideView {
   /** A place's name as the player sees it (they may have renamed it). */
   placeName(id: LocationId): string;
   /** First steps the player has taken (kept per viewer). */
-  tried: { place: boolean; person: boolean; org: boolean };
+  tried: { place: boolean; person: boolean; org: boolean; speed: boolean };
 }
 
 export const locationOf = (s: ServiceId): LocationId => (s === 'clubHr' ? 'club' : s);
@@ -76,18 +78,25 @@ export function nextStep(v: GuideView): GuideStep {
   if (v.netPerHour < 0 && v.budget < -v.netPerHour * 4) {
     return { id: 'short', urgent: true, said: t('Money runs out in about {h} hours at this rate. Raise some, or trim a shift.', { h: Math.max(1, Math.floor(v.budget / -v.netPerHour)) }), act: orgAct };
   }
+  // The first night, before anything but money: the four things every player needs to have tried once,
+  // in order, numbered. A returning player who has tried them is never walked through again.
+  if (v.nights === 0) {
+    const steps: (keyof GuideView['tried'])[] = ['place', 'person', 'org', 'speed'];
+    const k = steps.findIndex((s) => !v.tried[s]);
+    const tutorial = { n: k + 1, of: steps.length };
+    switch (steps[k]) {
+      case 'place': return { id: 'try:place', tutorial, said: t('First, look at the drop-in centre: who is waiting, and who is on shift.'), act: placeAct('dropIn', t('Go to the drop-in centre.'), t('Drop-in.')) };
+      case 'person': return { id: 'try:person', tutorial, said: t('Now tap someone walking on the street to see who they are and what they need.') };
+      case 'org': return { id: 'try:org', tutorial, said: t('Our team, money and grants are under My organisation. Tap the money at the top, or here.'), act: orgAct };
+      case 'speed': return { id: 'try:speed', tutorial, said: t('That is the basics. Aim for tonight\'s goals, in gold. When you are ready, speed up the clock with the 1x button.') };
+    }
+  }
   const red = v.red[0];
   if (red) {
     const act = red.place
       ? placeAct(red.place, t('Go to {place}, where it comes from.', { place: v.placeName(red.place) }), t('Go there.'))
       : { kind: 'meter' as const, need: red.need, label: t('See what is pushing it.'), short: t('Why?') };
     return { id: `red:${red.need}:${red.place ?? ''}`, urgent: true, said: METER[red.need], act };
-  }
-  // The first night: the three things every player needs to have tried once.
-  if (v.nights === 0) {
-    if (!v.tried.place) return { id: 'try:place', said: t('First, look at the drop-in centre: who is waiting, and who is on shift.'), act: placeAct('dropIn', t('Go to the drop-in centre.'), t('Drop-in.')) };
-    if (!v.tried.person) return { id: 'try:person', said: t('Tap someone on the street to see who they are and what they need.') };
-    if (!v.tried.org) return { id: 'try:org', said: t('Our team, money and grants are under My organisation.'), act: orgAct };
   }
   const { service, queue, room } = v.busiest;
   if (room > 0 && queue >= Math.max(3, room * 0.75)) {
