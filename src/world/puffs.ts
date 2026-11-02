@@ -35,7 +35,7 @@ const FRAGMENT = /* glsl */ `
     float r = dot(c, c) * 4.0;
     if (r > 1.0 || vFade <= 0.0) discard;
     // A soft falloff from the middle, so a puff reads as a wisp rather than a disc.
-    float soft = (1.0 - r) * (1.0 - r);
+    float soft = (1.0 - r) * (1.0 - r) * (1.0 - r);
     gl_FragColor = vec4(vTint.rgb, vTint.a * vFade * soft);
   }
 `;
@@ -121,10 +121,10 @@ export class Puffs {
   exhaust(x: number, z: number, hx: number, hz: number, speed: number, big = false): void {
     const back = big ? 4.6 : 2.3;
     const side = big ? 0.8 : 0.45;
-    const a = (0.25 + 0.45 * this.cold) * (speed < 0.5 ? 1.2 : 1);
+    const a = (0.16 + 0.3 * this.cold) * (speed < 0.5 ? 1.2 : 1);
     this.emit('exhaust', x - hx * back + hz * side, 0.32, z - hz * back - hx * side,
-      -hx * (0.3 + speed * 0.08) + (Math.random() - 0.5) * 0.2, 0.25 + Math.random() * 0.15, -hz * (0.3 + speed * 0.08) + (Math.random() - 0.5) * 0.2,
-      1.1 + this.cold * 0.8, big ? 0.35 : 0.22, big ? 0.9 : 0.55, a);
+      -hx * (0.3 + speed * 0.08) + (Math.random() - 0.5) * 0.2, 0.1 + Math.random() * 0.08, -hz * (0.3 + speed * 0.08) + (Math.random() - 0.5) * 0.2,
+      1.0 + this.cold * 0.7, big ? 0.28 : 0.18, big ? 0.6 : 0.38, a);
   }
 
   /** Grit from the wheels of a vehicle braking or pulling away at (x, z) with heading (hx, hz). */

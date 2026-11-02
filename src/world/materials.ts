@@ -63,10 +63,19 @@ function paintSurface(shader: WebGLProgramParametersWithUniforms, moving = false
         // Snow settles on what faces up: roofs, ledges, kerbs, car roofs. On
         // the street it is trodden into grey slush.
         float up = smoothstep(0.55, 0.9, vPaintN.y);
-        float drifts = smoothstep(0.3, 0.62, pFbm(vPaintPos.xz * 0.55) + uSnow * 0.3);
+        // Up close (a world pixel under a few centimetres) the drifts get crisp edges, broken up by finer
+        // noise, and the snow its own grain; far out they stay soft, so nothing shimmers.
+        float spx = max(fwidth(vPaintPos.x), fwidth(vPaintPos.z));
+        float fine = 1.0 - smoothstep(0.03, 0.12, spx);
+        float field = pFbm(vPaintPos.xz * 0.55) + uSnow * 0.3
+          + fine * (0.2 * (pNoise(vPaintPos.xz * 6.5) - 0.5) + 0.1 * (pNoise(vPaintPos.xz * 19.0) - 0.5));
+        float edge = mix(0.16, 0.035, fine);
+        float drifts = smoothstep(0.46 - edge, 0.46 + edge, field);
         float street = 1.0 - smoothstep(0.06, 0.3, vPaintPos.y);
         float cover = up * drifts * uSnow * mix(1.0, 0.5, street);
-        diffuseColor.rgb = mix(diffuseColor.rgb, mix(vec3(0.8, 0.82, 0.86), vec3(0.46, 0.46, 0.48), street), cover);
+        vec3 snow = mix(vec3(0.8, 0.82, 0.86), vec3(0.46, 0.46, 0.48), street);
+        snow *= 1.0 - fine * 0.09 * pNoise(vPaintPos.xz * 26.0);
+        diffuseColor.rgb = mix(diffuseColor.rgb, snow, cover);
       }`,
     )
     .replace(
@@ -105,6 +114,8 @@ function paintSurface(shader: WebGLProgramParametersWithUniforms, moving = false
         #endif
         col *= 1.0 + mottle * 0.32;
         col += vec3(0.02, 0.008, -0.012) * mottle * 2.0;
+        // Up close the broad mottle alone reads as a blurred smear: a finer grain of it comes in with the detail.
+        col *= 1.0 + detail * 0.1 * (pNoise(q * 5.5) - 0.5) + detail * 0.06 * (pNoise(q * 16.0) - 0.5);
         bool emissive = dot(totalEmissiveRadiance, vec3(1.0)) > 0.001;
         if (wall) {
           float streak = pNoise(vec2(q.x * 3.2, q.y * 0.35)) - 0.5;
