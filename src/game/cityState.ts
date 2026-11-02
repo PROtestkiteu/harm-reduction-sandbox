@@ -156,6 +156,12 @@ export class CityCards {
         renamable: true,
       };
     }
+    if (id === world.school) {
+      return { title: displayName('building', id, t('Primary school')), said: t('Children\'s drawings in the windows. Quiet at night.'), facts: [], renamable: true };
+    }
+    if (id === world.library) {
+      return { title: displayName('building', id, t('Public library')), said: t('Free to all, warm, with toilets: people with nowhere to go spend the day here.'), facts: [], renamable: true };
+    }
     if (id === world.bookshop) {
       return {
         title: displayName('building', id, t('Bookshop')),

@@ -15,6 +15,8 @@ async () => {
   const cy = await import('/src/config/flavour/cycling.ts');
   const pe = await import('/src/config/flavour/pets.ts');
   const de = await import('/src/config/flavour/decor.ts');
+  const ki = await import('/src/config/flavour/kids.ts');
+  const pi = await import('/src/config/flavour/pioneers.ts');
   const items = [];
   const add = (name, p, r = 0.35, still = true) => items.push({ name, x: p.x, z: p.z, r, still });
   st.DEAL_SPOTS.forEach((d, i) => { add('dealer' + i, d.at); if (d.lookout) add('lookout' + i, d.lookout); });
@@ -61,7 +63,7 @@ async () => {
     out.push({ n: it.name, clear: +best.toFixed(2), edge, inBuilding: inB });
   }
   // The guard round and the moving actors' lines: closest approach to the crowd's lines.
-  const lines = [...gd.GUARD_ROUND.map((p, i, r) => ['guard', p, r[(i + 1) % r.length]]), ...st.DEAL_SPOTS.map((d, i) => ['approach' + i, d.approach[0], d.approach[1]]), ...sp.PICKPOCKET_BEATS.map((b, i) => ['pickpocket' + i, b.from, b.to]), ...sp.PICKPOCKET_BEATS.map((b, i) => ['pickpocketAway' + i, b.from, b.away]), ...pe.DOG_WALKS.map((w, i) => ['dogWalk' + i, w.from, w.to])];
+  const lines = [...gd.GUARD_ROUND.map((p, i, r) => ['guard', p, r[(i + 1) % r.length]]), ...st.DEAL_SPOTS.map((d, i) => ['approach' + i, d.approach[0], d.approach[1]]), ...sp.PICKPOCKET_BEATS.map((b, i) => ['pickpocket' + i, b.from, b.to]), ...sp.PICKPOCKET_BEATS.map((b, i) => ['pickpocketAway' + i, b.from, b.away]), ...pe.DOG_WALKS.map((w, i) => ['dogWalk' + i, w.from, w.to]), ...ki.FAMILIES.map((f, i) => ['family' + i, f.from, f.to]), ...pi.PIONEER_WALK.slice(1).map((p, i) => ['pioneers' + i, pi.PIONEER_WALK[i], p])];
   for (const [n, a, b] of lines) {
     let best = Infinity, edge = '';
     for (let k = 0; k <= 40; k++) { const p = { x: a.x + (b.x - a.x) * k / 40, z: a.z + (b.z - a.z) * k / 40 }; for (const [e0, e1] of L.EDGES) { const d = seg(p, L.NODES[e0], L.NODES[e1]) - BAND - 0.3; if (d < best) { best = d; edge = e0 + '-' + e1; } } }

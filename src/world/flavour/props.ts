@@ -15,7 +15,7 @@ const glint = glowMat(0x9ab0b8, 0x6a8898, 0.5);
 const lamp = glowMat(0xfff4dc, 0xfff0d0, 1.2);
 
 /** Bakes the prop into a mesh or two (one per material), then keeps it out of the scene-wide merge. */
-function prop(parent: Object3D, g: Group): Group {
+export function prop(parent: Object3D, g: Group): Group {
   mergeStatic(g);
   g.traverse((o) => { o.castShadow = false; });
   parent.add(dynamic(g));

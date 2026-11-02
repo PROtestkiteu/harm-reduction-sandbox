@@ -26,5 +26,7 @@ for (let n = 1; n <= launches; n++) {
   console.log(`launch ${n}: ${items.length} items, ${bad.length} problems`);
   for (const x of bad) console.log('  PROBLEM', x);
   for (const x of items.filter((i) => !i.n.includes('line')).sort((a, b) => a.clear - b.clear).slice(0, 5)) console.log(`  tightest ${x.n}: ${x.clear} m from ${x.edge}`);
+  // Moving lines cross the crowd only at streets; one that comes close elsewhere is worth a look.
+  for (const x of items.filter((i) => i.n.includes('line') && i.clear < 0.2)) console.log(`  line close: ${x.n} ${x.clear} m from ${x.edge}`);
 }
 process.exit(failed ? 1 : 0);

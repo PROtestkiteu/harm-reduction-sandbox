@@ -2,6 +2,7 @@ import { QUALITY } from '../render/quality';
 import { CapsuleGeometry, Color, Group, InstancedMesh, Matrix4, MeshLambertMaterial, Quaternion, SphereGeometry, Vector3, type Object3D } from 'three';
 import type { Random } from '../sim/random';
 import { GROW, ROAD, STREETS } from './layout';
+import { bridgeSlope, bridgeY } from './bridges';
 import { bus, car, CAR_COLOURS, emergencyVehicle, rollWheels, type EmergencyVehicle } from './vehicles';
 import type { Puffs, Tailpipe } from './puffs';
 import { dynamic } from './mergeStatic';
@@ -78,8 +79,6 @@ interface Driver {
 interface Walker { run: Run; t: number; speed: number; length: number; phase: number; height: number }
 
 const FAR = 250 + GROW;
-/** Bridges lift the road over the river (x 56 to 76, pushed out by the outer ring): deck top at 0.37. */
-const RIVER = { x0: 55 + GROW, x1: 77 + GROW };
 /** The big park, south of the district: its lawn's edges and its long path. */
 const PARK = { x0: -44 - GROW, x1: 48 + GROW, z0: 52 + GROW, z1: 117 + GROW, path: 76 + GROW };
 
@@ -377,9 +376,11 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic, 
           continue;
         }
         at.lerpVectors(d.run.from, d.run.to, d.t);
-        // Up onto the bridge decks over the river.
-        at.y = at.x > RIVER.x0 && at.x < RIVER.x1 ? 0.37 : 0.02;
+        // Over the river's arched bridges (world/bridges.ts), nose up on the way up and down on the way down.
+        at.y = bridgeY(at.x);
         d.group.position.copy(at);
+        d.group.rotation.order = 'YXZ';
+        d.group.rotation.x = -Math.atan(bridgeSlope(at.x) * Math.sign(d.run.to.x - d.run.from.x));
         puffs.vehicle(d.pipe, at.x, at.z, hx, hz, d.v, dt, d.bus);
         // Full size the whole way: a car shrinking to nothing reads as a toy.
         d.group.visible = true;
@@ -510,7 +511,7 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic, 
           f.leg++;
           if (f.leg === f.path.length - 1 && f.v.flashing) f.hold = 28;
         }
-        pos.y = pos.x > RIVER.x0 && pos.x < RIVER.x1 ? 0.37 : 0.02;
+        pos.y = bridgeY(pos.x);
       }
       draw(dt);
     },

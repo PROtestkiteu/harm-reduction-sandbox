@@ -38,6 +38,7 @@ import { lightPool, setPoolDaylight } from './dressing';
 import { buildInfill } from './infill';
 import { updateNeon, wallClutter } from './grit';
 import { buildStreetscape } from './streetscape';
+import { buildGreenery } from './greenery';
 import { buildClinic, buildDrugChecking, buildFootPatrol, buildPharmacyShop, buildShelter } from './places';
 import { glowMat, mat, SNOW } from './materials';
 import { Weather } from './weather';
@@ -135,6 +136,9 @@ export interface World {
   fastFood: number | null;
   /** The bookshop's building id, if one stands this launch. */
   bookshop: number | null;
+  /** The primary school's and the public library's building ids, if they stand this launch. */
+  school: number | null;
+  library: number | null;
   /** The camps' pick ids (building ids on open ground). */
   camps: { park: number; station: number };
   /** The city building that is a squat this launch, by id. */
@@ -340,6 +344,31 @@ function bookshopFront(parent: Object3D, b: CityBuilding): void {
   for (let i = 0; i < 11; i++) add(cart, box(0.08, 0.2, 0.15, mat(spines[i % spines.length]), -0.45 + i * 0.09, 0.68, 0)).rotation.z = (i % 3 - 1) * 0.12;
 }
 
+/**
+ * A civic building's dressing: a fascia with its name on every side and
+ * something in its ground-floor windows; a school's are children's drawings,
+ * a library's are shelves of books.
+ */
+function civicFront(parent: Object3D, b: CityBuilding, name: string, fascia: number, letters: string, inside: 'drawings' | 'shelves'): void {
+  const g = add(parent, new Group());
+  const w = b.x1 - b.x0;
+  const d = b.z1 - b.z0;
+  const cx = (b.x0 + b.x1) / 2;
+  const cz = (b.z0 + b.z1) / 2;
+  add(g, box(w + 0.3, 0.7, d + 0.3, glowMat(fascia, fascia, 0.15), cx, 2.45, cz));
+  for (const [x, z, rot, len] of [[cx, b.z1 + 0.2, 0, w], [cx, b.z0 - 0.2, Math.PI, w], [b.x1 + 0.2, cz, Math.PI / 2, d], [b.x0 - 0.2, cz, -Math.PI / 2, d]] as const) {
+    const bg = `#${fascia.toString(16).padStart(6, '0')}`;
+    add(g, signBoard(name, Math.min(name.length * 0.62, len - 0.6), 0.62, letters, bg, 0.55).mesh, rot).position.set(x, 2.5, z);
+  }
+  const colours = inside === 'drawings' ? [0xe84a3a, 0xf0c830, 0x3a8ad8, 0x4ab04a, 0xe87ab8, 0xf0f0e8] : [0x8a2a2a, 0x2a4a8a, 0xc8a040, 0x3a6a3a, 0xe8e0d0, 0x5a3a6a];
+  // On the two faces the camera sees, in the ground-floor window band.
+  for (let i = 0; i < Math.floor((w - 1) / (inside === 'drawings' ? 0.5 : 0.09)); i++) {
+    const x = b.x0 + 0.5 + i * (inside === 'drawings' ? 0.5 : 0.09);
+    if (inside === 'drawings') add(g, box(0.36, 0.3, 0.02, mat(colours[i % colours.length]), x, 1.2 + (i % 2) * 0.35, b.z1 + 0.06));
+    else for (let row = 0; row < 3; row++) add(g, box(0.07, 0.24 + ((i * 7 + row) % 4) * 0.03, 0.05, mat(colours[(i * 5 + row * 3) % colours.length]), x, 0.55 + row * 0.42, b.z1 + 0.1));
+  }
+}
+
 /** Renderer state the world relies on: soft shadows. */
 export function configureRenderer(renderer: WebGLRenderer): void {
   renderer.shadowMap.enabled = true;
@@ -513,11 +542,30 @@ export function buildWorld(random: Random): World {
     bookshopFront(zabkaRoot, bookshopPick.b);
     taken.add(bookshopPick.b.id);
   }
+  // A primary school and a public library on free buildings of two or more storeys, apart from each other.
+  const civicPool = () => allBuildings()
+    .filter((b) => !taken.has(b.id) && b.id !== squat)
+    .map((b) => ({ b, cx: (b.x0 + b.x1) / 2, cz: (b.z0 + b.z1) / 2 }))
+    .sort((p, q) => Number(q.b.storeys >= 2) - Number(p.b.storeys >= 2) || (q.b.x1 - q.b.x0) - (p.b.x1 - p.b.x0));
+  const schoolPick = civicPool()[0];
+  const school = schoolPick ? schoolPick.b.id : null;
+  if (schoolPick) {
+    civicFront(zabkaRoot, schoolPick.b, 'SCHOOL', 0xd8a030, '#2a2a3a', 'drawings');
+    taken.add(schoolPick.b.id);
+  }
+  const libraryPick = civicPool().find(({ cx, cz }) => !schoolPick || Math.hypot(cx - schoolPick.cx, cz - schoolPick.cz) > 25) ?? civicPool()[0];
+  const library = libraryPick ? libraryPick.b.id : null;
+  if (libraryPick) {
+    civicFront(zabkaRoot, libraryPick.b, 'LIBRARY', 0x3a4a6a, '#f0e8d0', 'shelves');
+    taken.add(libraryPick.b.id);
+  }
+  // Ivy up some walls and evergreens by doors (world/greenery.ts): static, merged with the rest.
+  buildGreenery(zabkaRoot, allBuildings().filter((b) => !taken.has(b.id) && b.id !== squat), mulberry(73));
   mergeStatic(zabkaRoot);
   // A few low-key psychedelic murals (creatures and phrases) on walls the camera sees, upper floors (shopfronts stay clear).
   const muralPool = allBuildings()
     // Upper floors only, so a shop below is fine; not the Żabkas, the fast food joint or the institutions.
-    .filter((b) => !zabkas.includes(b.id) && b.id !== fastFood && b.id !== bookshop && !Object.values(beyond.landmarks).includes(b.id) && Math.max(Math.abs((b.x0 + b.x1) / 2), Math.abs((b.z0 + b.z1) / 2)) < 60);
+    .filter((b) => !zabkas.includes(b.id) && b.id !== fastFood && b.id !== bookshop && b.id !== school && b.id !== library && !Object.values(beyond.landmarks).includes(b.id) && Math.max(Math.abs((b.x0 + b.x1) / 2), Math.abs((b.z0 + b.z1) / 2)) < 60);
   // Each mural goes on a real surface, found by a ray: walls at upper-floor height on faces the camera sees,
   // and one flat shopfront roof (flat where five points on it agree).
   const muralSpots: MuralSpot[] = [];
@@ -709,6 +757,8 @@ export function buildWorld(random: Random): World {
     zabkas,
     fastFood,
     bookshop,
+    school,
+    library,
     nightlife: nightlife.map((n) => n.b.id),
     setNightlife(open, partnered) {
       nightlife.forEach((n, i) => {

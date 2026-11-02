@@ -40,5 +40,17 @@ export const LINES: Record<string, readonly string[]> = {
   tripper: [t("Look at the lamps breathing."), t("Can we stay here a while?"), t("It's fine, it's just the trip."), t("The trees are talking.")],
   benzo: [t("Just five more minutes."), t("Where am I?"), t("Don't take my bag."), t("I only had a couple.")],
   stimulant: [t("I'm good, I'm good, I'm good."), t("Three days, no sleep, it's fine."), t("I'm fixing the bike, then I'm off."), t("Who's looking at me?")],
+  angler: [t("Nothing biting tonight."), t("Shh, you'll scare them off.")],
+  parent: [t("Hold my hand at the crossing."), t("Nearly home, then bath and bed.")],
+  child: [t("Can we get chips?"), t("Look, a cat!"), t("Race you to the corner!")],
   student: [t("Deadline is Friday."), t("Are you coming out tonight?"), t("The library shuts at ten."), t("My rent went up again."), t("Does anyone know if the club does testing?")],
+};
+
+/** The easter-egg pioneers' lines (config/flavour/pioneers.ts): their good sense, in their spirit; none is a quotation. */
+export const PIONEER_LINES: Record<'hofmann' | 'sabina' | 'leary' | 'grof' | 'shulgin', readonly string[]> = {
+  hofmann: [t('Albert Hofmann: A fine evening for a bicycle ride.'), t('Albert Hofmann: Treat it with respect. It is a powerful thing.')],
+  sabina: [t('María Sabina: This is medicine, not a game.'), t('María Sabina: Come with a clean heart and a quiet mind.')],
+  leary: [t('Timothy Leary: Mind your set and setting.'), t('Timothy Leary: Who you are with matters as much as what you take.')],
+  grof: [t('Stanislav Grof: Breathe, and let it unfold.'), t('Stanislav Grof: Hard moments pass. Have someone sober with you.')],
+  shulgin: [t('Sasha Shulgin: Start low, go slow, and write it down.'), t('Sasha Shulgin: Test what you have. Know what it is.')],
 };

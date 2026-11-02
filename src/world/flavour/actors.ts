@@ -152,6 +152,11 @@ export class ActorPool {
     Object.assign(this.view, { x, z, radius, mpp });
   }
 
+  /** The middle of the view on the ground and the radius it shows (metres), for things placed relative to the camera. */
+  get viewCentre(): { readonly x: number; readonly z: number; readonly radius: number } {
+    return this.view;
+  }
+
   /** Metres a screen pixel covers now, for things drawn a pixel or two wide. */
   get metresPerPixel(): number {
     return this.view.mpp;

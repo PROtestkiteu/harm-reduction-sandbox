@@ -11,6 +11,7 @@ import { dynamic, mergeStatic } from './mergeStatic';
 import { car, train as trainModel } from './vehicles';
 import { acUnit, antenna, drainpipe, roofVent, satelliteDish, windowTrim } from './details';
 import { riverMaterial } from './puddles';
+import { BRIDGE_SPAN, bridgeSlope, bridgeY } from './bridges';
 import { CAMPUS } from '../config/flavour/campus';
 import { createRandom } from '../sim/random';
 import { curtainWall } from './curtainWall';
@@ -244,17 +245,31 @@ function buildRiver(g: Object3D, random: Random): void {
   }
   // Far bank: a strip of meadow.
   flat(g, 5.7, len, grass, RIVER.x1 + 3.15, 0, LAYER.grass);
-  // Road bridges where the cross streets meet the river, with railings.
+  // Road bridges where the cross streets meet the river: low arches
+  // (world/bridges.ts), tall enough at mid-span for the boats to pass under,
+  // built from short deck sections along the curve, with railings and stone
+  // abutments on each bank. Cars follow the same curve.
   const deck = mat(0x5a5650);
   const rail = mat(PALETTE.metal);
+  const STEP = 1;
   for (const s of [STREETS.north, STREETS.south]) {
     const z0 = s.road.z0 - 2.5;
     const z1 = s.road.z1 + 2.5;
     const cz = (z0 + z1) / 2;
-    add(g, box(w + 2, 0.45, z1 - z0, deck, (RIVER.x0 + RIVER.x1) / 2, -0.08, cz));
-    for (const z of [z0 + 0.1, z1 - 0.1]) add(g, box(w + 2, 0.9, 0.08, rail, (RIVER.x0 + RIVER.x1) / 2, 0.37, z));
-    // Piers in the water.
-    for (const x of [RIVER.x0 + w / 3, RIVER.x0 + (2 * w) / 3]) add(g, box(1.2, 0.5, z1 - z0, stone, x, -0.4, cz));
+    for (let x = BRIDGE_SPAN.x0; x < BRIDGE_SPAN.x1; x += STEP) {
+      const mx = x + STEP / 2;
+      const tilt = Math.atan(bridgeSlope(mx));
+      const len = STEP / Math.cos(tilt) + 0.04;
+      const top = bridgeY(mx);
+      const section = add(g, box(len, 0.45, z1 - z0, deck, 0, -0.45, 0));
+      const holder = add(g, new Group());
+      holder.position.set(mx, top, cz);
+      holder.rotation.z = tilt;
+      holder.add(section);
+      for (const z of [z0 + 0.1, z1 - 0.1]) add(holder, box(len, 0.9, 0.08, rail, 0, 0, z - cz));
+    }
+    // Abutments where the arch meets each bank.
+    for (const x of [RIVER.x0 - 0.3, RIVER.x1 + 0.3]) add(g, box(1.4, bridgeY(x), z1 - z0, stone, x, -0.4, cz));
   }
 }
 

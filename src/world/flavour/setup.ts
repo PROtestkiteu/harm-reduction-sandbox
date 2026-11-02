@@ -32,6 +32,10 @@ const BUILDERS: Record<PackId, () => Promise<PackBuilder>> = {
   cycling: () => import('./cycling').then((m) => m.buildCycling),
   pets: () => import('./pets').then((m) => m.buildPets),
   decor: () => import('./decor').then((m) => m.buildDecor),
+  sky: () => import('./sky').then((m) => m.buildSky),
+  river: () => import('./river').then((m) => m.buildRiver),
+  kids: () => import('./kids').then((m) => m.buildKids),
+  pioneers: () => import('./pioneers').then((m) => m.buildPioneers),
 };
 
 export interface FlavourHost {
