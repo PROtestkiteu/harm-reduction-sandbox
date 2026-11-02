@@ -26,7 +26,7 @@ const KEY = 'hrp-overlay';
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 
 /**
- * The layers button beside the clock and the legend that goes with an
+ * The layers button floating over the map and the legend that goes with an
  * overlay. The button opens a menu of the overlays (the one on is marked);
  * the legend says what the colours mean and the numbers behind them, and its
  * close button turns the overlay off. The choice is remembered on this device.

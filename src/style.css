@@ -2370,19 +2370,22 @@ button.event-card:focus-visible { outline: 2px solid var(--focus); outline-offse
 .portrait:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
 @media (hover: hover) { .portrait:hover .portrait-view { outline-color: rgba(233, 214, 180, 0.6); } }
 
-/* Map overlays: the layers button beside the speed toggle, and the legend over the map. */
+/* Map overlays: a round layers button floating over the map, and the legend under it. */
 .layers-toggle {
-  position: relative; display: inline-flex; align-items: center; justify-content: center;
-  min-width: 30px; min-height: 24px; padding: 0 5px; align-self: center;
-  border: 1px solid color-mix(in srgb, currentColor 70%, transparent); border-radius: 3px;
-  background: none; color: var(--reply); cursor: pointer;
+  position: absolute; z-index: 2; left: max(16px, env(safe-area-inset-left)); top: calc(max(12px, var(--safe-top)) + 124px);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px; padding: 0; border-radius: 50%;
+  border: 1px solid rgba(237, 179, 0, 0.7); background: rgba(14, 11, 9, 0.78); color: #edb300;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45); cursor: pointer; pointer-events: auto;
 }
-.layers-toggle::before { content: ''; position: absolute; inset: -10px -7px; }
-.layers-toggle svg { width: 16px; height: 16px; }
-.layers-toggle[data-on='true'] { background: var(--bar); border-color: var(--bar); color: var(--bar-text); }
-.layers-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.layers-toggle svg { width: 20px; height: 20px; }
+.layers-toggle[data-on='true'] { background: #edb300; border-color: #edb300; color: #1a1408; }
+.layers-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+@media (hover: hover) { .layers-toggle:hover { border-color: #edb300; } }
+/* Settings is open over the map: the button steps aside, like the portrait. */
+body:has(.sandbox-body:not([hidden])) .layers-toggle { display: none; }
 .map-legend {
-  position: absolute; z-index: 2; left: max(16px, env(safe-area-inset-left)); top: calc(max(12px, var(--safe-top)) + 120px);
+  position: absolute; z-index: 2; left: max(16px, env(safe-area-inset-left)); top: calc(max(12px, var(--safe-top)) + 176px);
   width: min(300px, calc(100vw - 32px)); padding: 6px 10px 8px;
   background: rgba(14, 11, 9, 0.84); color: #f2ead8; font: 13px/1.35 var(--body); pointer-events: auto;
 }
@@ -2396,7 +2399,8 @@ button.event-card:focus-visible { outline: 2px solid var(--focus); outline-offse
 .map-legend .swatch.ring { background: none; box-shadow: inset 0 0 0 2px var(--c); }
 /* Phones: under the top bar on the right, clear of the title and your portrait. */
 @media (max-width: 760px) {
-  .map-legend { left: auto; right: 8px; top: calc(max(12px, var(--safe-top)) + 104px); width: min(230px, 62vw); font-size: 12px; }
+  .layers-toggle { left: auto; right: 8px; top: calc(max(12px, var(--safe-top)) + 104px); }
+  .map-legend { left: auto; right: 8px; top: calc(max(12px, var(--safe-top)) + 156px); width: min(230px, 62vw); font-size: 12px; }
 }
 @media (max-width: 760px) {
   .map-legend li.minor { display: none; }

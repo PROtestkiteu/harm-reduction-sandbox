@@ -1058,7 +1058,8 @@ const mapLayers = new MapLayers(hudRoot, (kind) => {
   else updatePeopleOverlay();
   refreshOverlay(kind);
 }, (x, y, title, items) => actionMenu.show(x, y, title, items));
-hud.timeRow.append(mapLayers.button);
+// A round button of its own over the map, clear of the top bar and the panel.
+hudRoot.append(mapLayers.button);
 
 /** The answers, each with its price and odds; the box says what came of it. */
 function showDaemonBox(): void {
