@@ -1847,6 +1847,6 @@ export const ES: Record<string, string> = {
   "Closed, to let.": "Cerrado, se alquila.",
   "Yours: a {unit}, {rent} an hour.": "Vuestro: {unit}, {rent} la hora.",
   "Edit your name and look": "Cambiar tu nombre y tu aspecto",
-  "You: edit your name and look": "Tú: cambiar tu nombre y tu aspecto",
-  "What you can do for {name}": "Lo que puedes hacer por {name}",
+  "You: open My organisation. Right-click or long press to edit your name and look.": "Tú: abrir Mi organización. Clic derecho o pulsación larga para cambiar tu nombre y tu aspecto.",
+  "{name}: show in the panel. Right-click or long press for what you can do.": "{name}: mostrar en el panel. Clic derecho o pulsación larga para ver qué puedes hacer.",
 };

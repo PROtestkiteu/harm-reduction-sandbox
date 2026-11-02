@@ -1891,6 +1891,6 @@ export const PL: Record<string, string> = {
   "Closed, to let.": "Zamknięty, do wynajęcia.",
   "Yours: a {unit}, {rent} an hour.": "Wasz: {unit}, {rent} na godzinę.",
   "Edit your name and look": "Zmień swoje imię i wygląd",
-  "You: edit your name and look": "Ty: zmień swoje imię i wygląd",
-  "What you can do for {name}": "Co możesz zrobić dla: {name}",
+  "You: open My organisation. Right-click or long press to edit your name and look.": "Ty: otwórz Moją organizację. Prawy klik lub długie przytrzymanie, żeby zmienić imię i wygląd.",
+  "{name}: show in the panel. Right-click or long press for what you can do.": "{name}: pokaż w panelu. Prawy klik lub długie przytrzymanie: co możesz zrobić.",
 };

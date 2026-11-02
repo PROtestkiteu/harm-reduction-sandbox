@@ -114,8 +114,9 @@ portraitView.width = PORTRAIT_W;
 portraitView.height = PORTRAIT_H;
 const portraitCaption = document.createElement('figcaption');
 portraitBox.append(portraitView, portraitCaption);
-// The portrait is a button: a tap, a right-click or a long press opens what can be done for whoever it
-// shows (their action menu), or, on your own, editing your name and look.
+// The portrait is a button. A tap or click opens the main thing: on your own, My organisation; on someone
+// else's, the panel about them, with them in view. A right-click or long press opens a menu: their actions,
+// or, on your own, editing your name and look.
 portraitBox.tabIndex = 0;
 portraitBox.setAttribute('role', 'button');
 portraitBox.setAttribute('aria-haspopup', 'menu');
@@ -495,12 +496,20 @@ const interaction = new Interaction({
   },
 });
 
+/** A tap or click on the portrait: My organisation for you; the panel about them, in view, for anyone else. */
+function portraitOpen(): void {
+  if (portraitBox.dataset.who === 'player') { openOrg(); return; }
+  const sel = interaction.selected;
+  const p = sel?.kind === 'person' ? crowd.person(sel.id) : undefined;
+  hud.setFolded(false);
+  if (p) rig.lookAt(p.root.position);
+}
+
 /** Opens the portrait's menu at (x, y): the selected person's actions, or yours. */
 function portraitMenu(x: number, y: number): void {
   if (portraitBox.dataset.who === 'player') {
     actionMenu.show(x, y, t('You'), [
       { label: t('Edit your name and look'), disabled: false, run: () => welcome.show() },
-      { label: t('My organisation: team, money and grants.'), disabled: false, run: () => openOrg() },
     ]);
     return;
   }
@@ -523,13 +532,16 @@ function portraitMenu(x: number, y: number): void {
   portraitBox.addEventListener('pointerup', cancel);
   portraitBox.addEventListener('pointercancel', cancel);
   portraitBox.addEventListener('contextmenu', (e) => { e.preventDefault(); cancel(); portraitMenu(e.clientX, e.clientY); });
-  portraitBox.addEventListener('click', (e) => {
+  portraitBox.addEventListener('click', () => {
     if (swallowClick) { swallowClick = false; return; }
-    portraitMenu(e.clientX, e.clientY);
+    portraitOpen();
   });
   portraitBox.addEventListener('keydown', (e) => {
-    if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'ContextMenu') return;
+    // Enter or Space does what a click does; the menu key or Shift+F10 opens the menu.
+    const menu = e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10');
+    if (!menu && e.key !== 'Enter' && e.key !== ' ') return;
     e.preventDefault();
+    if (!menu) { portraitOpen(); return; }
     const r = portraitBox.getBoundingClientRect();
     portraitMenu(r.right, r.top + r.height / 2);
   });
@@ -1436,7 +1448,7 @@ function syncPortrait(): boolean {
   if (portraitCaption.dataset.text !== caption + sub) {
     portraitCaption.dataset.text = caption + sub;
     portraitCaption.replaceChildren(caption, ...(sub ? [Object.assign(document.createElement('span'), { className: 'portrait-sub', textContent: sub })] : []));
-    portraitBox.setAttribute('aria-label', you ? t('You: edit your name and look') : t('What you can do for {name}', { name: caption }));
+    portraitBox.setAttribute('aria-label', you ? t('You: open My organisation. Right-click or long press to edit your name and look.') : t('{name}: show in the panel. Right-click or long press for what you can do.', { name: caption }));
   }
   if (key === portraitKey) return false;
   portraitKey = key;
