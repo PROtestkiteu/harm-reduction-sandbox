@@ -2,7 +2,7 @@
   "generator": "Built-in image_gen",
   "date": "2026-11-02",
   "promptTemplate": "Use case: stylized-concept. ONE original finished 2D dialogue portrait for the Harm Reduction Project game. Vertical 4:5, head plus upper torso, include the specified hand/prop at chest if requested, full hair silhouette with breathing room, eyes and expression clear at 240x300. Art direction: Disco Elysium-inspired psychological oil/gouache painting, bold angular broken brush strokes, rough impasto and drybrush, expressive imperfect human features. Style C dusk: violet shadows, amber light and restrained teal reflected color, nuanced muted palette, deliberately abstract painterly backdrop. Make this a VERY DISTINCT INDIVIDUAL, not a handsome model or generic curly-haired person; rigorously follow their specified face shape, age, hair, head angle, gaze and expression. Strong expressive acting, readable eye whites/gaze even when averted, worn clothing, human dignity. NO reference image is used: invent THIS specified face from scratch. Do not default to a calm three-quarter face gazing to upper right. Background and lighting placement follow this person's brief, no repeated bright orange stripe. No frame, no caption or text, no logo/watermark, no collage, no photo/3D/anime, no graphic wounds or active injection, no demonstration of consumption, no dosage or drug-use instructions. Subtle supplied props are permitted and must be clearly visible when specified. SUBJECT BRIEF: ",
-  "instruction": "Unchanged portraits use promptTemplate plus subject. For student/tourist apply the listed edits in order to their archived dusk-v2 portraits.",
+  "instruction": "Use an asset-specific prompt when present. Other unchanged portraits use promptTemplate plus subject. Student/tourist use their listed edits in sequence.",
   "assets": [
     {
       "id": "coordinator",
@@ -183,6 +183,16 @@
       "file": "bouncer.webp",
       "sha256": "db07cc28971b858de0d9e83a5ca3ecccbfeed3097877edee98f06b2e11ee28a2",
       "bytes": 48362
+    },
+    {
+      "id": "wook-of-wisdom",
+      "subject": "Wook of Wisdom: dreadlocked festival philosopher with a joint and teaspoon pendant",
+      "prompt": "Use case: stylized-concept. ONE original finished 2D game dialogue portrait of THE WOOK OF WISDOM, an adult eccentric festival hippie man aged about 46. Vertical 4:5 head and upper torso, readable at 240x300. A completely distinct individual: long narrow weathered face, crooked aquiline nose, deep smile lines, scruffy ginger-and-grey beard with a tiny plait, huge tangled dirty-blond dreadlocks with stray leaves and one mismatched bead, faded purple woven headband. His head is tipped slightly forward, one eyebrow raised, half-lidded eyes glance DOWN LEFT with the calm cosmic certainty of someone who knows the answer but forgot the question; sly crooked gentle grin, deeply deadpan, no broad comedy mugging. Faded teal/rust patchwork poncho over worn plum shirt, a VERY SMALL ordinary silver TEASPOON hanging on a string as if it were a sacred pendant: this is the single absurd accent. One natural hand raised at chest holds a clearly visible short hand-rolled cannabis joint, unlit or almost extinguished, no active smoking. He is a lived-in human with warmth and individuality. Style C: Disco Elysium-inspired expressive psychological oil/gouache portrait, angular broken brushwork, visible impasto, imperfect features and cloth, violet twilight shadows, soft amber light from upper left, restrained teal reflected light, dark abstract sage/plum painterly background. Large clear face, full hair silhouette inside frame with breathing room, joint and spoon both unmistakably legible. Original face, not a recognizable game character. Natural hand anatomy, no extra fingers. No text, caption, border, logos or watermark, no scene/collage, no photo/3D/anime, no graphic injuries or instructions.",
+      "archetype": "everyday",
+      "role": "player",
+      "file": "wook-of-wisdom.webp",
+      "sha256": "84405e6e7a56588fa1b2335fbee297e666ac56c4706c9784ec46c9ccd37793b3",
+      "bytes": 94730
     }
   ],
   "baseSet": "dusk-v2",

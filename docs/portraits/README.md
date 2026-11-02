@@ -46,3 +46,9 @@ Strict TypeScript checking and the final production build passed. The desktop br
 An initial check targeted a stopped shared dev server; subsequent validation uses an isolated dev preview on 127.0.0.1:5209. Browser runs using external profile storage did not finish initialization reliably, so successful checks use the dedicated internal /tmp/hrp-portrait-runtime directory and explicitly wait for the game diagnostics before testing. These are test-environment observations, not evidence of a portrait-loading failure. No production deployment or physical-device acceptance was performed.
 
 The final built application also passed service-worker installation: all twenty dusk-v3 portraits were cached and the coordinator portrait reached ready state. Final available internal disk space: 6.0 GiB.
+
+## Wook of Wisdom
+
+Added as portrait 21 and appended to the existing coordinator choices, preserving every earlier choice/index. Text-only built-in ImageGen portrait: tangled dreadlocks, festival poncho, raised eyebrow and a knowing downward glance, joint in hand and a teaspoon worn as an amulet. Original style C palette and 480×600 WebP delivery. Full prompt, byte size and checksum are in dusk-v3-manifest.json. The existing twenty assets are unchanged; the first twenty-image contact sheet remains the earlier checkpoint. The offline worker discovers this new filename automatically.
+
+Wook checkpoint: strict typecheck, isolated production build and canonical Chrome regression passed for all 21 real portrait assets, including choosing and loading Wook through the coordinator API. Production asset hash and offline pre-cache entry verified. Existing theme, reduced-motion, cancellation and stale-response behavior retained. No physical-device testing or deployment; more than 5 GiB free throughout.

@@ -11,6 +11,7 @@ import { groundLitter } from './grit';
 import { BLOCKS, DISTRICT, GROW, HALF, INNER, MAIN_CROSSINGS, ROAD, STREETS, type Rect } from './layout';
 import { glowMat, mat } from './materials';
 import { mergeStatic } from './mergeStatic';
+import { RIVER_X } from './bridges';
 
 /**
  * District ground: the street network around the original centre block, the
@@ -266,7 +267,11 @@ export function buildOutskirts(scene: Object3D, random: Random): WindowBank {
   add(g, box(1200, 0.4, 1200, mat(0x5c5a55), 0, -0.5, 0));
   // Streets carry on into the outskirts as dark roads.
   add(g, box(ROAD.x1 - ROAD.x0, 0.02, 320 + 2 * GROW, mat(0x2e2f31), (ROAD.x0 + ROAD.x1) / 2, -0.025, 0));
-  for (const s of [STREETS.north, STREETS.south]) add(g, box(320 + 2 * GROW, 0.02, s.road.z1 - s.road.z0, mat(0x2e2f31), 0, -0.025, (s.road.z0 + s.road.z1) / 2));
+  // The cross streets stop at the river's banks: the arched bridges carry them over (world/bridges.ts, cityBeyond.ts).
+  const offRiver = (a: number, b: number) => [[a, RIVER_X.x0 - 0.5], [RIVER_X.x1 + 0.5, b]].map(([lo, hi]) => [Math.max(lo, a), Math.min(hi, b)]).filter(([lo, hi]) => hi > lo);
+  for (const s of [STREETS.north, STREETS.south]) {
+    for (const [x0, x1] of offRiver(-160 - GROW, 160 + GROW)) add(g, box(x1 - x0, 0.02, s.road.z1 - s.road.z0, mat(0x2e2f31), (x0 + x1) / 2, -0.025, (s.road.z0 + s.road.z1) / 2));
+  }
   add(g, box(STREETS.east.road.x1 - STREETS.east.road.x0, 0.02, 320 + 2 * GROW, mat(0x2e2f31), (STREETS.east.road.x0 + STREETS.east.road.x1) / 2, -0.025, 0));
   // Out of the district the roads keep their pavements (a kerb above the road)
   // and dashed centre lines, so they read as streets, not empty bands.
@@ -283,7 +288,7 @@ export function buildOutskirts(scene: Object3D, random: Random): WindowBank {
     }
   }
   for (const r of [STREETS.north.road, STREETS.south.road]) {
-    for (const [x0, x1] of outside(-160 - GROW, 160 + GROW)) {
+    for (const [x0, x1] of outside(-160 - GROW, 160 + GROW).flatMap(([a, b]) => offRiver(a, b))) {
       add(g, box(x1 - x0, 0.16, 2.5, pave, (x0 + x1) / 2, -0.1, r.z0 - 1.25));
       add(g, box(x1 - x0, 0.16, 2.5, pave, (x0 + x1) / 2, -0.1, r.z1 + 1.25));
       for (let x = x0 + 2; x < x1 - 2; x += 6) add(g, box(2.6, 0.004, 0.14, line, x, -0.007, (r.z0 + r.z1) / 2));

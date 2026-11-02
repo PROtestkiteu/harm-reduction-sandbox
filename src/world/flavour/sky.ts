@@ -1,8 +1,8 @@
-import { BoxGeometry, Group, InstancedMesh, Matrix4, Quaternion, Vector3, type Object3D } from 'three';
+import { BoxGeometry, CylinderGeometry, Group, InstancedMesh, Matrix4, Mesh, Quaternion, SphereGeometry, Vector3, type Object3D } from 'three';
 import { SKY } from '../../config/flavour/sky';
 import { range } from '../../sim/random';
-import { add, box, cylinder } from '../kit';
-import { glowMat, mat } from '../materials';
+import { add, box } from '../kit';
+import { glowMat, mat, vehicleMat } from '../materials';
 import { dynamic } from '../mergeStatic';
 import type { Pack, PackDeps } from './index';
 
@@ -17,28 +17,39 @@ interface Crossing { g: Object3D; on: boolean; wait: number; t: number; from: Ve
 
 function lightPlane(): Group {
   const g = new Group();
-  const white = mat(0xe8e6e0);
+  const white = vehicleMat(0xe8e6e0);
   add(g, box(0.5, 0.5, 3.2, white, 0, 0, -1.4));
   add(g, box(5.6, 0.08, 0.9, white, 0, 0.35, -0.6));
   add(g, box(1.8, 0.06, 0.5, white, 0, 0.2, -2.7));
-  add(g, box(0.06, 0.6, 0.5, mat(0xb83a2a), 0, 0.25, -2.75));
-  add(g, box(0.4, 0.3, 0.5, mat(0x30404c), 0, 0.42, -0.4));
+  add(g, box(0.06, 0.6, 0.5, vehicleMat(0xb83a2a), 0, 0.25, -2.75));
+  add(g, box(0.4, 0.3, 0.5, vehicleMat(0x30404c), 0, 0.42, -0.4));
   return g;
 }
 
-function balloon(): Group {
+export function balloon(): Group {
   const g = new Group();
+  // The envelope: a round crown of vertical gores in four colours, narrowing to the mouth over the basket.
   const stripes = [0xc8382a, 0xe8b830, 0x2a6aa8, 0xe8e2d0];
-  for (let i = 0; i < 4; i++) add(g, cylinder(2.4 - Math.abs(i - 1.5) * 0.5, 1.1, mat(stripes[i]), 12, 0, 2.6 + i * 1.1, 0));
-  add(g, cylinder(1.2, 0.6, mat(stripes[0]), 12, 0, 2.0, 0));
-  add(g, box(0.8, 0.6, 0.8, mat(0x6a4a2a), 0, 0, 0));
-  for (const [x, z] of [[-0.35, -0.35], [0.35, -0.35], [-0.35, 0.35], [0.35, 0.35]]) add(g, box(0.03, 1.5, 0.03, mat(0x3a3a3a), x, 0.6, z));
+  const GORES = 12;
+  for (let i = 0; i < GORES; i++) {
+    const m = vehicleMat(stripes[i % stripes.length], 0);
+    const crown = new Mesh(new SphereGeometry(2.4, 3, 10, (i / GORES) * Math.PI * 2, (Math.PI * 2) / GORES, 0, Math.PI * 0.62), m);
+    crown.position.y = 4.6;
+    crown.scale.y = 1.12;
+    g.add(crown);
+    const skirt = new Mesh(new CylinderGeometry(2.4 * Math.sin(Math.PI * 0.62), 0.45, 2.2, 3, 1, true, (i / GORES) * Math.PI * 2, (Math.PI * 2) / GORES), m);
+    // Its top meets the crown's lower edge; its open bottom is the mouth.
+    skirt.position.y = 4.6 + 2.4 * 1.12 * Math.cos(Math.PI * 0.62) - 1.1;
+    g.add(skirt);
+  }
+  add(g, box(0.8, 0.6, 0.8, vehicleMat(0x6a4a2a), 0, 0, 0));
+  for (const [x, z] of [[-0.35, -0.35], [0.35, -0.35], [-0.35, 0.35], [0.35, 0.35]]) add(g, box(0.03, 1.0, 0.03, vehicleMat(0x3a3a3a), x, 0.6, z));
   return g;
 }
 
 function glider(): Group {
   const g = new Group();
-  const white = mat(0xf2f2ee);
+  const white = vehicleMat(0xf2f2ee);
   add(g, box(0.35, 0.35, 3.6, white, 0, 0, -1.6));
   add(g, box(9, 0.05, 0.5, white, 0, 0.2, -0.8));
   add(g, box(1.4, 0.05, 0.35, white, 0, 0.4, -3.3));

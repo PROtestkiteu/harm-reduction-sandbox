@@ -12,7 +12,7 @@ const check = async () => {
   const ok = (condition, message) => { if (!condition) throw new Error(message); };
   const wait = async (f, attempts = 200) => { for (let n = 0; n < attempts; n++) { if (f()) return; await new Promise(r => setTimeout(r, 20)); } throw new Error('Portrait timeout'); };
   await wait(() => !!window.__sandbox, 6000);
-  const ids = ['coordinator','everyday','raver','tourist','worker','office','student','older','unhoused','techno-black','punk','goth','hiphop','queer-rave','metal','outreach','police','seller','cleaner','bouncer'];
+  const ids = ['coordinator','everyday','raver','tourist','worker','office','student','older','unhoused','techno-black','punk','goth','hiphop','queer-rave','metal','outreach','police','seller','cleaner','bouncer','wook-of-wisdom'];
   for (const id of ids) {
     const res = await fetch(portraitUrl(id));
     ok(res.ok, `Missing asset: ${id}`);
@@ -53,6 +53,12 @@ const check = async () => {
   ok(canvas.getAttribute('aria-busy') === 'false', 'Busy state stuck');
   library.show(null); library.show(playerPortraitUrl());
   ok(canvas.dataset.state === 'ready', 'Cached portrait not immediate');
+  ok(COORDINATOR_IDS.includes('wook-of-wisdom'), 'Wook missing from coordinator choices');
+  setPlayerPortrait('wook-of-wisdom');
+  library.show(playerPortraitUrl());
+  await wait(() => canvas.dataset.state === 'ready');
+  ok(canvas.dataset.asset.endsWith('wook-of-wisdom.webp'), 'Wook selection did not load');
+  setPlayerPortrait('coordinator');
   library.dispose();
   ok(canvas.dataset.state === 'idle', 'Disposal failed');
   const X = window.__sandbox;
@@ -80,5 +86,5 @@ const results = await drive(base, [
 const raw = results.at(-1);
 assert.equal(typeof raw, 'string', `Browser returned no check result: ${JSON.stringify(raw)}`);
 const result = JSON.parse(raw);
-assert.equal(result.assets, 20, JSON.stringify(result));
+assert.equal(result.assets, 21, JSON.stringify(result));
 console.log(JSON.stringify(result));
