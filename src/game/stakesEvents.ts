@@ -43,7 +43,7 @@ export function runOver(cause: RunOverCause, nights: number, helped: number, dea
     eligible: () => true,
     choices: [
       { label: t('Start again'), apply: () => { restart(); } },
-      { label: t('Carry on as a sandbox run (off the leaderboard)'), apply: () => { carryOn(); return t('The run carries on as a sandbox: no more endings.'); } },
+      { label: t('Carry on with no more endings (off the leaderboard)'), apply: () => { carryOn(); return t('The run carries on: no more endings.'); } },
     ],
   };
 }

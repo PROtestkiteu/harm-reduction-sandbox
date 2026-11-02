@@ -41,4 +41,4 @@ export function onSandboxed(f: () => void): void {
 }
 
 /** Why the run cannot be submitted, for the place where the submit button is. */
-export const sandboxedReason = (): string => t('This run used the Sandbox settings, so it cannot go on the leaderboard.');
+export const sandboxedReason = (): string => t('This run changed the world settings, so it cannot go on the leaderboard.');

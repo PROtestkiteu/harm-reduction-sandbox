@@ -83,7 +83,7 @@ export class QueueBox {
   private timeUp(): void {
     this.clock.hidden = true;
     this.title.textContent = t('Time is up for now');
-    this.text.textContent = t('Others are waiting to play. Thanks for playing: you can put your score on the leaderboard from the Sandbox menu, or join the queue again.');
+    this.text.textContent = t('Others are waiting to play. Thanks for playing: you can put your score on the leaderboard from Settings, or join the queue again.');
     this.again.hidden = false;
     this.onTimeUp();
     if (!this.dialog.open) {

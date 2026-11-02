@@ -165,7 +165,6 @@ export const PL: Record<string, string> = {
   'You are number {position} in the queue. You will be let in as soon as there is room; keep this page open.': 'Twoje miejsce w kolejce: {position}. Wejdziesz, gdy tylko zwolni się miejsce; nie zamykaj tej strony.',
   'Busy: {time} left': 'Duży ruch: zostało {time}',
   'Time is up for now': 'Na razie koniec czasu',
-  'Others are waiting to play. Thanks for playing: you can put your score on the leaderboard from the Sandbox menu, or join the queue again.': 'Inni czekają na grę. Dziękujemy za grę: możesz dodać swój wynik do rankingu z menu Sandbox albo stanąć w kolejce ponownie.',
 
   // ===== Cards, feed, snapshot, welcome, game over, pop-ups, context section (src/ui) =====
   // People: titles and subtitles (person-first, neutral wording)
@@ -278,7 +277,6 @@ export const PL: Record<string, string> = {
   // Welcome
 
   // Game over
-  'This run used the Sandbox settings, so it cannot go on the leaderboard.': 'Ta rozgrywka korzystała z ustawień Sandbox, więc nie trafi do tabeli wyników.',
   'Sending…': 'Wysyłanie…',
   'Not sent: {reason}.': 'Nie wysłano: {reason}.',
   'try again later': 'spróbuj ponownie później',
@@ -616,12 +614,9 @@ export const PL: Record<string, string> = {
   "Submit as {name}: {helped}, {nights}": "Wyślij jako {name}: {helped}, {nights}",
   "No scores yet. Be the first.": "Nie ma jeszcze wyników. Bądź pierwszy.",
   "The leaderboard is not reachable right now.": "Ranking jest teraz niedostępny.",
-  "Sandbox settings": "Ustawienia Sandbox",
-  "Sandbox": "Sandbox",
   "Change the night, the street and the services": "Zmień noc, ulicę i usługi",
   "Reset": "Resetuj",
   "Return every setting to its default": "Przywróć wszystkie ustawienia domyślne",
-  "Close sandbox settings": "Zamknij ustawienia Sandbox",
   "Illustrative values, not evidence. Changes apply live.": "Wartości umowne, nie dane z badań. Zmiany działają od razu.",
   "Back": "Wstecz",
   "Budget": "Budżet",
@@ -1222,7 +1217,6 @@ export const PL: Record<string, string> = {
   'Visitor patience': 'Cierpliwość odwiedzających',
   'How long a person waits before leaving unserved.': 'Jak długo osoba czeka, zanim odejdzie bez pomocy.',
   'Budget now': 'Budżet teraz',
-  'Money in sandbox units. Follows the night live; dragging sets it. Wages, kits, analyses and naloxone draw it down; funding refills it.': 'Pieniądze w jednostkach gry. Zmienia się na żywo w ciągu nocy; przeciągnięcie ustawia wartość. Płace, zestawy, analizy i nalokson go uszczuplają; finansowanie go uzupełnia.',
   'Time of day': 'Pora dnia',
   'Jumps the scene clock, from the evening round the night and through the next day. Light, people and services follow the hour.': 'Przestawia zegar sceny, od wieczoru przez noc do następnego dnia. Światło, ludzie i punkty dostosowują się do godziny.',
   'Date': 'Data',
@@ -1763,7 +1757,6 @@ export const PL: Record<string, string> = {
   'A first time unprepared, it can break the project.': 'Za pierwszym razem, bez przygotowania, może położyć projekt.',
   'Blankets and warm kit': 'Koce i ciepłe rzeczy',
   'Bought ahead in batches and used up per visit. An empty shelf means people go without.': 'Kupowane z wyprzedzeniem w dostawach i zużywane przy każdej wizycie. Pusta półka oznacza, że ludzie zostają bez niczego.',
-  'Carry on as a sandbox run (off the leaderboard)': 'Graj dalej w trybie Sandbox (poza rankingiem)',
   'Clean needles and syringes, test strips and reagents: one per person who needs them.': 'Czyste igły i strzykawki, paski testowe i odczynniki: jeden zestaw na każdą osobę, która go potrzebuje.',
   'Coming: {name}, tomorrow night {from} to {to}': 'Nadchodzi: {name}, jutro w nocy od {from} do {to}',
   'Coming: {name}, tonight {from} to {to}': 'Nadchodzi: {name}, dziś w nocy od {from} do {to}',
@@ -1815,7 +1808,6 @@ export const PL: Record<string, string> = {
   'The forecast says a deep freeze comes tomorrow night, from 20:00 to 04:00. Many more people will need a warm place, and anyone left outside may not live to see the morning.': 'Prognoza zapowiada silny mróz jutro w nocy, od 20:00 do 04:00. O wiele więcej osób będzie potrzebować ciepłego miejsca, a każdy, kto zostanie na zewnątrz, może nie doczekać rana.',
   'The last of the team has walked out. Nobody is left to open the doors.': 'Odeszła ostatnia osoba z zespołu. Nie ma komu otworzyć drzwi.',
   'The project has folded': 'Projekt upadł',
-  'The run carries on as a sandbox: no more endings.': 'Rozgrywka trwa dalej w trybie Sandbox: bez kolejnych zakończeń.',
   'The storm comes at {time} tomorrow night.': 'Kryzys nadejdzie jutro w nocy o {time}.',
   'The storm is over: {helped} helped, {away} turned away, {deaths} died, {saved} caught in time by outreach.': 'Kryzys minął: pomoc: {helped}, odesłani: {away}, zgony: {deaths}, uratowani na czas przez streetworking: {saved}.',
   'Tonight everyone who needed a particular skill found it ({n} matched).': 'Tej nocy każda osoba, która potrzebowała konkretnej umiejętności, ją znalazła (dopasowania: {n}).',
@@ -1896,4 +1888,11 @@ export const PL: Record<string, string> = {
   'Hardcore: if the whole team quits, or every place you started with stays shut for {hours} hours, the project folds and the game ends.': 'Hardcore: jeśli cały zespół odejdzie albo wszystkie miejsca z początku gry będą zamknięte przez {hours} godz., projekt upada i gra się kończy.',
   'Your team has its own morale. People turned away and deaths wear it down; below a point, people quit.': 'Twój zespół ma własne morale. Odesłane osoby i zgony je obniżają; poniżej pewnego poziomu ludzie odchodzą.',
   'Now and then a big crisis comes, with a day of warning. Prepare for it, or the city spirals. In a Hardcore game or a scenario, it can end the project.': 'Co jakiś czas przychodzi duży kryzys, z dniem ostrzeżenia. Przygotuj się, bo inaczej miasto się stoczy. W trybie Hardcore i w scenariuszach może zakończyć projekt.',
+  "Others are waiting to play. Thanks for playing: you can put your score on the leaderboard from Settings, or join the queue again.": "Inni czekają na grę. Dziękujemy za grę: wynik możesz dodać do tabeli w Ustawieniach albo ponownie stanąć w kolejce.",
+  "Money in game units. Follows the night live; dragging sets it. Wages, kits, analyses and naloxone draw it down; funding refills it.": "Pieniądze w jednostkach gry. Zmieniają się na żywo w ciągu nocy; przeciągnięcie je ustawia. Pensje, zestawy, analizy i nalokson je zmniejszają; finansowanie uzupełnia.",
+  "Carry on with no more endings (off the leaderboard)": "Graj dalej bez kolejnych zakończeń (poza tabelą wyników)",
+  "The run carries on: no more endings.": "Gra toczy się dalej: bez kolejnych zakończeń.",
+  "This run changed the world settings, so it cannot go on the leaderboard.": "W tej grze zmieniono ustawienia świata, więc nie trafi do tabeli wyników.",
+  "Change the world (off the leaderboard)": "Zmień świat (poza tabelą wyników)",
+  "Close settings": "Zamknij ustawienia",
 };

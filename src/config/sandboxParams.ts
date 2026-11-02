@@ -63,7 +63,7 @@ export const PARAMS = [
   {
     id: 'orgBudget', group: 'org', label: t('Budget now'), min: 0, max: 10000, step: 50, default: ORG.startBudget,
     format: (v: number) => `● ${Math.round(v).toLocaleString(LOCALE)}`,
-    hint: t('Money in sandbox units. Follows the night live; dragging sets it. Wages, kits, analyses and naloxone draw it down; funding refills it.'),
+    hint: t('Money in game units. Follows the night live; dragging sets it. Wages, kits, analyses and naloxone draw it down; funding refills it.'),
   },
   {
     id: 'clock', group: 'night', label: t('Time of day'), min: 18 * 60, max: 42 * 60 - 5, step: 5, default: ILLUSTRATIVE.clockStartMinutes, format: formatClock,

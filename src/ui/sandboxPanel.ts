@@ -31,11 +31,18 @@ interface Page {
   parent?: string;
 }
 
-/** Topics in menu order; anything mounted that is not listed goes at the end. */
-const ORDER = ['group-night', 'group-demand', 'group-org', 'services', 'context-section', 'random-section', 'save-section', 'language-section', 'about-section'];
+/**
+ * Topics in menu order: the game first (new game, scenarios, saves, language,
+ * sound, flavour, about), then one fold that changes the world itself. Anything
+ * mounted that is not listed goes just above that fold.
+ */
+const WORLD = 'world';
+const ORDER = ['random-section', 'scenarios-section', 'save-section', 'language-section', 'sound-section', 'flavour-section', 'about-section', WORLD];
+/** Under the world fold, in this order: the night, the street, the budget, the services, the context. */
+const WORLD_ORDER = ['group-night', 'group-demand', 'group-org', 'services', 'context-section'];
 
 /**
- * Sandbox controls laid out like the conversation column: a short numbered
+ * Settings laid out like the conversation column: a short numbered
  * menu of topics, one topic open at a time with a numbered "Back." reply at
  * its end, and a submenu for the services. Sliders are labelled native range
  * inputs built once from the parameter schema; readouts update immediately
@@ -61,7 +68,7 @@ export class SandboxPanel {
   constructor(parent: HTMLElement, initial: SandboxSettings, cb: SandboxPanelCallbacks) {
     this.cb = cb;
     this.root = el('section', 'sandbox');
-    this.root.setAttribute('aria-label', t('Sandbox settings'));
+    this.root.setAttribute('aria-label', t('Settings'));
     this.toggle = el('button', 'btn sandbox-toggle');
     // A small gear before the word, drawn inline so it follows the text colour.
     this.toggle.innerHTML = '<svg class="gear" viewBox="-1.5 -1.5 27 27" aria-hidden="true" focusable="false"><path fill="currentColor" d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.6 7.6 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.6 7.6 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1c.5.4 1.1.7 1.7 1l.4 2.6h4l.4-2.6c.6-.3 1.2-.6 1.7-1l2.5 1 2-3.5zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg><span>' + t('Settings') + '</span>';
@@ -75,14 +82,14 @@ export class SandboxPanel {
     this.body.id = 'sandbox-body';
     this.body.hidden = true;
     const head = el('div', 'sandbox-head');
-    const title = el('h2', undefined, t('Sandbox settings'));
+    const title = el('h2', undefined, t('Settings'));
     const reset = el('button', 'btn sandbox-reset', t('Reset'));
     reset.type = 'button';
     reset.title = t('Return every setting to its default');
     reset.addEventListener('click', () => cb.onReset());
     const close = el('button', 'btn close', '×');
     close.type = 'button';
-    close.setAttribute('aria-label', t('Close sandbox settings'));
+    close.setAttribute('aria-label', t('Close settings'));
     close.addEventListener('click', () => this.setOpen(false, true));
     // Reset sits at the bottom of the panel, well away from the close button.
     this.title = title;
@@ -104,7 +111,10 @@ export class SandboxPanel {
     this.back.hidden = true;
     // Inside a topic, Back takes the title's place in the header row: no row of its own.
     title.before(this.back);
-    this.body.append(head, this.note, this.heading, this.menu, resetRow);
+    this.body.append(head, this.heading, this.note, this.menu, resetRow);
+    // The world itself (the night, the street, the budget, the services, the context) is one fold below
+    // the game's own settings: changing it takes the run off the leaderboard.
+    this.pages.set(WORLD, { section: this.menu, label: t('Change the world (off the leaderboard)') });
 
     const serviceGroups = new Set(['dropIn', 'outreach', 'clubHr']);
     for (const group of PARAM_GROUPS) {
@@ -145,7 +155,7 @@ export class SandboxPanel {
       }
       if (!fieldset.querySelector('.param')) continue;
       this.body.append(fieldset);
-      this.addPage(fieldset, group.label, serviceGroups.has(group.id) ? 'services' : undefined);
+      this.addPage(fieldset, group.label, serviceGroups.has(group.id) ? 'services' : WORLD);
     }
     // Escape steps back one level, then closes, without clearing the scene selection.
     this.root.addEventListener('keydown', (e) => {
@@ -168,7 +178,8 @@ export class SandboxPanel {
     // Above the Reset row, which stays at the bottom of every page.
     this.resetRow.before(section);
     const label = section.querySelector('legend')?.textContent ?? t('More');
-    this.addPage(section, section.classList.contains('context') ? t('Context: law, city, police, services') : label);
+    const context = section.classList.contains('context');
+    this.addPage(section, context ? t('Context: law, city, police, services') : label, context ? WORLD : undefined);
     this.show(this.current);
   }
 
@@ -196,7 +207,7 @@ export class SandboxPanel {
 
   private addPage(section: HTMLElement, label: string, parent?: string): void {
     this.pages.set(section.id, { section, label, parent });
-    if (parent && !this.pages.has(parent)) this.pages.set(parent, { section: this.menu, label: t('Services') });
+    if (parent && !this.pages.has(parent)) this.pages.set(parent, { section: this.menu, label: t('Services'), parent: WORLD });
   }
 
   private goBack(): void {
@@ -212,11 +223,11 @@ export class SandboxPanel {
     const isMenu = !id || page?.section === this.menu;
     for (const [pid, p] of this.pages) if (p.section !== this.menu) p.section.hidden = pid !== id;
     this.menu.hidden = !isMenu;
-    // Reset only under the top menu, not inside a topic.
-    this.resetRow.hidden = !!id;
+    // Reset and the note on illustrative values belong to the world fold's own menu.
+    this.resetRow.hidden = id !== WORLD;
     this.back.hidden = !id;
     this.title.hidden = !!id;
-    this.note.hidden = !!id;
+    this.note.hidden = id !== WORLD;
     this.heading.hidden = !id;
     this.heading.textContent = page?.label ?? '';
     if (isMenu) this.fillMenu(id);
@@ -225,7 +236,7 @@ export class SandboxPanel {
   /** Numbered replies for the topics at this level. */
   private fillMenu(level: string | null): void {
     const ids = [...this.pages.keys()].filter((pid) => (this.pages.get(pid)!.parent ?? null) === level && (level !== null || !this.pages.get(pid)!.parent));
-    ids.sort((a, b) => rank(a) - rank(b));
+    ids.sort((a, b) => rank(a, level) - rank(b, level));
     const items = ids.map((pid) => {
       const li = el('li');
       const b = el('button', 'sandbox-reply', `${this.pages.get(pid)!.label}.`);
@@ -276,7 +287,9 @@ export class SandboxPanel {
   }
 }
 
-function rank(id: string): number {
-  const i = ORDER.indexOf(id);
-  return i < 0 ? ORDER.length : i;
+function rank(id: string, level: string | null): number {
+  const order = level === WORLD ? WORLD_ORDER : ORDER;
+  const i = order.indexOf(id);
+  // Unlisted topics (the home screen note) sit just above the world fold.
+  return i >= 0 ? i : level === null ? ORDER.indexOf(WORLD) - 0.5 : order.length;
 }
