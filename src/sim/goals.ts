@@ -1,5 +1,4 @@
 import { GOALS, type GoalId } from '../config/goals';
-import { NIGHT_RAMP, ramp } from '../config/difficulty';
 import type { Scenario } from '../config/scenarios';
 
 /**
@@ -23,20 +22,24 @@ export interface NightReport {
   starsTotal: number;
   /** The scenario was won with this night. */
   won: boolean;
+  /** The district at the night's end (sim/growth.ts): its size against the first evening, and its street scene, 0 to 1. */
+  district?: { size: number; street: number };
 }
 
 export class Goals {
   /** Stars over the whole run. */
   stars = 0;
   scenario: Scenario | null = null;
+  /** The district's size against the first evening (sim/growth.ts): tonight's helped goal grows with it. */
+  size = 1;
   won = false;
   private start = { helped: 0, turnedAway: 0, deaths: 0, money: 0 };
   private redMinutes = 0;
 
-  /** Targets for the night that follows `nights` survived. */
-  targets(nights: number): Record<GoalId, number> {
+  /** Tonight's targets, for a district of `size`. */
+  targets(): Record<GoalId, number> {
     return {
-      helped: Math.round(GOALS.helped * ramp(NIGHT_RAMP.demand, nights)),
+      helped: Math.round(GOALS.helped * this.size),
       calm: GOALS.redHours,
       money: GOALS.moneyDrop,
     };
@@ -54,8 +57,8 @@ export class Goals {
   }
 
   /** What the night so far looks like against its goals (for the HUD). */
-  progress(nights: number, helped: number, money: number): GoalResult[] {
-    const target = this.targets(nights);
+  progress(helped: number, money: number): GoalResult[] {
+    const target = this.targets();
     const tonight = helped - this.start.helped;
     const red = this.redMinutes / 60;
     const drop = this.start.money - money;
@@ -68,7 +71,7 @@ export class Goals {
 
   /** 08:00: scores the night that just ended (`nights` survived before it) and starts the next one. */
   end(nights: number, helped: number, turnedAway: number, deaths: number, money: number, totalHelped: number): NightReport {
-    const goals = this.progress(nights, helped, money);
+    const goals = this.progress(helped, money);
     const stars = goals.filter((g) => g.met).length;
     this.stars += stars;
     const s = this.scenario;

@@ -72,6 +72,8 @@ export interface SaveMore {
   now: number;
   /** Funder trust and the last day's helped per hour (sim/funders.ts); checked there on restore. */
   funders?: { trust?: number; hours?: number[]; covered?: number };
+  /** The district's size and street scene (sim/growth.ts); checked there on restore. Older saves start at the first evening's. */
+  growth?: { size?: number; street?: number };
   /** Nightly goals, stars and the scenario (sim/goals.ts); checked there on restore. */
   goals?: Partial<ReturnType<Goals['snapshot']>>;
   /** People turned away over the whole run (the night report's count). */
@@ -178,6 +180,7 @@ function captureMore(sim: Simulation): SaveMore {
   return {
     now: r3(now),
     funders: sim.funders.snapshot(),
+    growth: sim.growth.snapshot(),
     goals: sim.goals.snapshot(),
     turnedAway: sim.turnedAwayTotal,
     org: {
@@ -277,6 +280,7 @@ function parseMore(raw: unknown): SaveMore | undefined {
   }
   return {
     funders: obj(m.funders) as SaveMore['funders'],
+    growth: obj(m.growth) as SaveMore['growth'],
     goals: obj(m.goals) as SaveMore['goals'],
     turnedAway: count(m.turnedAway),
     now: num(m.now, 0, 1e9, 0),
@@ -349,6 +353,7 @@ function applyMore(sim: Simulation, m: SaveMore): void {
   const own = internals(sim);
   o.now = m.now;
   sim.funders.restore(m.funders);
+  sim.growth.restore(m.growth);
   sim.restoreGoals(m.goals);
   sim.turnedAwayTotal = m.turnedAway ?? 0;
   o.broke = m.org.broke;

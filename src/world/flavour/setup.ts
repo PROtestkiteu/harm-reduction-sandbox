@@ -24,7 +24,9 @@ const BUILDERS: Record<PackId, () => Promise<PackBuilder>> = {
   lines: () => import('./lines').then((m) => m.buildLines),
   service: () => import('./service').then((m) => m.buildService),
   weather: () => import('./rain').then((m) => m.buildWeather),
+  chaos: () => import('./chaos').then((m) => m.buildChaos),
   campus: () => import('./campus').then((m) => m.buildCampus),
+  users: () => import('./users').then((m) => m.buildUsers),
 };
 
 export interface FlavourHost {
@@ -76,7 +78,7 @@ export function startFlavour(host: FlavourHost): Flavour {
   }, BUILDERS, Math.max(6, Math.round(QUALITY.figures * 0.5)));
   packs.setMood(settings.weather);
   for (const p of PACKS) if (settings.on[p.id]) void packs.set(p.id, true);
-  const context: FlavourContext = { clock: 1080, night: 0, day: 0, season: host.season(), snowy: false, patrol: 0, market: 0, squat: 0, squatDoors: [], still: false };
+  const context: FlavourContext = { clock: 1080, night: 0, day: 0, season: host.season(), snowy: false, patrol: 0, market: 0, squat: 0, squatDoors: [], still: false, street: 0 };
   let squatKey = '';
   return {
     packs,
@@ -98,6 +100,7 @@ export function startFlavour(host: FlavourHost): Flavour {
         const base = randomAppearance(r, !!look.vest, look.style, host.season());
         return new HumanFigure(lib, {
           ...base,
+          ...look.dress,
           style: look.style,
           extra: look.extra ?? base.extra,
           kit: { ...base.kit, ...look.kit },

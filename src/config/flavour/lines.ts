@@ -32,5 +32,12 @@ export const LINES: Record<string, readonly string[]> = {
   smoker: [t("Five minutes, then back in."), t("The DJ isn't bad."), t("Have you got a light?")],
   rider: [t("Order isn't ready yet."), t("Third time this week at this door.")],
   crew: [t("Lift with your knees."), t("Who parked there?")],
+  // Who uses what (config/flavour/users.ts).
+  opioid: [t("I'm not asleep, I'm resting."), t("Is there naloxone at the van?"), t("Don't call anyone, I'm fine."), t("My legs went funny again.")],
+  cannabis: [t("Pass it this way."), t("Nobody's in a rush, man."), t("Anyone got snacks?"), t("Listen to this tune.")],
+  clubber: [t("Is there an after-party?"), t("Drink some water, seriously."), t("My jaw is going."), t("Where's my coat?")],
+  tripper: [t("Look at the lamps breathing."), t("Can we stay here a while?"), t("It's fine, it's just the trip."), t("The trees are talking.")],
+  benzo: [t("Just five more minutes."), t("Where am I?"), t("Don't take my bag."), t("I only had a couple.")],
+  stimulant: [t("I'm good, I'm good, I'm good."), t("Three days, no sleep, it's fine."), t("I'm fixing the bike, then I'm off."), t("Who's looking at me?")],
   student: [t("Deadline is Friday."), t("Are you coming out tonight?"), t("The library shuts at ten."), t("My rent went up again."), t("Does anyone know if the club does testing?")],
 };

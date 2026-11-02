@@ -54,13 +54,14 @@ async (name, days = 3, opts = {}) => {
     let inner = 0;
     while (sim.org.now < target && inner++ < 10000) { sim.tick(STEP); crowd.update(STEP); }
     if (red()) { redHours += 1 / 60; firstRed ??= Math.round(t / 60); }
-    if (overAt === null && sim.org.brokeMinutes >= 480) overAt = Math.round(t / 60);
+    // No game over any more: the first hour all three starting services had closed down for money.
+    if (overAt === null && sim.org.closedDown.size >= 3) overAt = Math.round(t / 60);
     if (t >= nextLog) {
       nextLog += 60;
       const s = sim.cityStress;
       rows.push({
         h: Math.round(t / 60), clock: Math.floor(sim.clockMinutes / 60) % 24, budget: Math.round(sim.org.budget), net: Math.round(sim.org.netPerHour),
-        police: +s.police.toFixed(2), medics: +s.medics.toFixed(2), sobering: +s.sobering.toFixed(2), district: +sim.vitality.level.toFixed(2),
+        police: +s.police.toFixed(2), medics: +s.medics.toFixed(2), sobering: +s.sobering.toFixed(2), district: +sim.vitality.level.toFixed(2), size: sim.growth ? +sim.growth.size.toFixed(2) : 1, street: sim.growth ? +sim.growth.street.toFixed(2) : 0,
         crisis: +sim.crisis.toFixed(2), unmet24: sim.unmet24, helped: sim.totals.helped, broke: sim.org.broke ? Math.round(sim.org.brokeMinutes / 60) : 0,
         staff: `${sim.org.paid}+${sim.org.volunteers}`, open: ids.filter((i) => sim.services[i].status === 'open').length,
         stars: sim.goals?.stars ?? 0, trust: sim.funders ? +sim.funders.trust.toFixed(2) : 1,

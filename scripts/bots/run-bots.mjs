@@ -1,6 +1,6 @@
 // Balance check: runs strategy bots on the real simulation in the dev page and
 // prints, per bot, money and meters every few game hours, the first red meter
-// and the game-over hour. Each bot gets a fresh page with the same seed.
+// and the hour all three starting services had closed for money. Each bot gets a fresh page with the same seed.
 //
 //   npm run dev                                   (in another terminal)
 //   node scripts/bots/run-bots.mjs [--days 3] [--url http://localhost:5199/] [--seed 777] [--speed 1] [--out dir] [bots...]
@@ -41,12 +41,12 @@ for (const name of bots) {
   const at = (f) => rows[Math.min(rows.length - 1, Math.floor(f * (rows.length - 1)))];
   summary.push({
     bot: name, money: `${at(0).budget} / ${at(0.5).budget} / ${at(1).budget}`, 'net/h end': at(1).net,
-    'first red h': result.firstRedHour ?? '-', 'red h': result.redHours, 'game over h': result.gameOverHour ?? '-',
+    'first red h': result.firstRedHour ?? '-', 'red h': result.redHours, 'all shut h': result.gameOverHour ?? '-',
     helped: result.totals.helped, stars: at(1).stars, 'trust end': at(1).trust, 'open end': at(1).open, 'staff end': at(1).staff, acts: JSON.stringify(result.acts),
   });
-  console.log(`\n${name}: h clock budget net police medics sobering district crisis unmet24 helped stars trust`);
+  console.log(`\n${name}: h clock budget net police medics sobering district size street crisis unmet24 helped stars trust`);
   for (const r of rows.filter((_, i) => i % 6 === 0 || i === rows.length - 1)) {
-    console.log(`  ${[r.h, r.clock, r.budget, r.net, r.police, r.medics, r.sobering, r.district, r.crisis, r.unmet24, r.helped, r.stars, r.trust].join(' ')}`);
+    console.log(`  ${[r.h, r.clock, r.budget, r.net, r.police, r.medics, r.sobering, r.district, r.size, r.street, r.crisis, r.unmet24, r.helped, r.stars, r.trust].join(' ')}`);
   }
 }
 console.log(`\nseed ${seed}, ${days} game days, clock speed ${speed}`);

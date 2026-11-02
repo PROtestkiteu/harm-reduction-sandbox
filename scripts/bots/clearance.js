@@ -10,6 +10,7 @@ async () => {
   const cr = await import('/src/config/flavour/crime.ts');
   const vg = await import('/src/config/flavour/vignettes.ts');
   const sv = await import('/src/config/flavour/service.ts');
+  const us = await import('/src/config/flavour/users.ts');
   const items = [];
   const add = (name, p, r = 0.35, still = true) => items.push({ name, x: p.x, z: p.z, r, still });
   st.DEAL_SPOTS.forEach((d, i) => { add('dealer' + i, d.at); if (d.lookout) add('lookout' + i, d.lookout); });
@@ -30,6 +31,9 @@ async () => {
     for (const [lx, lz] of [[-1.27, -0.32], [1.27, -0.32], [-1.27, 0.28], [1.27, 0.28], [1.6, -0.2]]) add('stop' + i + '.' + lx + ',' + lz, { x: st.at.x + fz * lx + fx * lz, z: st.at.z - fx * lx + fz * lz }, 0.05);
     for (const k of [0, 1]) { const off = (k - 0.5); add('stopWait' + i + '.' + k, { x: st.at.x + fz * off + fx * 0.1, z: st.at.z - fx * off + fz * 0.1 }, 0.3); }
   });
+  // Who uses what: every spot, the far end of each pacing line, and the smokers' bench.
+  us.USER_GROUPS.forEach((g) => g.spots.forEach((sp, i) => { add(g.kind + i, sp.at, sp.liesDown ? 0.9 : 0.35); if (sp.pace) add(g.kind + i + 'pace', sp.pace); }));
+  { const c = us.USER_GROUPS.find((g) => g.kind === 'cannabis'); if (c) add('usersBench', { x: (c.spots[0].at.x + c.spots[1].at.x) / 2, z: (c.spots[0].at.z + c.spots[1].at.z) / 2 + 0.05 }, 0.85); }
   // Squat sitters and club smokers, where they stand this launch.
   for (const a of __sandbox.flavour.packs.pool.actors) if (a.voice === 'smoker' || (a.voice === 'user' && a.look.kit?.bedroll && a.shown > 0.1)) add(a.voice + '@' + a.x.toFixed(1) + ',' + a.z.toFixed(1), a);
   // Distance from a point to a segment.

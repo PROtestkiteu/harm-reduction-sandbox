@@ -8,7 +8,7 @@ import { LANG, LANG_KEY, t } from './i18n';
 import { ILLUSTRATIVE } from './config/illustrative';
 import { combineEffects, decodeContext, defaultContext, encodeContext, type ContextSelection } from './config/contextFactors';
 import { NATIONAL_MODELS, selectionFor } from './config/nationalModels';
-import { GRANTS, ORG } from './config/organisation';
+import { GRANTS } from './config/organisation';
 import { FAVOURS, type FavourId } from './config/favours';
 import { CAMPER_SPOTS, camperSpot } from './world/layout';
 import { exposureNow } from './sim/exposure';
@@ -37,7 +37,6 @@ import { randomAppearance, type Archetype } from './agents/character';
 import { displayName, rename } from './ui/names';
 import { Welcome } from './ui/welcome';
 import { SavePanel } from './ui/savePanel';
-import { GameOver } from './ui/gameOver';
 import { EventPopup } from './ui/eventPopup';
 import { ConfirmPopup } from './ui/confirmPopup';
 import { camperDecision, driveDecision, grantDecision, investDecision, pathDecision, recruitDecision, relaunchDecision, setupDecision, type Decision } from './game/decisions';
@@ -55,7 +54,7 @@ import { QueueBox } from './ui/queueBox';
 import { startPresence } from './game/presence';
 import { applySave, captureSave, parseSave, takeLoadedCamperSpot, unpackSave, type SaveData } from './game/saveGame';
 import { hasFreeSettings, isFreeLever, isSandboxed, markSandboxed } from './game/sandboxed';
-import { LiveGame, fetchGame, linkedGame, newGameAddress } from './game/liveGame';
+import { LiveGame, fetchGame, linkedGame } from './game/liveGame';
 import { GUIDE_AGAIN_MINUTES, needGuide } from './game/needGuides';
 import { METER_ORDER, meterState } from './ui/needIcons';
 import type { Need } from './config/needs';
@@ -420,6 +419,7 @@ function updateFlavour(dt: number): void {
   c.market = sim.neighbourhood.state.streetMarket;
   c.squat = sim.camp.squat;
   c.still = reducedMotion.matches;
+  c.street = sim.growth.street;
   if ((flavourSquatTimer -= dt) <= 0) {
     flavourSquatTimer = 2;
     flavour.setSquats([...(world.squat === null ? [] : [world.squat]), ...sim.property.squats.map((i) => world.shopUnits[i])]);
@@ -591,7 +591,6 @@ function syncServiceVisuals(): void {
 }
 
 function refreshHud(): void {
-  checkGameOver();
   checkBigEvent();
   world.setParkLife(sim.neighbourhood.state.streetMarket, sim.context.patrol);
   // The warming bus and the water point are out only in the hours they work.
@@ -846,17 +845,6 @@ sandbox.mount(languageSection((lang) => {
 }));
 sandbox.mount(aboutSection(__APP_VERSION__));
 
-/** The run ends when the money is gone: the city pauses and the run's numbers are shown. */
-const gameOver = new GameOver(document.body, {
-  submit: async () => {
-    const run = await ensureRun();
-    const rank = await submitScore(run, orgName(), sim.totals.helped, sim.totals.nights);
-    return t('Sent. {name} is number {rank}.', { name: orgName(), rank });
-  },
-  sandboxed: isSandboxed,
-  // A new page is a new game; settings in the address stay, a shared save does not.
-  restart: () => { location.href = newGameAddress(); },
-});
 // Big events: every 10 to 25 game hours one may stop the clock and ask for a decision.
 const eventRandom = createRandom((Math.random() * 0x7fffffff) | 0);
 // The first decision comes early (2 to 4 hours in); after that every 10 to 25 hours.
@@ -912,7 +900,7 @@ const eventWorld: EventWorld = {
 /** When each meter's guide last showed (org minutes). */
 const guidedAt: Partial<Record<Need, number>> = {};
 function checkBigEvent(): void {
-  if (eventPopup.open || gameOver.open) return;
+  if (eventPopup.open) return;
   // City hall's concession comes as soon as it is due.
   if (sim.concessionDue) {
     const ids = ['postedOfficer', 'cleanUp', 'camperOff'] as const;
@@ -945,13 +933,6 @@ function checkBigEvent(): void {
   const event = pickEvent(eventWorld);
   if (event) { focusPlace(event.place); event.opening?.(eventWorld); }
   if (event) eventPopup.show(event, sim.org.budget, (choice) => choice.apply(eventWorld));
-}
-
-function checkGameOver(): void {
-  // Out of money is a warning first: services close one by one, and the run ends after the last.
-  if (gameOver.open || sim.org.brokeMinutes < ORG.gameOverAfter) return;
-  setPaused(true);
-  gameOver.show(orgName(), sim.totals.nights, sim.totals.helped);
 }
 
 /** After any load: the world, the panels and the crowd's destinations follow the new state. */
@@ -1109,7 +1090,7 @@ function refreshGuide(): void {
     closedDown: SERVICE_IDS.filter((id) => sim.org.closedDown.has(id) && !sim.org.reopening.some((r) => r.id === id)),
     red,
     busiest: { ...busy, room: sim.services[busy.service].waitingRoom },
-    goals: sim.goals.progress(sim.totals.nights, sim.totals.helped, sim.org.budget),
+    goals: sim.goals.progress(sim.totals.helped, sim.org.budget),
     // Daytime (08:00 to 20:00) counts as the night not yet begun: no pace to be behind on.
     nightMinutes: ((m) => (m > 720 ? 0 : m))((sim.clockMinutes - 20 * 60 + 2880) % 1440),
     nights: sim.totals.nights,
@@ -1123,7 +1104,7 @@ function refreshGuide(): void {
 
 function refreshGoals(): void {
   const s = sim.goals.scenario;
-  goalsStrip.set(sim.goals.progress(sim.totals.nights, sim.totals.helped, sim.org.budget), s
+  goalsStrip.set(sim.goals.progress(sim.totals.helped, sim.org.budget), s
     ? (sim.goals.won ? t('{title}: won.', { title: s.title }) : t('{title}: {nights} of {needNights} nights, {helped} of {needHelped} helped, {stars} of {needStars} stars.', {
       title: s.title, nights: sim.totals.nights, needNights: s.nights, helped: sim.totals.helped, needHelped: s.helped, stars: sim.goals.stars, needStars: s.stars,
     }))
@@ -1132,7 +1113,7 @@ function refreshGoals(): void {
   if (pendingReport && !document.querySelector('dialog[open]')) {
     const r = pendingReport;
     pendingReport = null;
-    const next = sim.goals.targets(sim.totals.nights);
+    const next = sim.goals.targets();
     nightBox.show(r, [{ id: 'helped', target: next.helped }, { id: 'calm', target: next.calm }, { id: 'money', target: next.money }], sim.goals.scenario, sim.totals.helped);
   }
 }

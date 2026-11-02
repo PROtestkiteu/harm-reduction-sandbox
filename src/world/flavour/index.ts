@@ -32,6 +32,8 @@ export interface FlavourContext {
   squatDoors: readonly SquatDoor[];
   /** Reduced motion preferred: weather holds still, nothing bobs. */
   still: boolean;
+  /** The street scene the simulation tracks (sim/growth.ts), 0 to 1: the chaos pack draws it. */
+  street: number;
 }
 
 export interface SquatDoor { x: number; z: number; ax: number; az: number; nx: number; nz: number }

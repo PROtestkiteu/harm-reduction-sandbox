@@ -1564,9 +1564,6 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
 .board-empty { list-style: none; color: var(--muted); }
 
 /* Game over (src/ui/gameOver.ts): the welcome box's look, with a second, quieter button. */
-.game-over h2 { color: var(--law); }
-.game-over .welcome-start { margin-top: 10px; }
-.game-over-again { background: none !important; color: var(--reply) !important; border: 1px solid currentColor !important; }
 
 /* Player gate (src/ui/queueBox.ts): a small countdown while play is time-limited. */
 .time-left {
@@ -2241,6 +2238,9 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
   font-size: 17px;
 }
 .column[data-mode='idle'][data-tutorial='true'] .speaker { color: var(--reply); }
+/* The walk-through's label stands on its own line: no dialogue rule after it. */
+.column[data-mode='idle'][data-tutorial='true'] .speaker { display: block; }
+.column[data-mode='idle'][data-tutorial='true'] .speaker::after { display: none; }
 /* The control a step names glows gold until it is used. */
 #hud[data-guide='try:speed'] .speed-toggle,
 #hud[data-guide='try:org'] .money-btn { outline: 2px solid var(--reply); outline-offset: 4px; border-radius: 3px; animation: guide-glow 1.6s ease-in-out infinite; }

@@ -24,11 +24,11 @@ const PAGES: Page[] = [
   },
   {
     title: t('Your job'),
-    lead: t('Help as many people as you can each night without running out of money.'),
+    lead: t('The district grows every night. Good work grows its nightlife; neglect grows a street scene in crisis. Either way more people come.'),
     points: [
       t('Every visit costs money. Funders and grants pay for results, so a busy night can still leave you short.'),
       t('People turned away do not vanish: they end up with the police and the medics. The meters at the top show that strain.'),
-      t('Run out of money and the game ends.'),
+      t('Run out of money and services shut one by one until you can relaunch them, while the street scene grows.'),
     ],
   },
   {

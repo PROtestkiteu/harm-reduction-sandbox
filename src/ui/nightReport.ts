@@ -1,7 +1,7 @@
 import { GOAL_TEXT } from '../config/goals';
 import type { Scenario } from '../config/scenarios';
 import type { NightReport } from '../sim/goals';
-import { plural, t } from '../i18n';
+import { plural, t, LOCALE } from '../i18n';
 import { price } from './money';
 import { playerBadge, type PlayerPicture } from './playerBadge';
 
@@ -39,6 +39,7 @@ export class NightReportBox {
       plural(r.turnedAway, ['{n} person turned away', '{n} people turned away'], ['{n} osoba odesłana', '{n} osoby odesłane', '{n} osób odesłanych']),
       t('Money: {start} to {end} ({change})', { start: price(r.moneyStart), end: price(r.moneyEnd), change: `${money >= 0 ? '+' : ''}${Math.round(money)}` }),
       t('Hours with a city service in the red: {h}', { h: r.redHours }),
+      ...(r.district ? [t('District: {size} times the first night, street scene {street}%.', { size: r.district.size.toLocaleString(LOCALE, { maximumFractionDigits: 1, minimumFractionDigits: 1 }), street: Math.round(r.district.street * 100) })] : []),
       ...(r.deaths ? [plural(r.deaths, ['{n} person died outdoors', '{n} people died outdoors'], ['{n} osoba zmarła na ulicy', '{n} osoby zmarły na ulicy', '{n} osób zmarło na ulicy'])] : []),
     ]) facts.append(Object.assign(document.createElement('li'), { textContent: line }));
     const goals = document.createElement('ul');

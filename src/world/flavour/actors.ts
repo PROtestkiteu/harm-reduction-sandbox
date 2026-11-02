@@ -17,7 +17,7 @@ import {
   Vector3,
   type Object3D,
 } from 'three';
-import type { Archetype, BodyState, Figure, Kit, Pose } from '../../agents/character';
+import type { Appearance, Archetype, BodyState, Figure, Kit, Pose } from '../../agents/character';
 import { dynamic } from '../mergeStatic';
 
 /**
@@ -37,6 +37,8 @@ export interface ActorLook {
   /** Hi-vis vest in this colour (wardens, bin crews). */
   vest?: number;
   extra?: 'none' | 'backpack' | 'bag' | 'scarf' | 'jacket';
+  /** Laid over the seeded look: colours, hair, a beard. */
+  dress?: Partial<Appearance>;
 }
 
 /** A small light at the hand: an ember, a lighter's flame, a phone screen. */

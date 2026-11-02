@@ -55,6 +55,7 @@ import { Funders } from './funders';
 import { Goals, type NightReport } from './goals';
 import { scenarioById } from '../config/scenarios';
 import { NIGHT_RAMP, ramp } from '../config/difficulty';
+import { Growth } from './growth';
 import { SERVICE_IDS, WALK_IN_SERVICE_IDS, type ServiceId, type ServiceStatus, type WalkInServiceId } from './types';
 import { plural, t } from '../i18n';
 
@@ -327,6 +328,11 @@ export class Simulation {
   meetAgainAt = 0;
   /** How well the district is doing: grows with harm reduction that works, opens new venues. */
   readonly vitality = new Vitality();
+  /** How many people the district holds against the first evening, and how much of it is street scene (sim/growth.ts). */
+  readonly growth = new Growth();
+  /** The street scene's band last announced (0 calm, 1 growing, 2 crisis), and whether all-shut was said. */
+  private streetBand = 0;
+  private allShutSaid = false;
   /** Pressure on the city's police, ambulances and sobering-up centre. */
   readonly cityStress = new CityStress();
   /** The tent camp in the big park. */
@@ -567,9 +573,12 @@ export class Simulation {
     const fee = id === 'drugChecking' && this.commercialChecking ? HUSTLE.commercialDemand : 1;
     // A thriving district brings more people out, and more people needing the services.
     const v = id === 'passerby' || id === 'club' ? this.vitality.footfall * (1 + 0.15 * this.vitality.venues) : this.vitality.demand;
-    // Neglect brings people to the door: more of them in a crisis and while the city is stretched.
-    const need = id === 'passerby' || id === 'club' || id === 'party' ? 1 : this.surge * ramp(NIGHT_RAMP.demand, this.totals.nights);
-    return this.rates[id] * boost * street * seasonal * squat * fee * v * need;
+    // The district grows either way (sim/growth.ts): everyone out at night with its size, and the
+    // low-threshold services with its street scene too. Neglect also brings people to the door now:
+    // more of them in a crisis and while the city is stretched.
+    const grown = id === 'passerby' || id === 'club' || id === 'party' || id === 'drugChecking' ? this.growth.size : this.growth.streetNeed;
+    const need = id === 'passerby' || id === 'club' || id === 'party' ? 1 : this.surge;
+    return this.rates[id] * boost * street * seasonal * squat * fee * v * grown * need;
   }
 
   private setStaff(id: ServiceId, staff: number): void {
@@ -1082,7 +1091,8 @@ export class Simulation {
   get fundingIncome(): number {
     const club = (this.clubContract && this.services.clubHr.status === 'open' ? HUSTLE.clubFeePerHour : 0) + this.vitality.partners.size * VITALITY.partnerFeePerHour;
     const boxes = this.donationIncome * (this.driveUntil !== null ? HUSTLE.driveBoxes : 1);
-    return (ORG.incomePerHour[this.policy.funding] ?? 0) * this.funders.trust + boxes + club;
+    // A bigger district brings bigger budgets: funders pay for the need they see.
+    return (ORG.incomePerHour[this.policy.funding] ?? 0) * this.funders.trust * this.growth.funding + boxes + club;
   }
 
   /** Money moved at each place, not yet shown as a coin. */
@@ -1460,6 +1470,7 @@ export class Simulation {
     this.goals.tick(dt * this.minuteRate, stretched);
     if (before < MORNING && this.clockMinutes >= MORNING) {
       const report = this.goals.end(this.totals.nights, this.totals.helped, this.turnedAwayTotal, this.exposure.deaths, this.org.budget, this.totals.helped);
+      report.district = { size: this.growth.size, street: this.growth.street };
       this.totals.nights++;
       this.emit({ type: 'nightReport', report });
     }
@@ -1558,6 +1569,24 @@ export class Simulation {
     }
     this.cityStress.sobering = Math.max(0, this.cityStress.sobering - this.vitality.partners.size * VITALITY.partnerEasesSobering * (dt * this.minuteRate) / 60);
     const s = this.cityStress;
+    this.growth.tick(dt * this.minuteRate, { vitality: this.vitality.level, crisis: this.crisis, unmet24: this.unmet24, broke: this.org.broke, camp: this.camp.size });
+    this.goals.size = this.growth.size;
+    // The street scene crossing a band is news: growing, in crisis, or easing back.
+    const streetBand = this.growth.street >= 0.7 ? 2 : this.growth.street >= 0.3 ? 1 : 0;
+    if (streetBand !== this.streetBand) {
+      const up = streetBand > this.streetBand;
+      // A little hysteresis: easing is said only once well below the band's edge.
+      if (up || this.growth.street < (streetBand === 1 ? 0.6 : 0.22)) {
+        this.org.notice(this.clockMinutes, up
+          ? streetBand === 2 ? t('The street is in crisis: boarded-up shops, fires and fights. Calm nights with the services open will slowly turn it round.') : t('The street scene is growing: more people sleeping rough and using outdoors. Keep the low-threshold services open and staffed.')
+          : t('The street scene is easing.'));
+        this.streetBand = streetBand;
+      }
+    }
+    // Everything the organisation started with shut for money: said once, with the way back.
+    const allShut = this.org.closedDown.size >= ORG.closeDownAfter.length;
+    if (allShut && !this.allShutSaid) this.org.notice(this.clockMinutes, t('Everything is shut for lack of money. The street scene grows while you rebuild: funding still comes in, so relaunch once it allows.'));
+    this.allShutSaid = allShut;
     const venueChange = this.vitality.tick(dt * this.minuteRate, { crisis: this.crisis, unmet24: this.unmet24, stress: (s.police + s.medics + s.sobering) / 3 });
     if (venueChange) {
       const kind = VENUE_KINDS[venueChange > 0 ? this.vitality.venues - 1 : this.vitality.venues];
@@ -1593,7 +1622,7 @@ export class Simulation {
     if (this.team.tick((dt * this.minuteRate) / 60, late)) this.reallocate();
     else this.updateSkill();
     if (this.openingChanged()) this.reallocate();
-    const band = this.funders.tick(dt * this.minuteRate, this.neighbourhood.state.reputation, this.servicesClosedByPlayer, ramp(NIGHT_RAMP.demand, this.totals.nights));
+    const band = this.funders.tick(dt * this.minuteRate, this.neighbourhood.state.reputation, this.servicesClosedByPlayer, this.growth.size);
     if (band) this.org.notice(this.clockMinutes, band === 'wary'
       ? t('Funders are getting wary: fewer people helped this past day. Project money and grant chances are down until results pick up.')
       : band === 'confident'

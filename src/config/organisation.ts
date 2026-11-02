@@ -48,8 +48,6 @@ export const ORG = {
   brokeBelow: 10,
   /** After running out, paid staff come back only once the budget recovers to this (no flapping at zero). */
   recoverAt: 300,
-  /** Out of money this long (clock minutes, after the last closure below) and the run is over. */
-  gameOverAfter: 480,
   /**
    * Out of money for this long (clock minutes) and a service closes down for
    * good, in this order. Restoring the budget before a deadline resets the count.
