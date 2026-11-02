@@ -1,0 +1,188 @@
+{
+  "generator": "Built-in image_gen",
+  "date": "2026-11-02",
+  "reference": "Approved Style C comparison sheet",
+  "direction": "Original Disco Elysium-inspired expressive oil portraits; violet twilight shadows, amber sidelight, restrained teal accents, messy hair, asymmetrical lived-in faces, worn clothing, rough broken impasto; vertical 4:5 head-and-shoulders, no text/logos/paraphernalia. Each subject is specified below. Illustrated archetypes, not evidence or inferred diagnoses.",
+  "assets": [
+    {
+      "id": "coordinator",
+      "subject": "a woman about 44, light olive skin, short uneven dark hair with silver strands, navy work jacket, tired perceptive eyes, one raised eyebrow",
+      "archetype": "everyday",
+      "role": "player",
+      "file": "coordinator.webp",
+      "sha256": "d0cbe60920c33bf672d86d4ce1eed347d147806b5ae45b0f14141978a95b5ee5",
+      "bytes": 81580
+    },
+    {
+      "id": "everyday",
+      "subject": "a man about 38, medium brown skin, unruly curly dark hair and uneven stubble, faded teal jacket over a creased T-shirt, wry half smile",
+      "archetype": "everyday",
+      "role": "resident",
+      "file": "everyday.webp",
+      "sha256": "05e79ff01ed0a8956d912054a9883a3f99287e546356fc5407f99d5fd8094de6",
+      "bytes": 99290
+    },
+    {
+      "id": "raver",
+      "subject": "a woman about 28, light skin with freckles, damp tangled ginger hair, smeared eyeliner, bright pink vest under battered jacket, animated crooked grin",
+      "archetype": "raver",
+      "role": "clubgoer",
+      "file": "raver.webp",
+      "sha256": "31aa3dc89f1e9c8f1101ab2ff22d9f681aa40d06915a0692e443a40204e44a58",
+      "bytes": 95228
+    },
+    {
+      "id": "tourist",
+      "subject": "a man about 46, tan skin, messy thinning brown hair, rumpled sand windbreaker, camera strap around neck, amused lost expression",
+      "archetype": "tourist",
+      "role": "passerby",
+      "file": "tourist.webp",
+      "sha256": "0bc6ba94d0c4811a4a59a1e04043e066cf5ed0169c31d19c524eef2fbbff543d",
+      "bytes": 102358
+    },
+    {
+      "id": "worker",
+      "subject": "a woman about 48, dark brown skin, flyaway tightly curled hair tied back, faded blue workwear, broad nose, weary kind eyes",
+      "archetype": "worker",
+      "role": "passerby",
+      "file": "worker.webp",
+      "sha256": "9e2817dcf682c0ed7ce883bbe170d63d2b07d3b15a9a382a78eb79af59b6370f",
+      "bytes": 87760
+    },
+    {
+      "id": "office",
+      "subject": "a man about 43, pale olive skin, loosened tie, crushed charcoal jacket, unshaven jaw, tousled black hair, skeptical tired look",
+      "archetype": "office",
+      "role": "passerby",
+      "file": "office.webp",
+      "sha256": "ed5f883312c48bc179773a70f53a6b7f4bac770fed43e6ab0e425ebb81aa66fd",
+      "bytes": 91970
+    },
+    {
+      "id": "student",
+      "subject": "an androgynous adult about 24, medium olive skin, unruly dark curls, round glasses slightly askew, mustard sweater and burgundy scarf, attentive expression",
+      "archetype": "student",
+      "role": "passerby",
+      "file": "student.webp",
+      "sha256": "951df7e36a9d01fa2f76341d46a5af5bc45549b62b71b22b4ef3170aa5d74e9e",
+      "bytes": 95066
+    },
+    {
+      "id": "older",
+      "subject": "an elderly woman about 72, pale weathered skin, wiry silver hair escaping knitted cap, mismatched wool layers, lined expressive face, sharp amused eyes",
+      "archetype": "older",
+      "role": "resident",
+      "file": "older.webp",
+      "sha256": "c6e66a7c2958391627bf734124a453cb5e5c15873b70c985228ebbf332c9fe7f",
+      "bytes": 100540
+    },
+    {
+      "id": "unhoused",
+      "subject": "a man about 52, light weathered skin, long tangled greying hair, uneven beard, layered patched brown coat and frayed hood, guarded thoughtful face; dignified individual with no caricature",
+      "archetype": "unhoused",
+      "role": "sleeper",
+      "file": "unhoused.webp",
+      "sha256": "5e59b19ab5f1d11783710beab0ff3f810872f3e86ec7a69e1af738189a0f0ccc",
+      "bytes": 100150
+    },
+    {
+      "id": "techno-black",
+      "subject": "an androgynous adult about 30, pale skin, grown-out black undercut with sweaty fringe, black high-collar clubwear, silver ear piercings, intense sleepless eyes",
+      "archetype": "technoBlack",
+      "role": "clubgoer",
+      "file": "techno-black.webp",
+      "sha256": "ef6e964d395f9157651375aac619b01c46ff3c4676648064c8e21934fcf73627",
+      "bytes": 77682
+    },
+    {
+      "id": "punk",
+      "subject": "a woman about 35, light olive skin, messy short red-and-black hair, chipped eyeliner, worn patched black denim jacket, nose ring, crooked confident smile",
+      "archetype": "punk",
+      "role": "passerby",
+      "file": "punk.webp",
+      "sha256": "86e2658038b4ea6ce30bc1168efc3fcb6df169ad1ca49af78c65139823d6a468",
+      "bytes": 87868
+    },
+    {
+      "id": "goth",
+      "subject": "a man about 32, medium brown skin, long tangled black hair, smudged dark eyeliner, frayed black velvet collar, silver pendant, thoughtful melancholic expression",
+      "archetype": "goth",
+      "role": "passerby",
+      "file": "goth.webp",
+      "sha256": "ccd94728f9eca8b5a1fc7aa4ab1048853167a455b57f218a92f3264e92a4bd9a",
+      "bytes": 83654
+    },
+    {
+      "id": "hiphop",
+      "subject": "a man about 29, dark brown skin, rough short twists under a battered blue cap, loose gold-and-blue jacket, small beard, skeptical expressive face",
+      "archetype": "hiphop",
+      "role": "passerby",
+      "file": "hiphop.webp",
+      "sha256": "cbaf1ed0dabc7bab34d4c9ad597b257164dd35d8a480bc36e6f4472ca0dbe496",
+      "bytes": 98412
+    },
+    {
+      "id": "queer-rave",
+      "subject": "an androgynous adult about 31, tan skin, uneven lilac mullet, smudged glitter and black eyeliner, worn black jacket over bright lime mesh top, irreverent tired grin",
+      "archetype": "queerRave",
+      "role": "clubgoer",
+      "file": "queer-rave.webp",
+      "sha256": "71c6f3e94d4a16f198a5dde6720d76db98314310f02a2925acab0def5d911a8e",
+      "bytes": 95076
+    },
+    {
+      "id": "metal",
+      "subject": "a woman about 39, light freckled skin, unkempt long brown hair, black denim vest and faded band-style T-shirt with NO readable text, broad face, blunt warm expression",
+      "archetype": "metal",
+      "role": "passerby",
+      "file": "metal.webp",
+      "sha256": "957ce2f2d79b925b1a1157f55abb118cf14a7a42353dd7357f05b0a3dab9aaf0",
+      "bytes": 84914
+    },
+    {
+      "id": "outreach",
+      "subject": "a woman about 41, medium brown skin, short wild curly hair, worn teal outreach vest over olive hoodie, under-eye creases, calm experienced gaze",
+      "archetype": "everyday",
+      "role": "staff",
+      "file": "outreach.webp",
+      "sha256": "699757236142186a87e64cfd1d3c422e74f3df2f9cb1815c3d3231d45a85773f",
+      "bytes": 97328
+    },
+    {
+      "id": "police",
+      "subject": "a man about 54, light skin, receding short grey hair, dark municipal-style uniform with modest yellow-green vest and NO text or badges, stubbled jaw, impatient exhausted eyes",
+      "archetype": "worker",
+      "role": "police",
+      "file": "police.webp",
+      "sha256": "754017f86590757b7fed4f750a0d6a585f2008885f355db045a59d5d3a6f7954",
+      "bytes": 86428
+    },
+    {
+      "id": "seller",
+      "subject": "a woman about 36, tan olive skin, messy dark bob, cheap dark puffer jacket and burgundy hoodie, chapped lips, alert wary eyes; ordinary individual no villain caricature",
+      "archetype": "everyday",
+      "role": "seller",
+      "file": "seller.webp",
+      "sha256": "9c790d136b3a8378805f81cb29955d1ec1f52fc847684c82e177ea678d80468e",
+      "bytes": 89996
+    },
+    {
+      "id": "cleaner",
+      "subject": "a man about 58, medium brown skin, tousled salt-and-pepper hair, rough beard, faded orange high-vis jacket, deep smile lines, tired dry humor",
+      "archetype": "worker",
+      "role": "cleaner",
+      "file": "cleaner.webp",
+      "sha256": "947dbe629c1b33ecc3ff2eb2e407f699c149cfda113b97042f2db697277a1166",
+      "bytes": 100540
+    },
+    {
+      "id": "bouncer",
+      "subject": "a woman about 45, dark brown skin, broad stocky shoulders, shaved sides with messy short top, scuffed black security jacket without logos, strong jaw, observant unsmiling face",
+      "archetype": "worker",
+      "role": "bouncer",
+      "file": "bouncer.webp",
+      "sha256": "3f48451106cdb73fcaac87829bfb338c4356e8d63c7122fe9ca4a2b89188a8ee",
+      "bytes": 91620
+    }
+  ]
+}

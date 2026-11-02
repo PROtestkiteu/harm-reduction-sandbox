@@ -1,0 +1,189 @@
+{
+  "generator": "Built-in image_gen",
+  "date": "2026-11-02",
+  "referenceImages": [],
+  "promptTemplate": "Use case: stylized-concept. ONE original finished 2D dialogue portrait for the Harm Reduction Project game. Vertical 4:5, head plus upper torso, include the specified hand/prop at chest if requested, full hair silhouette with breathing room, eyes and expression clear at 240x300. Art direction: Disco Elysium-inspired psychological oil/gouache painting, bold angular broken brush strokes, rough impasto and drybrush, expressive imperfect human features. Style C dusk: violet shadows, amber light and restrained teal reflected color, nuanced muted palette, deliberately abstract painterly backdrop. Make this a VERY DISTINCT INDIVIDUAL, not a handsome model or generic curly-haired person; rigorously follow their specified face shape, age, hair, head angle, gaze and expression. Strong expressive acting, readable eye whites/gaze even when averted, worn clothing, human dignity. NO reference image is used: invent THIS specified face from scratch. Do not default to a calm three-quarter face gazing to upper right. Background and lighting placement follow this person's brief, no repeated bright orange stripe. No frame, no caption or text, no logo/watermark, no collage, no photo/3D/anime, no graphic wounds or active injection, no demonstration of consumption, no dosage or drug-use instructions. Subtle supplied props are permitted and must be clearly visible when specified. SUBJECT BRIEF: ",
+  "instruction": "Append the subject field of each asset to promptTemplate to reproduce the final prompt. Reusable cast art, not clinical evidence or an exact procedural-model likeness.",
+  "assets": [
+    {
+      "id": "coordinator",
+      "subject": "Woman aged 49, pale freckled skin, LONG TRIANGULAR face, sharp cheekbones, thin long nose, crow's feet, messy dark hair in a high loose bun. HEAD TILTED DOWN, eyes looking STRAIGHT AT VIEWER from under raised right eyebrow. Wry closed-mouth skeptical expression. Navy work jacket, burgundy scarf. One hand gripping a battered clipboard at lower edge. Warm light from ABOVE LEFT, background dusty violet.",
+      "archetype": "everyday",
+      "role": "player",
+      "file": "coordinator.webp",
+      "sha256": "651441322ad946ca17a90f51d9e291cd83714776a263210459e8bbf66b02529b",
+      "bytes": 59572
+    },
+    {
+      "id": "everyday",
+      "subject": "Man aged 32, deep dark brown skin, VERY ROUND BROAD face, wide nose, shaved BALD head, prominent ears, sparse chin beard, chipped front tooth. HEAD TIPPED BACK in a spontaneous OPEN-MOUTH LAUGH, eyes almost CLOSED. Ochre zip hoodie. Relaxed hand at lower left holding an unlit hand-rolled cigarette, no smoke. Teal left-side light, plum shadows, loose indigo background.",
+      "archetype": "everyday",
+      "role": "resident",
+      "file": "everyday.webp",
+      "sha256": "ab1c8006de5d1ff10e109adcf1fb873cef74da84552cd95720b9218d88e80a82",
+      "bytes": 68308
+    },
+    {
+      "id": "raver",
+      "subject": "Woman aged 24, very pale skin, narrow HEART-SHAPED face with pointed chin, green uneven BUZZ CUT with one longer damp lock, freckles, smudged blue mascara. THREE-QUARTER facing LEFT, eyes looking far LEFT off canvas. MOUTH OPEN MID-SENTENCE, excited but exhausted, sweat and tense jaw. Magenta sleeveless top, festival wristband. Hand near collar with a crumpled transparent sample bag, contents indistinct; no active consumption. Soft amber frontal light, teal-violet background.",
+      "archetype": "raver",
+      "role": "clubgoer",
+      "file": "raver.webp",
+      "sha256": "5c2a1fd323022eb306c99d6ecbe085302a7ba6784bcfda44233e73325d176382",
+      "bytes": 62636
+    },
+    {
+      "id": "tourist",
+      "subject": "Man aged 63, East Asian features, warm light skin, WIDE CHEEKBONES, heavy drooping cheeks, bald crown and wispy WHITE side hair, small white goatee. Glasses pushed onto forehead. PROFILE facing RIGHT, eyes looking DOWN at a folded street map held at chest. Baffled FROWN, one corner of mouth slack. Rumpled beige raincoat. Cold teal key light and small amber cheek reflection, aubergine background.",
+      "archetype": "tourist",
+      "role": "passerby",
+      "file": "tourist.webp",
+      "sha256": "07b409b0f739abacb3c61b7906d9cdc6c0d770aaec0c7deff5c39eb5163d4702",
+      "bytes": 71098
+    },
+    {
+      "id": "worker",
+      "subject": "Woman aged 55, medium brown skin, VERY SQUARE HEAVY face, broad flattened nose, DOUBLE CHIN, dense dark eyebrows, tightly braided hair under a faded blue bandana. FRONT FACING, level DIRECT EYE CONTACT. Lips pressed firmly in determined STERN expression. Faded blue work shirt, one hand wiping forehead with a rag, shoulders uneven. Diffuse amber left lighting, slate-violet background.",
+      "archetype": "worker",
+      "role": "passerby",
+      "file": "worker.webp",
+      "sha256": "267d9842fdf63b17873d806ced7196ebf3d220a33eea5ad4c8780e43968d6543",
+      "bytes": 68508
+    },
+    {
+      "id": "office",
+      "subject": "Man aged 40, light olive skin, LONG THIN face, hooked nose, sharply receding hairline, straight dark hair combed back badly, PATCHY moustache, flushed cheeks, deep sleepless eye creases. HEAD TURNED RIGHT, eyes glancing nervously far LEFT, lips slightly parted, tight jaw and worried brow. Creased charcoal suit, loosened wine tie, partly open collar. One hand near chest clutching a small folded unmarked foil sachet and tissue, ambiguous and understated. Stark violet shadows, amber left light, dirty teal ground.",
+      "archetype": "office",
+      "role": "passerby",
+      "file": "office.webp",
+      "sha256": "4907630eb2bc66f9e1b9b28322836b41dc58e65ca01484a8da405572470ea433",
+      "bytes": 61726
+    },
+    {
+      "id": "student",
+      "subject": "Androgynous adult aged 22, pale skin covered in freckles, SOFT CHUBBY ROUND face, short upturned nose, oversized CLEAR round spectacles, cropped lavender PIXIE hair, uneven eyebrows. HEAD TILTED LEFT, eyes looking UP AND RIGHT, biting lower lip in a nervous uncertain expression. Mustard knitted sweater, backpack strap. One hand holding a small plain vape LOW AT CHEST, no smoke and no active use. Muted teal side light, plum shadows and soft ochre ground.",
+      "archetype": "student",
+      "role": "passerby",
+      "file": "student.webp",
+      "sha256": "352c965112b496f3808aaadf9426417201fd0977315c5bce539865c9f06742c1",
+      "bytes": 68314
+    },
+    {
+      "id": "older",
+      "subject": "Woman aged 71, dark brown weathered skin, BROAD face with sagging cheeks and deep smile lines, wiry white AFRO puff, large hoop earring. HEAD TURNED SLIGHTLY LEFT AND LOWERED, eyelids half lowered, eyes directed DOWN, gentle crooked TOOTHY CHUCKLE with a visible gap. Muted moss wool cardigan. Hand holds a small unlit wooden smoking pipe by chest, contemplative and relaxed; no active use or smoke. Warm amber low side light, soft violet ground.",
+      "archetype": "older",
+      "role": "resident",
+      "file": "older.webp",
+      "sha256": "ac1d84526a8ce31e33aad3b8efb178a85057236140a69c0fc85e38e7172762ee",
+      "bytes": 72316
+    },
+    {
+      "id": "unhoused",
+      "subject": "Man aged 44, very pale weathered skin, BONY ASYMMETRIC face, crooked broad nose, light RED sparse scraggly beard, ragged reddish hair nearly shaved at temples, dry chapped lips and deep under-eye shadows. SLOUCHED with HEAD LOW, gaze cast DOWN LEFT, exhausted withdrawn WORRIED expression, lips slightly pursed. Frayed brown hood and layered patched grey coat. One hand protectively grips a worn sleeping-bag strap and a small closed outreach supply pouch. No injury, no active use. Low teal fill, dim amber facial key, charcoal violet background.",
+      "archetype": "unhoused",
+      "role": "sleeper",
+      "file": "unhoused.webp",
+      "sha256": "be7df410fbd94919714ad4e36a793d4f0d2996662c62fa93cf2905abbd326fe5",
+      "bytes": 65636
+    },
+    {
+      "id": "techno-black",
+      "subject": "Man aged 33, medium tan skin, VERY LEAN POINTED face, high temples, long aquiline nose, BLEACHED PLATINUM cropped hair with dark roots, no beard. HEAD IN LEFT PROFILE, eyes looking DOWN LEFT away from viewer. TIGHT CLENCHED JAW and bitten lower lip, shiny sweaty forehead, sleepless strained look. Black high-collar sleeveless top, earplugs on cord. Fingers at lower edge holding a plain white drug-checking sample envelope, subtle. Diffuse violet light with pale amber cheekbone, near-black teal background.",
+      "archetype": "technoBlack",
+      "role": "clubgoer",
+      "file": "techno-black.webp",
+      "sha256": "4e514f9aca7062f6a52585f69e9d5d1ba18dd0b33dd636e7b7b4bde91038c314",
+      "bytes": 49598
+    },
+    {
+      "id": "punk",
+      "subject": "Woman aged 37, olive skin, WIDE RECTANGULAR face, huge dark straight eyebrows, broken-looking long nose, MAGENTA side fringe and shaved opposite temple, smudged eyeliner, septum ring. HEAD turned far LEFT, eyes looking straight LEFT off frame. DEFIANT HUGE OPEN LAUGH, visible uneven teeth, one shoulder raised. Very worn patched black denim and red checked collar. Hand raised near shoulder with unlit hand-rolled cigarette and an old scratched lighter, no flame or active use. Amber side light from RIGHT, deep plum left shadows, dirty sage background.",
+      "archetype": "punk",
+      "role": "passerby",
+      "file": "punk.webp",
+      "sha256": "1756727434e49ec13384974aa5596ead1809049adfa0bd44d4904ea75dfa06e8",
+      "bytes": 70630
+    },
+    {
+      "id": "goth",
+      "subject": "Man aged 29, deep brown skin, LONG NARROW OVAL face, prominent nose, defined thin lips with dark plum lipstick, LONG BLACK LOCS with one grey streak, clean-shaven. HEAD BOWED nearly front facing, eyes DOWNCAST almost shut, visibly SAD and introspective, furrow between brows. One hand pressed to temple. High black velvet collar, dull silver pendant. Violet/teal soft frontal illumination, tiny amber edge on LEFT, muted grey plum backdrop. No props.",
+      "archetype": "goth",
+      "role": "passerby",
+      "file": "goth.webp",
+      "sha256": "7bc4db1f29eb01e4121425f7178425fc7aa38b4470a32b9f6f4cbb68a8804b9b",
+      "bytes": 59422
+    },
+    {
+      "id": "hiphop",
+      "subject": "Man aged 36, warm medium brown skin, BROAD JAW, broad wide nose, very close short beard, thick cheeks, cobalt baseball cap TILTED SIDEWAYS with very short black hair. Looking OVER LEFT SHOULDER, eyes glancing far RIGHT, SUSPICIOUS NARROWED GAZE, raised upper lip, asymmetrical sneer. Loose blue-and-gold tracksuit jacket. Hand at lower edge holds a small booklet of rolling papers with blank wrapper. No active use. Warm light from LEFT, dark violet background with teal broken paint.",
+      "archetype": "hiphop",
+      "role": "passerby",
+      "file": "hiphop.webp",
+      "sha256": "ecb08a2303b7e12a336cb3e5d49390f0e56f51dd5831874fd67a91db0a6e15bd",
+      "bytes": 70170
+    },
+    {
+      "id": "queer-rave",
+      "subject": "Androgynous adult aged 27, East Asian features and light skin, LONG OVAL face, thin arched brows with one eyebrow half bleached, messy BRIGHT ORANGE MULLET, silver lip ring and smeared glitter. HEAD cocked RIGHT, gaze directed DOWN toward hand, one eye SQUINTING in a crooked delighted GRIN. Lime mesh top over black vest, scuffed collar. A translucent turquoise vape and simple harm-reduction card partly visible in hand at chest, no active use, no readable words. Soft amber frontal light and purple cast shadows, grey teal background.",
+      "archetype": "queerRave",
+      "role": "clubgoer",
+      "file": "queer-rave.webp",
+      "sha256": "a8205371416a32fc1d6b60da3a69097711c1f69f4a6957e1f59885553f0c5a93",
+      "bytes": 82460
+    },
+    {
+      "id": "metal",
+      "subject": "Woman aged 48, pale skin, HEAVY SQUARE face, wide jaw, strong DOUBLE CHIN, small deep-set eyes, very LONG STRAIGHT DARK BROWN HAIR streaked grey, one side caught in collar. HEAD BENT FORWARD, eyes looking UP DIRECTLY AT VIEWER. Doubtful ANNOYED FROWN, eyebrows lowered, one lip curled. Scuffed black leather vest, chain, faded maroon shirt with no lettering, arms crossed partly visible. Broad pale amber light, dark teal and violet background. No props.",
+      "archetype": "metal",
+      "role": "passerby",
+      "file": "metal.webp",
+      "sha256": "e19d9cad9ea8dc68ac55e0dc5c1891d8c9c749f3c1f0028af996a4d3dae8a158",
+      "bytes": 71410
+    },
+    {
+      "id": "outreach",
+      "subject": "Woman aged 60, warm brown skin, FULL ROUND face, broad nose, deep crow's feet, thick lips, FRIZZY GREY hair escaping a red headscarf, no makeup. Turned THREE-QUARTER RIGHT, eyes focused DOWN LEFT toward someone outside frame. WARM OPEN SMILE mid-speech, lifted cheeks, amused compassion. Worn TEAL outreach vest over plum fleece. One hand openly offers a small zipped orange harm-reduction pouch; a closed nasal-spray rescue-kit shape and sterile sealed supplies subtly visible, no readable text, no dosing or demonstration. Gentle amber left key, subdued violet background.",
+      "archetype": "everyday",
+      "role": "staff",
+      "file": "outreach.webp",
+      "sha256": "1559c365d35b0ca63f6f7ae8308158fef64a9400bd68cdc39f8f795a959aa827",
+      "bytes": 65622
+    },
+    {
+      "id": "police",
+      "subject": "Man aged 57, very pale RUDDY skin, HUGE SQUARE face, bulbous red nose, bushy greying MOUSTACHE, BALD head with tiny grey side tufts, heavy neck. FULL FRONT, chin lowered, eyes looking UP AND SLIGHTLY LEFT. DEEP EXASPERATED SCOWL with compressed lips and forehead furrows. Municipal navy uniform, small yellow-green reflective shoulder panel, radio clipped at chest, no badges or readable lettering. Flat cool teal lighting with muted amber bounce, desaturated violet-grey backdrop.",
+      "archetype": "worker",
+      "role": "police",
+      "file": "police.webp",
+      "sha256": "81e3afd3f0fe8ddfd171d7ee9de756da306b655ba05f615b755dac65cd5ed52b",
+      "bytes": 62448
+    },
+    {
+      "id": "seller",
+      "subject": "Woman aged 44, dark brown skin, VERY THIN ANGULAR face, unusually high cheekbones, narrow nose, CLOSE SHAVED HAIR, large ears with one tiny hoop, small mole beside mouth. HEAD STRAIGHT but eyes glance far RIGHT, BORED DEADPAN expression with ONE RAISED EYEBROW and slight pout. Large burgundy puffer collar, faded cream hood. Fingers at chest gently holding a tiny folded transparent packet, contents ambiguous, no active consumption or transaction. Subtle warm light from front LEFT and teal shoulder reflection, wine-purple background. Ordinary person, not a villain caricature.",
+      "archetype": "everyday",
+      "role": "seller",
+      "file": "seller.webp",
+      "sha256": "aa54348157ac0c62178634dcf22b8dcbdf5d48ddf0842876c3f5290e28597e8c",
+      "bytes": 60758
+    },
+    {
+      "id": "cleaner",
+      "subject": "Man aged 35, medium tan skin, SOFT ROUND face, upturned nose, uneven DYED BLOND CURLY afro, sparse chin stubble, dark under-eye circles. HEAD tipped BACK and turned RIGHT, eyes tightly CLOSED in a HUGE YAWN, hand in a worn work glove partly covering mouth. Orange high-vis work jacket, grey collar. Diffuse cold dawn teal illumination with a small amber forehead highlight, charcoal plum backdrop. No drug props.",
+      "archetype": "worker",
+      "role": "cleaner",
+      "file": "cleaner.webp",
+      "sha256": "419c7b48998b91250be8466a54928dff069d99661791629a9ba87601a4212a2b",
+      "bytes": 70262
+    },
+    {
+      "id": "bouncer",
+      "subject": "Woman aged 46, medium olive-tan skin, VERY BROAD HEAVY face, large jaw, prominent hooked nose, SHORT WHITE BUZZ CUT, thick black eyebrows with a small old healed notch, strong neck. Facing THREE-QUARTER LEFT, eyes looking DOWN at someone off frame LEFT. DOUBTFUL ONE-SIDED FROWN, a raised eyebrow, lips pressed crookedly. Black oversized security jacket, arms folded partly visible at bottom. Amber glow from LOW LEFT and cool violet brow shadow, grey teal abstract background. No drug props.",
+      "archetype": "worker",
+      "role": "bouncer",
+      "file": "bouncer.webp",
+      "sha256": "db07cc28971b858de0d9e83a5ca3ecccbfeed3097877edee98f06b2e11ee28a2",
+      "bytes": 48362
+    }
+  ]
+}

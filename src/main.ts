@@ -1,4 +1,3 @@
-import { paintPlayer } from './render/playerPortrait';
 import { TIRED } from './sim/team';
 import { locationOf, nextStep, type GuideView } from './game/guide';
 import { QUALITY } from './render/quality';
@@ -31,7 +30,7 @@ import { SEASON_PROFILES } from './config/seasons';
 import { LOCATION_IDS, SERVICE_IDS, serviceAt, type LocationId, type ServiceId, type ServiceStatus } from './sim/types';
 import { ContextSection } from './ui/contextSection';
 import { COMPACT, Hud, type PersonCamperOffer, type PlaceAction } from './ui/hud';
-import { PORTRAIT_H, PORTRAIT_W, PortraitStudio } from './render/portraitStudio';
+import { PORTRAIT_H, PORTRAIT_W, PortraitLibrary, playerPortraitId, playerPortraitUrl, portraitId, portraitUrl } from './render/portraitLibrary';
 import { describePerson } from './ui/personInfo';
 import { ActionMenu } from './ui/actionMenu';
 import { HumanFigure, peopleLibrary } from './agents/humanFigure';
@@ -447,8 +446,8 @@ function updateFlavour(dt: number): void {
 const actionMenu = new ActionMenu(hudRoot);
 // The welcome box pauses the city while it is open, and leaves a pause the player chose alone.
 let pausedBeforeWelcome = false;
-/** You, for the boxes that show your portrait; painted on the first box that needs it. */
-const playerPicture = () => ({ url: playerPortrait().url, org: orgName() });
+/** Coordinator art shared by the portrait, reports and guides. */
+const playerPicture = () => ({ url: playerPortraitUrl(), org: orgName() });
 const welcome = new Welcome(document.body, (open) => {
   if (open) { pausedBeforeWelcome = paused; setPaused(true); }
   else if (!pausedBeforeWelcome) setPaused(false);
@@ -1320,26 +1319,18 @@ function syncNight(): void {
 
 // `?set=` mirrors settings that differ from the defaults, written at most every 400 ms.
 let urlTimer = 0;
-/** Painted portraits, generated once per person or place and kept. */
-const portraits = new Map<string, ImageData>();
+/** AI-painted cast art loads only when selected; superseded loads cannot publish. */
+const portraitLibrary = new PortraitLibrary(portraitView);
 let portraitKey = '';
-/** Painted from each person's own model in a separate studio; made on first selection. */
-let studio: PortraitStudio | null = null;
-
-/** You, painted once on first need (config/player): the portrait when nothing is selected, and beside reports and guides. */
-let player: { image: ImageData; url: string } | null = null;
-function playerPortrait(): { image: ImageData; url: string } {
-  studio ??= new PortraitStudio(renderer);
-  player ??= paintPlayer(studio, sim.season);
-  return player;
-}
 
 /** Keeps the portrait on the selected person, or on you when nothing is selected; true when it changed. */
 function syncPortrait(): boolean {
   const sel = interaction.selected;
   const person = sel?.kind === 'person' ? crowd.person(sel.id) : undefined;
   // People have portraits, and you do; a place or building has none. One who has left clears it.
-  const key = person ? `person:${sel!.id}` : sel ? '' : 'player';
+  // Your key names your portrait, so choosing another coordinator redraws it.
+  const key = person ? `person:${sel!.id}` : sel ? '' : `player:${playerPortraitId()}`;
+  const you = key.startsWith('player:');
   const card = person ? describePerson(person) : null;
   const caption = card ? card.profile?.name ?? card.title : key ? t('You') : '';
   const sub = card ? card.subtitle : key ? t('Coordinator, {org}', { org: orgName() }) : '';
@@ -1350,22 +1341,8 @@ function syncPortrait(): boolean {
   if (key === portraitKey) return false;
   portraitKey = key;
   portraitBox.hidden = !key;
-  portraitBox.dataset.who = key === 'player' ? 'player' : 'person';
-  if (!key) return false;
-  if (key === 'player') {
-    portraitView.getContext('2d')!.putImageData(playerPortrait().image, 0, 0);
-    return false;
-  }
-  let image = portraits.get(key);
-  if (!image) {
-    const ctx = portraitView.getContext('2d')!;
-    const seed = [...key].reduce((h, ch) => Math.imul(h ^ ch.charCodeAt(0), 16777619), 2166136261) >>> 0;
-    studio ??= new PortraitStudio(renderer);
-    studio.portrait(person!.root, person!.look.height, seed, ctx);
-    image = ctx.getImageData(0, 0, PORTRAIT_W, PORTRAIT_H);
-    portraits.set(key, image);
-    if (portraits.size > 60) portraits.delete(portraits.keys().next().value!);
-  } else portraitView.getContext('2d')!.putImageData(image, 0, 0);
+  portraitBox.dataset.who = you ? 'player' : 'person';
+  portraitLibrary.show(!key ? null : you ? playerPortraitUrl() : portraitUrl(portraitId(person!)));
   return false;
 }
 

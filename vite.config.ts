@@ -1,5 +1,5 @@
 import { execSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { defineConfig, type Plugin } from 'vite';
 
 /**
@@ -48,7 +48,8 @@ function offlineWorker(): Plugin {
     generateBundle(_options, bundle) {
       // Old .woff fonts are only for browsers that cannot run the game anyway (they all take .woff2).
       const files = Object.keys(bundle).filter((f) => !f.endsWith('.map') && !f.endsWith('.woff') && f !== 'version.json' && f !== 'index.html');
-      const keep = ['./', ...files, 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'protest-logo.webp'];
+      const portraits = readdirSync(new URL('./public/portraits/dusk-v3/', import.meta.url)).filter((f) => f.endsWith('.webp')).map((f) => `portraits/dusk-v3/${f}`);
+      const keep = ['./', ...files, ...portraits, 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'protest-logo.webp'];
       const source = `const BUILD = ${JSON.stringify(BUILD)};
 const CACHE = 'hrs-' + BUILD;
 const MODELS = 'hrs-models';

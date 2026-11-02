@@ -148,6 +148,8 @@ const METRIC_LABELS: Record<MetricKey, { name: string; hint: string }> = {
 };
 
 export const SPEEDS = [1, 4, 16] as const;
+/** A meter change this big in one refresh (a quarter second) is shown as a jump; slower drift is not. */
+const METER_JUMP = 0.015;
 const SPARK_W = 56;
 const SPARK_H = 14;
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -277,6 +279,9 @@ export class Hud {
   private readonly stressRow: HTMLElement;
   private readonly stressFill = {} as Record<'police' | 'medics' | 'sobering' | 'district', HTMLElement>;
   private readonly stressMeters = {} as Record<'police' | 'medics' | 'sobering' | 'district', HTMLElement>;
+  /** Each meter's value at the last refresh, and its floating change figure (made on the first jump). */
+  private readonly lastStress: Partial<Record<'police' | 'medics' | 'sobering' | 'district', number>> = {};
+  private readonly stressDelta: Partial<Record<'police' | 'medics' | 'sobering' | 'district', { el: HTMLElement; sum: number; at: number }>> = {};
   private speed: number = SPEEDS[0];
   private readonly switches = {} as Record<ServiceId, HTMLButtonElement>;
   private readonly switchState = {} as Record<ServiceId, HTMLElement>;
@@ -817,6 +822,35 @@ export class Hud {
     target.click();
   }
 
+  /**
+   * Floats "+4%" or "−3%" over a meter that jumped, green when it is good news
+   * (the district up, a service's pressure down) and red when not, and flashes
+   * its bar. Jumps close together add up in one figure. Reduced motion: the
+   * figure fades in place.
+   */
+  private meterJump(key: 'police' | 'medics' | 'sobering' | 'district', d: number): void {
+    const now = performance.now();
+    let f = this.stressDelta[key];
+    if (!f) {
+      f = { el: el('span', 'meter-delta'), sum: 0, at: 0 };
+      f.el.setAttribute('aria-hidden', 'true');
+      this.stressMeters[key].append(f.el);
+      this.stressDelta[key] = f;
+    }
+    f.sum = now - f.at < 1500 ? f.sum + d : d;
+    f.at = now;
+    const pct = Math.round(Math.abs(f.sum) * 100);
+    if (pct < 1) return;
+    f.el.textContent = `${f.sum > 0 ? '+' : '\u2212'}${pct}%`;
+    f.el.dataset.good = String(key === 'district' ? f.sum > 0 : f.sum < 0);
+    const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    f.el.animate(still
+      ? [{ opacity: 0 }, { opacity: 1, offset: 0.12 }, { opacity: 1, offset: 0.7 }, { opacity: 0 }]
+      : [{ opacity: 0, transform: 'translateY(4px)' }, { opacity: 1, transform: 'translateY(0)', offset: 0.12 }, { opacity: 1, offset: 0.6 }, { opacity: 0, transform: 'translateY(-10px)' }],
+    { duration: 1800, easing: 'ease-out', fill: 'forwards' });
+    this.stressFill[key].animate([{ filter: 'brightness(2.2)' }, { filter: 'brightness(1)' }], { duration: still ? 1 : 700, easing: 'ease-out' });
+  }
+
   setPaused(paused: boolean): void {
     this.paused = paused;
     this.setSpeed(this.speed);
@@ -1173,6 +1207,10 @@ export class Hud {
         const f = this.stressFill[key];
         const w = `${Math.round(v * 100)}%`;
         if (f.style.width !== w) f.style.width = w;
+        const prev = this.lastStress[key];
+        this.lastStress[key] = v;
+        // A jump in one refresh (an action, an event) floats its size over the meter; slow drift does not.
+        if (prev !== undefined && Math.abs(v - prev) >= METER_JUMP) this.meterJump(key, v - prev);
         const state = meterState(key, v);
         if (f.dataset.state !== state) {
           f.dataset.state = state;

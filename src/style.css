@@ -2295,3 +2295,22 @@ button.event-card:focus-visible { outline: 2px solid var(--focus); outline-offse
 .daemon-tag:focus-visible .daemon-name { outline: 2px solid var(--focus); outline-offset: 2px; }
 @keyframes daemon-pulse { 50% { box-shadow: 0 0 0 5px rgba(200, 50, 42, 0.35); } }
 @media (prefers-reduced-motion: reduce) { .daemon-name { animation: none; } }
+
+/* Stable portrait framing during asynchronous image loading and failure. */
+.portrait-view[data-state='loading'], .portrait-view[data-state='error'] {
+  background: radial-gradient(ellipse at 50% 40%, rgba(171, 117, 100, 0.3), transparent 48%), #242032;
+}
+.portrait-view[data-state='loading'] { animation: portrait-loading 1.4s ease-in-out infinite alternate; }
+@keyframes portrait-loading { to { opacity: 0.55; } }
+@media (prefers-reduced-motion: reduce) {
+  .portrait-view[data-state='loading'] { animation: none; }
+}
+
+/* A meter that jumped: its change floats over it and fades (src/ui/hud.ts meterJump). */
+.stress { position: relative; }
+.meter-delta {
+  position: absolute; right: 0; top: -12px; opacity: 0; pointer-events: none;
+  font: 700 11px var(--body); font-variant-numeric: tabular-nums; text-shadow: var(--outline);
+}
+.meter-delta[data-good='true'] { color: #7fd89a; }
+.meter-delta[data-good='false'] { color: #ff7a6a; }
