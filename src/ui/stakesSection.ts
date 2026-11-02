@@ -1,5 +1,6 @@
 import { NEED_IDS, NEEDS } from '../config/matching';
 import { MORALE } from '../config/morale';
+import { ORG } from '../config/organisation';
 import { STANDING, TIER_NAMES, UNLOCK_NAMES, UNLOCK_TIER, type Unlock } from '../config/standing';
 import { STORM, STORM_TEXT, type StormPrep } from '../config/storm';
 import { SUPPLIES, SUPPLY_IDS, type SupplyId } from '../config/supplies';
@@ -64,6 +65,7 @@ export class StakesSection {
   private readonly unlockLine: HTMLElement;
   private readonly moraleLine: HTMLElement;
   private readonly needsLine: HTMLElement;
+  private readonly hardcoreLine: HTMLElement;
   private readonly standingBox: HTMLElement;
   private readonly standingSummary: HTMLElement;
   private readonly suppliesSummary: HTMLElement;
@@ -101,7 +103,9 @@ export class StakesSection {
     morale.append(el('h3', 'level', t('Team morale')));
     this.moraleLine = el('p', 'org-summary');
     this.needsLine = el('p', 'factor-summary');
-    morale.append(this.moraleLine, this.needsLine);
+    this.hardcoreLine = el('p', 'factor-summary', t('Hardcore: if the whole team quits, or every place you started with stays shut for {hours} hours, the project folds and the game ends.', { hours: Math.round(ORG.foldAfterShut / 60) }));
+    this.hardcoreLine.hidden = true;
+    morale.append(this.moraleLine, this.needsLine, this.hardcoreLine);
 
     const supplies = el('details', 'sandbox-sub stakes-supplies');
     this.suppliesBox = supplies;
@@ -163,6 +167,7 @@ export class StakesSection {
     if (this.standingBox.hidden === showStanding) this.standingBox.hidden = !showStanding;
     if (this.suppliesBox.hidden === showSupplies) this.suppliesBox.hidden = !showSupplies;
     if (this.needsLine.hidden === showNeeds) this.needsLine.hidden = !showNeeds;
+    if (this.hardcoreLine.hidden === stakes.hardcore) this.hardcoreLine.hidden = !stakes.hardcore;
     const st = stakes.standing;
     const next = st.toNext;
     setText(this.standingLine, next === null

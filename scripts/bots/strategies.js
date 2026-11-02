@@ -23,6 +23,8 @@ async (name, days = 3, opts = {}) => {
   const did = (k, ok) => { if (ok !== false) acts[k] = (acts[k] ?? 0) + 1; };
   const grant = (above) => { for (const g of grants) if (sim.org.applications[g].status === 'idle' && sim.org.budget > above) did('grant', sim.applyFor(g)); };
   const st = sim.stakes;
+  // The bots measure the hardest setting: the project can fold (a Hardcore game).
+  st.hardcore = true;
   // `careful`: hire only when the hour's surplus already covers the new wage, and never while a storm is coming.
   const grow = (careful = false) => {
     // A careful player applies for one grant at a time and keeps a reserve; a first-timer applies for all.
@@ -56,9 +58,13 @@ async (name, days = 3, opts = {}) => {
       for (const [id, low] of [['naloxone', 6], ['kits', 15]]) if (st.supplies.stock[id] < low && sim.org.budget > 300) did('order', sim.orderSupply(id));
       if (st.supplies.stock.leaflets < 50 && sim.org.budget > 120) did('order', sim.orderSupply('leaflets'));
       if (storm === 'warned') {
+        // Prepare in order of value for money, always keeping a reserve to run the night on.
+        const reserve = 250;
         const need = st.storm.kind === 'freeze' ? 'blankets' : 'naloxone';
-        if (st.supplies.stock[need] < 30) did('order', sim.orderSupply(need));
-        for (const p of ['warn', 'beds', 'standby']) if (!st.storm.prepared.has(p)) did('prep:' + p, sim.prepareStorm(p));
+        if (!st.storm.prepared.has('warn')) did('prep:warn', sim.prepareStorm('warn'));
+        if (st.supplies.stock[need] < 30 && sim.org.budget > reserve + 150) did('order', sim.orderSupply(need));
+        if (!st.storm.prepared.has('standby') && sim.org.budget > reserve + 120) did('prep:standby', sim.prepareStorm('standby'));
+        if (!st.storm.prepared.has('beds') && sim.org.budget > reserve + 200) did('prep:beds', sim.prepareStorm('beds'));
       }
     },
     idle() {},

@@ -1239,8 +1239,11 @@ const stressRow = document.querySelector<HTMLElement>('.stress-row');
 const meterCauses = stressRow ? new MeterCauses(stressRow, (m) => sim.cityStress.causesOf(m)) : null;
 // A scenario comes with the address (`?scenario=`); a loaded game brings its own.
 {
-  const s = scenarioById(new URLSearchParams(location.search).get('scenario'));
+  const q = new URLSearchParams(location.search);
+  const s = scenarioById(q.get('scenario'));
   if (s && !sim.goals.scenario) sim.goals.scenario = s;
+  // Hardcore (the project can fold): a Hardcore game's address, any scenario, or the loaded game's own.
+  if (q.get('mode') === 'hardcore' || sim.goals.scenario) sim.stakes.hardcore = true;
 }
 let pausedBeforeReport = false;
 const nightBox = new NightReportBox(document.body, (open) => {

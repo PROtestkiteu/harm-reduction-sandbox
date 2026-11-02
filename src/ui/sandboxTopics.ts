@@ -40,13 +40,19 @@ export function randomSection(setDateClock: (v: DateClock) => void): HTMLFieldSe
     return b;
   };
   const season = button(t('Only a new season and time'), t('A random date and time of day; the city and this game stay as they are'), () => setDateClock(pick()));
-  const city = button(t('Start a new game'), t('A freshly laid out city, its places in new spots, on a random date and time'), () => {
+  // A new game gets a new address: the old game's id stays with the old game. Ordinary or Hardcore
+  // (`mode=hardcore`: the project can fold when the team is gone or every place stays shut).
+  const fresh = (hardcore: boolean) => () => {
     try { sessionStorage.setItem(SHUFFLE_KEY, JSON.stringify(pick())); } catch { /* private mode: the city still changes */ }
-    // A new game gets a new address: the old game's id stays with the old game.
-    location.href = newGameAddress();
-  });
+    const url = new URL(newGameAddress(), location.href);
+    if (hardcore) url.searchParams.set('mode', 'hardcore');
+    else url.searchParams.delete('mode');
+    location.href = url.pathname + url.search.replace(/%3A/gi, ':').replace(/%2C/gi, ',');
+  };
+  const city = button(t('Start a new game'), t('A freshly laid out city, its places in new spots, on a random date and time'), fresh(false));
+  const hard = button(t('Start a Hardcore game'), t('The same, but the project can fold: if the whole team quits or every place stays shut, the game ends. The first big storm, unprepared, can end it.'), fresh(true));
   const note = Object.assign(document.createElement('p'), { className: 'note', textContent: t('Share or save this game first if you want to keep it.') });
-  section.append(legend, city, note, season);
+  section.append(legend, city, hard, note, season);
   return section;
 }
 

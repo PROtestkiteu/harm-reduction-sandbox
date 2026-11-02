@@ -47,7 +47,13 @@ export class Stakes {
   readonly standing = new Standing();
   readonly supplies = new Supplies();
   readonly storm = new Storm();
-  /** The project has folded: when and why. Null while it runs. */
+  /**
+   * Hardcore: the project can fold (the whole team gone, or every starting place shut too long).
+   * Off in an ordinary game, which is about growth: the city spirals instead, and play goes on.
+   * On for a Hardcore game (`?mode=hardcore`) and for scenarios; saved with the game.
+   */
+  hardcore = false;
+  /** The project has folded: when and why. Null while it runs (and always in an ordinary game). */
   runOver: { cause: RunOverCause; at: number } | null = null;
   /** People whose need found no matching skill on shift, tonight, by need. */
   readonly unmatched = Object.fromEntries(NEED_IDS.map((id) => [id, 0])) as Record<NeedId, number>;
@@ -285,7 +291,7 @@ export class Stakes {
     }
 
     this.shutMinutes = at.shut ? this.shutMinutes + dtMinutes : 0;
-    if (!this.runOver) {
+    if (this.hardcore && !this.runOver) {
       const gone = this.org.paid + this.org.volunteers === 0 && this.team.members.length === 0;
       const cause: RunOverCause | null = gone ? 'team' : this.shutMinutes >= ORG.foldAfterShut ? 'shut' : null;
       if (cause) {
@@ -296,8 +302,8 @@ export class Stakes {
     return { rota, news, extraPlaces };
   }
 
-  snapshot(): { standing: ReturnType<Standing['snapshot']>; supplies: ReturnType<Supplies['snapshot']>; storm: ReturnType<Storm['snapshot']>; deaths: number; runOver: Stakes['runOver'] } {
-    return { standing: this.standing.snapshot(), supplies: this.supplies.snapshot(), storm: this.storm.snapshot(), deaths: this.deaths, runOver: this.runOver ? { ...this.runOver } : null };
+  snapshot(): { standing: ReturnType<Standing['snapshot']>; supplies: ReturnType<Supplies['snapshot']>; storm: ReturnType<Storm['snapshot']>; deaths: number; runOver: Stakes['runOver']; hardcore: boolean } {
+    return { standing: this.standing.snapshot(), supplies: this.supplies.snapshot(), storm: this.storm.snapshot(), deaths: this.deaths, runOver: this.runOver ? { ...this.runOver } : null, hardcore: this.hardcore };
   }
 
   restore(s: Partial<ReturnType<Stakes['snapshot']>> | undefined): void {
@@ -306,7 +312,8 @@ export class Stakes {
     this.supplies.restore(s.supplies);
     this.storm.restore(s.storm);
     if (typeof s.deaths === 'number' && Number.isFinite(s.deaths)) this.deaths = Math.max(0, Math.round(s.deaths));
-    this.runOver = s.runOver && (s.runOver.cause === 'team' || s.runOver.cause === 'shut') && Number.isFinite(s.runOver.at) ? { cause: s.runOver.cause, at: s.runOver.at } : null;
+    if (typeof s.hardcore === 'boolean') this.hardcore = s.hardcore;
+    this.runOver = this.hardcore && s.runOver && (s.runOver.cause === 'team' || s.runOver.cause === 'shut') && Number.isFinite(s.runOver.at) ? { cause: s.runOver.cause, at: s.runOver.at } : null;
   }
 }
 

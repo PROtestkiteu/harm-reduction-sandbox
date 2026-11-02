@@ -2301,14 +2301,20 @@ button.event-card:focus-visible { outline: 2px solid var(--focus); outline-offse
 .welcome-identity[hidden] { display: none; }
 .welcome-look-row { display: flex; align-items: center; gap: 6px; }
 .welcome-look {
-  min-width: 44px;
-  min-height: 44px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
   color: var(--reply);
   background: rgba(255, 255, 255, 0.06);
-  border: 0;
-  font: 500 22px var(--body);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   cursor: pointer;
 }
+.welcome-look svg { width: 22px; height: 22px; }
+.welcome-look[hidden] { display: none; }
+@media (hover: hover) { .welcome-look:hover { background: rgba(255, 255, 255, 0.12); } }
 .welcome-look:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .welcome-name { display: grid; gap: 4px; flex: 1 1 180px; color: var(--muted); font-size: 14px; }
 .welcome-name input {

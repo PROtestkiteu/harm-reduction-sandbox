@@ -43,8 +43,8 @@ const PAGES: Page[] = [
     points: [
       t('Every visit costs money. Funders and grants pay for results, so a busy night can still leave you short.'),
       t('People turned away do not vanish: they end up with the police and the medics. The meters at the top show that strain.'),
-      t('Your team has its own morale. People turned away and deaths wear it down; below a point, people quit. If everyone quits, or every place stays shut, the project folds.'),
-      t('Now and then a big crisis comes, with a day of warning. Prepare for it: the first one unprepared can end the project.'),
+      t('Your team has its own morale. People turned away and deaths wear it down; below a point, people quit.'),
+      t('Now and then a big crisis comes, with a day of warning. Prepare for it, or the city spirals. In a Hardcore game or a scenario, it can end the project.'),
     ],
   },
   {
@@ -146,8 +146,10 @@ export class Welcome {
 function identityBox(id: Identity): HTMLElement {
   const box = Object.assign(document.createElement('div'), { className: 'welcome-identity' });
   const face = Object.assign(document.createElement('img'), { alt: '', width: 60, height: 75, className: 'player-face' });
-  const prev = Object.assign(document.createElement('button'), { type: 'button', className: 'welcome-look', textContent: '‹' });
-  const next = Object.assign(document.createElement('button'), { type: 'button', className: 'welcome-look', textContent: '›' });
+  // Chevrons drawn as icons, so they sit centred and crisp in their square at any font.
+  const chevron = (d: string) => `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d="${d}"/></svg>`;
+  const prev = Object.assign(document.createElement('button'), { type: 'button', className: 'welcome-look', innerHTML: chevron('M15 5l-7 7 7 7') });
+  const next = Object.assign(document.createElement('button'), { type: 'button', className: 'welcome-look', innerHTML: chevron('M9 5l7 7-7 7') });
   prev.setAttribute('aria-label', t('Previous look'));
   next.setAttribute('aria-label', t('Next look'));
   const look = Object.assign(document.createElement('div'), { className: 'welcome-look-row' });
