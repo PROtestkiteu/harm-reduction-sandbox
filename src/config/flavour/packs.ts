@@ -6,7 +6,7 @@ import { t } from '../../i18n';
  * the same with any of them on or off. Each is built the first time it is
  * switched on and costs nothing per frame while it is off.
  */
-export type PackId = 'street' | 'guard' | 'crime' | 'vignettes' | 'lines' | 'service' | 'weather' | 'campus' | 'chaos' | 'users' | 'thieves' | 'visitors' | 'cycling' | 'pets' | 'decor' | 'sky' | 'river' | 'kids' | 'pioneers';
+export type PackId = 'street' | 'guard' | 'crime' | 'vignettes' | 'lines' | 'service' | 'weather' | 'campus' | 'chaos' | 'users' | 'thieves' | 'visitors' | 'cycling' | 'pets' | 'decor' | 'sky' | 'river' | 'kids' | 'pioneers' | 'squats';
 
 export interface PackInfo {
   id: PackId;
@@ -33,6 +33,7 @@ export const PACKS: readonly PackInfo[] = [
   { id: 'river', label: t('River'), hint: t('Boats under the arched bridges, people fishing from the wall.') },
   { id: 'kids', label: t('Children'), hint: t('Families out in the early evening and children walking to school.') },
   { id: 'pioneers', label: t('Pioneers'), hint: t('Easter eggs: five pioneers of psychedelic research out for a walk.') },
+  { id: 'squats', label: t('Squats'), hint: t('Anarchist flags, graffiti and a banner on the squats, a punk by the door.') },
   { id: 'users', label: t('Who uses what'), hint: t('Small groups along the inner ring: smokers and vapers, opioid users bent over in the fentanyl fold, cannabis smokers on a bench, clubbers after hours, people tripping, people slumped on benzos and stimulant users pacing.') },
 ];
 
@@ -53,7 +54,7 @@ export interface PackSettings {
 }
 
 export const defaultPacks = (): PackSettings => ({
-  on: { street: true, guard: true, crime: true, vignettes: true, lines: true, service: true, weather: true, campus: true, chaos: true, users: true, thieves: true, visitors: true, cycling: true, pets: true, decor: true, sky: true, river: true, kids: true, pioneers: true },
+  on: { street: true, guard: true, crime: true, vignettes: true, lines: true, service: true, weather: true, campus: true, chaos: true, users: true, thieves: true, visitors: true, cycling: true, pets: true, decor: true, sky: true, river: true, kids: true, pioneers: true, squats: true },
   weather: 'auto',
 });
 

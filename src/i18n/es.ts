@@ -1932,4 +1932,10 @@ export const ES: Record<string, string> = {
   "Public library": "Biblioteca pública",
   "Free to all, warm, with toilets: people with nowhere to go spend the day here.": "Gratis, con calefacción y aseos: la gente sin techo pasa aquí el día.",
   "Don't show again": 'No volver a mostrar',
+  // Squats (world/flavour/squats.ts)
+  "Squats": "Okupas",
+  "Anarchist flags, graffiti and a banner on the squats, a punk by the door.": "Banderas anarquistas, grafitis y una pancarta en las okupas, un punk en la puerta.",
+  "This house is for people, not for profit.": "Esta casa es para la gente, no para el lucro.",
+  "Kettle's on, if you need a brew.": "El agua está puesta, si quieres un té.",
+  "The landlord can wait.": "El casero puede esperar.",
 };

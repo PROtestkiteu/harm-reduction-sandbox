@@ -40,6 +40,7 @@ export const LINES: Record<string, readonly string[]> = {
   tripper: [t("Look at the lamps breathing."), t("Can we stay here a while?"), t("It's fine, it's just the trip."), t("The trees are talking.")],
   benzo: [t("Just five more minutes."), t("Where am I?"), t("Don't take my bag."), t("I only had a couple.")],
   stimulant: [t("I'm good, I'm good, I'm good."), t("Three days, no sleep, it's fine."), t("I'm fixing the bike, then I'm off."), t("Who's looking at me?")],
+  punk: [t("This house is for people, not for profit."), t("Kettle's on, if you need a brew."), t("The landlord can wait.")],
   angler: [t("Nothing biting tonight."), t("Shh, you'll scare them off.")],
   parent: [t("Hold my hand at the crossing."), t("Nearly home, then bath and bed.")],
   child: [t("Can we get chips?"), t("Look, a cat!"), t("Race you to the corner!")],

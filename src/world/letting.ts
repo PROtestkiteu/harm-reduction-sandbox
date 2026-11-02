@@ -50,7 +50,8 @@ export class Letting {
     const front = signBoard(text, 3.2, 1, fg, bg, glow);
     add(g, front.mesh).position.y = 0.9;
     const back = signBoard(text, 3.2, 1, fg, bg, glow);
-    add(g, back.mesh, Math.PI).position.set(0, 0.9, -0.01);
+    // Wholly behind the front board (each is 0.12 deep): overlapping, the back's dark side fought the front's face and blacked out the text.
+    add(g, back.mesh, Math.PI).position.set(0, 0.9, -0.13);
     // Both faces share one glow level.
     back.mesh.material = front.mesh.material;
     g.visible = false;
