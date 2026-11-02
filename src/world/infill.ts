@@ -9,7 +9,8 @@ import { add, bench, box, gableRoof, mansard, tree } from './kit';
 import { BLOCKS, EDGES, HALF, NODES, SIDE_NORMAL, SIDE_ROT, SPARE_CENTRE_LOTS, STREETS, VENUE_RECTS, type Rect, type Side } from './layout';
 import { glowMat, mat } from './materials';
 import { mergeStatic } from './mergeStatic';
-import { DOOR_ALONG, registerBuilding } from './cityBuildings';
+import { DOOR_ALONG, registerBuilding, type RoofKind } from './cityBuildings';
+import { dish, flatRoofFeature, pickFeature, pitchedRoofDressing, tvAerial } from './rooftops';
 
 /**
  * Ordinary city fabric for the new blocks: rows of flats and shops on a grid
@@ -104,7 +105,8 @@ function blockFrontage(q: Rect, block: Rect) {
  * `yaw`), turned so the design's +z front faces that way. `corner` is a second
  * street side that gets shopfronts too.
  */
-function placeBuilding(parent: Object3D, q: Rect, front: Side, corner: Side | null, yaw: number, nudge: [number, number], h: number, wall: number, windows: MeshLambertMaterial[], random: Random): void {
+/** Builds an ordinary building on `q`, facing its street; returns what its roof is. */
+function placeBuilding(parent: Object3D, q: Rect, front: Side, corner: Side | null, yaw: number, nudge: [number, number], h: number, wall: number, windows: MeshLambertMaterial[], random: Random): RoofKind {
   const frame = add(parent, new Group());
   frame.position.set((q.x0 + q.x1) / 2 + nudge[0], 0, (q.z0 + q.z1) / 2 + nudge[1]);
   frame.rotation.y = SIDE_ROT[front] + yaw;
@@ -114,7 +116,7 @@ function placeBuilding(parent: Object3D, q: Rect, front: Side, corner: Side | nu
   // The design's +x side, turned: to the right of the front as seen from the street.
   const right = { x: n.z, z: -n.x };
   const side = corner ? (SIDE_NORMAL[corner].x === right.x && SIDE_NORMAL[corner].z === right.z ? '+x' : '-x') : null;
-  building(frame, { x0: -w / 2, x1: w / 2, z0: -d / 2, z1: d / 2 }, h, wall, windows, random, side);
+  return building(frame, { x0: -w / 2, x1: w / 2, z0: -d / 2, z1: d / 2 }, h, wall, windows, random, side);
 }
 
 /** True when `q` stands between the camera and a service building or its entrance. */
@@ -130,7 +132,7 @@ function inFrontOfService(q: Rect): boolean {
  * detailed facade) on +z; `side` is a second street side (+x or -x) on a
  * corner that gets shopfronts too. Callers turn it to face its street.
  */
-function building(g: Object3D, q: Rect, h: number, wall: number, windows: MeshLambertMaterial[], random: Random, side: '+x' | '-x' | null): void {
+function building(g: Object3D, q: Rect, h: number, wall: number, windows: MeshLambertMaterial[], random: Random, side: '+x' | '-x' | null): RoofKind {
   const w = q.x1 - q.x0;
   const d = q.z1 - q.z0;
   const cx = (q.x0 + q.x1) / 2;
@@ -140,6 +142,8 @@ function building(g: Object3D, q: Rect, h: number, wall: number, windows: MeshLa
   // Stone ground floor, a little proud of the wall above.
   add(g, box(w + 0.06, 3.0, d + 0.06, mat(STONE[Math.floor(random() * STONE.length)]), cx, 0.12, cz));
   const roof = h > 12 ? (random() < 0.6 ? 'flat' : 'mansard') : (['flat', 'pitched', 'pitched', 'mansard'] as const)[Math.floor(random() * 4)];
+  // A flat roof may carry one thing people put there (world/rooftops.ts): then it keeps clear of other clutter and extensions.
+  const feature = roof === 'flat' ? pickFeature(random, w, d, h) : null;
   if (roof === 'flat') {
     // Parapet with a coping course.
     add(g, box(w + 0.22, 0.32, d + 0.22, mat(PALETTE.roofTrim), cx, h + 0.12, cz));
@@ -215,7 +219,9 @@ function building(g: Object3D, q: Rect, h: number, wall: number, windows: MeshLa
     // Gable roof with the ridge along the longer side, chimneys through it.
     const alongX = w >= d;
     add(g, gableRoof(alongX ? d + 0.5 : w + 0.5, alongX ? w + 0.4 : d + 0.4, Math.min(alongX ? d : w, 9) * 0.32, mat(ROOF_TILE[Math.floor(random() * ROOF_TILE.length)])), alongX ? Math.PI / 2 : 0).position.set(cx, top, cz);
-    for (let i = 0; i < 2; i++) add(g, box(0.6, 2.2, 0.6, mat(PALETTE.brickDark), cx + (alongX ? (i ? 1 : -1) * w * 0.3 : 0.6), top, cz + (alongX ? 0.6 : (i ? 1 : -1) * d * 0.3)));
+    const chimneys: [number, number][] = [0, 1].map((i) => [cx + (alongX ? (i ? 1 : -1) * w * 0.3 : 0.6), cz + (alongX ? 0.6 : (i ? 1 : -1) * d * 0.3)]);
+    for (const [x, z] of chimneys) add(g, box(0.6, 2.2, 0.6, mat(PALETTE.brickDark), x, top, z));
+    pitchedRoofDressing(g, cx, cz, w, d, top + Math.min(alongX ? d : w, 9) * 0.32, top + 2.2, chimneys, alongX, random);
   } else if (roof === 'mansard') {
     // Mansard: steep slate sides with dormer windows, a flat top.
     add(g, mansard(w + 0.3, d + 0.3, 2.4, mat(0x3c4048)), 0).position.set(cx, top, cz);
@@ -224,6 +230,10 @@ function building(g: Object3D, q: Rect, h: number, wall: number, windows: MeshLa
       add(g, box(0.6, 0.7, 0.06, windows[k++ % windows.length], cx + a, top + 0.7, q.z1 + 0.16));
     }
     add(g, box(0.6, 1.4, 0.6, mat(PALETTE.brickDark), cx - w / 4, top + 2.2, cz));
+    if (random() < 0.5) dish(g, cx + w / 4, top + 2.4, cz + d / 4);
+    if (random() < 0.4) tvAerial(g, cx, top + 2.4, cz - d / 6, random);
+  } else if (feature) {
+    flatRoofFeature(g, feature, cx, cz, w - 0.3, d - 0.3, top + 0.32, random);
   } else {
     const roll = random();
     const flatTop = top + 0.32;
@@ -241,7 +251,7 @@ function building(g: Object3D, q: Rect, h: number, wall: number, windows: MeshLa
   add(g, box(0.16, 0.24, 0.16, windows[k++ % windows.length], doorX + 0.75, 2.2, q.z1 + 0.1));
   // Stepped skyline: one end rises a storey higher, flush with the front,
   // with its own cornice and a row of windows (never on a pitched roof).
-  if (roof !== 'pitched' && h > 5 && random() < 0.45) {
+  if (roof !== 'pitched' && !feature && h > 5 && random() < 0.45) {
     const sw = w * (0.3 + random() * 0.25);
     const left = random() < 0.5;
     const sx = left ? cx - w / 2 + sw / 2 : cx + w / 2 - sw / 2;
@@ -267,7 +277,7 @@ function building(g: Object3D, q: Rect, h: number, wall: number, windows: MeshLa
   }
   // Massing: break the box. A set-back top floor, bay windows jutting from
   // the facade, a rooftop shed under a tarp.
-  if (h > 6 && random() < 0.4) {
+  if (h > 6 && !feature && random() < 0.4) {
     const sw = w * (0.45 + random() * 0.25);
     const sx = cx + (random() - 0.5) * (w - sw);
     add(g, box(sw, 2.7, d * 0.6, mat(wall), sx, h + 0.12, cz - d * 0.15));
@@ -284,7 +294,7 @@ function building(g: Object3D, q: Rect, h: number, wall: number, windows: MeshLa
       add(g, box(0.06, 1.25, 0.4, windows[k++ % windows.length], bayX + 0.86, y, q.z1 + 0.3));
     }
   }
-  if (roof === 'flat' && random() < 0.35) {
+  if (roof === 'flat' && !feature && random() < 0.35) {
     const shx = cx + (random() - 0.5) * (w - 3);
     const shz = cz + (random() - 0.5) * (d - 3);
     add(g, box(2.2, 1.6, 1.6, mat(0x5a5048), shx, h + 0.12, shz));
@@ -307,6 +317,7 @@ function building(g: Object3D, q: Rect, h: number, wall: number, windows: MeshLa
   if (random() < 0.08 && h > 6) add(g, scaffolding(w * 0.7, h - 1, random)).position.set(cx - w * 0.1, 0.12, q.z1);
   // Rubbish waiting for collection in the alley beside the building.
   if (random() < 0.45) rubbish(g, q.x0 - 0.8, cz + (random() - 0.5) * d * 0.6, random);
+  return roof;
 }
 
 /** Fills one block. Returns the window bank that animates its lights. */
@@ -400,8 +411,8 @@ function fillBlock(scene: Object3D, block: Rect, windows: MeshLambertMaterial[],
       // the street grid, the way blocks get rebuilt piecemeal.
       const { front, corner } = districtFrontage(q);
       const yaw = (random() - 0.5) * 0.03;
-      placeBuilding(g, q, front, corner, yaw, [0, 0], h, WALLS[Math.floor(random() * WALLS.length)], windows, random);
-      registerBuilding(q.x0, q.x1, q.z0, q.z1, h, false, front);
+      const roof = placeBuilding(g, q, front, corner, yaw, [0, 0], h, WALLS[Math.floor(random() * WALLS.length)], windows, random);
+      registerBuilding(q.x0, q.x1, q.z0, q.z1, h, false, front, roof);
       // Washing strung across the alley to the next building along.
       if (!low && h > 6 && i < nx - 1 && random() < 0.35) {
         const z = q.z0 + 1 + random() * (cd - 2);
@@ -447,8 +458,8 @@ export function fillCityBlock(scene: Object3D, block: Rect, windows: MeshLambert
       const nudge: [number, number] = [(random() - 0.5) * 0.8, (random() - 0.5) * 0.8];
       const yaw = (random() - 0.5) * 0.06;
       const { front, corner } = blockFrontage(q, block);
-      placeBuilding(g, q, front, corner, yaw, nudge, h, WALLS[Math.floor(random() * WALLS.length)], windows, random);
-      registerBuilding(q.x0, q.x1, q.z0, q.z1, h, false, front);
+      const roof = placeBuilding(g, q, front, corner, yaw, nudge, h, WALLS[Math.floor(random() * WALLS.length)], windows, random);
+      registerBuilding(q.x0, q.x1, q.z0, q.z1, h, false, front, roof);
     }
   }
   // The caller may merge many blocks together instead.
@@ -471,8 +482,8 @@ export function buildInfill(scene: Object3D, random: Random): WindowBank[] {
   for (const { rect: q, face } of SPARE_CENTRE_LOTS) {
     const g = add(scene, new Group());
     const h = inFrontOfService(q) ? 3.2 + random() * 1.4 : 6.2 + Math.floor(random() * 2) * 3;
-    placeBuilding(g, q, face, null, 0, [0, 0], h, WALLS[Math.floor(random() * WALLS.length)], windows, random);
-    registerBuilding(q.x0, q.x1, q.z0, q.z1, h, false, face);
+    const roof = placeBuilding(g, q, face, null, 0, [0, 0], h, WALLS[Math.floor(random() * WALLS.length)], windows, random);
+    registerBuilding(q.x0, q.x1, q.z0, q.z1, h, false, face, roof);
     mergeStatic(g);
   }
   return [new WindowBank(windows, 1.0, 0.05, random)];

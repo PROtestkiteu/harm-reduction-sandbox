@@ -20,7 +20,11 @@ export interface CityBuilding {
   readonly ground?: boolean;
   /** The side its front, street door and shopfronts face, when the builder knows its street. */
   readonly front?: Side;
+  /** Its roof, when the builder knows it: flat (with a parapet), pitched (tiles, ridge along the longer side) or mansard. */
+  readonly roof?: RoofKind;
 }
+
+export type RoofKind = 'flat' | 'pitched' | 'mansard';
 
 /**
  * Every ordinary building the district builds registers here, so it can be
@@ -32,13 +36,13 @@ const box = new Box3();
 const hit = new Vector3();
 
 /** Registers a building for picking; returns its id. */
-export function registerBuilding(x0: number, x1: number, z0: number, z1: number, height: number, ground = false, front?: Side): number {
+export function registerBuilding(x0: number, x1: number, z0: number, z1: number, height: number, ground = false, front?: Side, roof?: RoofKind): number {
   const storeys = Math.max(1, Math.round(height / 3));
   const area = (x1 - x0) * (z1 - z0);
   const use: BuildingUse = storeys <= 1 ? 'shopfront' : storeys === 2 ? 'flats over shops' : storeys >= 4 ? 'tenement' : 'flats';
   const homesPerFloor = Math.max(1, Math.round(area / 70));
   const households = use === 'shopfront' ? 0 : homesPerFloor * (storeys - (use === 'flats over shops' ? 1 : 0));
-  buildings.push({ id: buildings.length, x0, x1, z0, z1, height, storeys, use, households: ground ? 0 : households, ground, front });
+  buildings.push({ id: buildings.length, x0, x1, z0, z1, height, storeys, use, households: ground ? 0 : households, ground, front, roof });
   return buildings.length - 1;
 }
 

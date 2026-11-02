@@ -152,6 +152,26 @@ function paintSurface(shader: WebGLProgramParametersWithUniforms, moving = false
           #endif
           if (!emissive && vPaintPos.y > 2.0) {
             col *= 1.0 + (pNoise(q * 6.0) - 0.5) * 0.12;
+            #ifndef MOVING
+            if (vPaintN.y < 0.97) {
+              // A pitched roof: courses of clay tiles (dachówki) running along it, each course
+              // overlapping the next down the slope, joints staggered, every tile a little different.
+              vec2 across = normalize(vec2(-vPaintN.z, vPaintN.x) + vec2(1e-4, 0.0));
+              float along = dot(vPaintPos.xz, across);
+              float courseH = 0.2;
+              float row = floor(vPaintPos.y / courseH);
+              float inRow = fract(vPaintPos.y / courseH);
+              float tileW = 0.27;
+              float s = along / tileW + mod(row, 2.0) * 0.5;
+              float joint = smoothstep(0.0, 0.07, abs(fract(s) - 0.5) - 0.42);
+              float lip = smoothstep(0.78, 0.98, inRow);
+              float tint = pHash(vec2(floor(s), row)) - 0.5;
+              float tpx = max(fwidth(vPaintPos.y), fwidth(along));
+              float tdetail = 1.0 - smoothstep(0.02, 0.07, tpx);
+              col *= mix(1.0, (1.0 + tint * 0.22) * (1.0 - 0.28 * lip) * (1.0 - 0.3 * joint), tdetail);
+              col *= mix(1.0, 0.93 + 0.14 * inRow, tdetail * 0.5);
+            } else
+            #endif
             if (detail > 0.0) {
               // Roofs: tar-paper seams, patches and dark rain stains.
               float seam = smoothstep(0.0, 0.02, abs(fract(q.x / 1.0) - 0.5) - 0.47);
