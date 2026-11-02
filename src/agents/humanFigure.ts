@@ -503,6 +503,7 @@ const CLIP: Record<Pose | 'push' | 'walkFormal', string> = {
   walk: 'Walk_Loop',
   walkFormal: 'Walk_Formal_Loop',
   sit: 'Sitting_Idle_Loop',
+  crouch: 'Crouch_Idle_Loop',
   talk: 'Idle_Talking_Loop',
   push: 'Push_Loop',
 };

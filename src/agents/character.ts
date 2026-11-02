@@ -26,7 +26,7 @@ import { pick, type Random } from '../sim/random';
 import { approach } from '../world/animated';
 
 /** `dance` is drawn as standing by the simple figures. */
-export type Pose = 'stand' | 'walk' | 'sit' | 'talk' | 'dance';
+export type Pose = 'stand' | 'walk' | 'sit' | 'talk' | 'dance' | 'crouch';
 
 /**
  * How a person's body carries what they took, layered over any pose: the slow

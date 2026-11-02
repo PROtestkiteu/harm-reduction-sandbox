@@ -217,11 +217,15 @@ function building(g: Object3D, q: Rect, h: number, wall: number, windows: MeshLa
 }
 
 /** Fills one block. Returns the window bank that animates its lights. */
+/** The pocket parks built this launch (they change from launch to launch), for scenes set in them. */
+export const POCKET_PARKS: Rect[] = [];
+
 /**
  * A small pocket park on one lot: a lawn crossed by gravel paths, trees, benches facing the
  * middle and a low railing round it. The city's own little green, where a building would be.
  */
 function pocketPark(g: Object3D, q: Rect, random: Random): void {
+  POCKET_PARKS.push({ ...q });
   const cx = (q.x0 + q.x1) / 2;
   const cz = (q.z0 + q.z1) / 2;
   const w = q.x1 - q.x0;

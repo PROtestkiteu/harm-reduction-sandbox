@@ -1,0 +1,70 @@
+import { t } from '../../i18n';
+
+/**
+ * Flavour packs: street life layered over the simulation. None of them feed
+ * the model (no money, no meters, no shared random stream), so a scenario plays
+ * the same with any of them on or off. Each is built the first time it is
+ * switched on and costs nothing per frame while it is off.
+ */
+export type PackId = 'street' | 'guard' | 'crime' | 'vignettes' | 'lines' | 'service' | 'weather' | 'campus';
+
+export interface PackInfo {
+  id: PackId;
+  label: string;
+  hint: string;
+}
+
+export const PACKS: readonly PackInfo[] = [
+  { id: 'street', label: t('Street drug scene'), hint: t('Dealers, lookouts and buyers; people using at the squat and in the parks.') },
+  { id: 'guard', label: t('City guard'), hint: t('Municipal wardens on foot. They check on people and write tickets; nobody moves on when they pass.') },
+  { id: 'crime', label: t('Street crime'), hint: t('Phone snatches, shoplifting, smashed shelters and fly-tipping, shown where they happen.') },
+  { id: 'vignettes', label: t('Street life'), hint: t('A busker, smokers at the club door, a delivery rider, someone feeding pigeons.') },
+  { id: 'lines', label: t('Overheard lines'), hint: t('Short things people say as they pass.') },
+  { id: 'service', label: t('Night service traffic'), hint: t('The bin lorry and its crew, a street sweeper, couriers on bikes.') },
+  { id: 'weather', label: t('Rain and fog'), hint: t('Rain some evenings and ground fog before dawn.') },
+  { id: 'campus', label: t('University'), hint: t('A university and its students, on the south-west edge of the district.') },
+];
+
+/** Weather moods the Rain and fog pack can show; `auto` picks one each evening. */
+export type WeatherMood = 'auto' | 'dry' | 'rain' | 'fog' | 'rainFog';
+
+export const WEATHER_MOODS: readonly { id: WeatherMood; label: string }[] = [
+  { id: 'auto', label: t('Changes each evening') },
+  { id: 'dry', label: t('Dry') },
+  { id: 'rain', label: t('Rain') },
+  { id: 'fog', label: t('Fog') },
+  { id: 'rainFog', label: t('Rain and fog') },
+];
+
+export interface PackSettings {
+  on: Record<PackId, boolean>;
+  weather: WeatherMood;
+}
+
+export const defaultPacks = (): PackSettings => ({
+  on: { street: true, guard: true, crime: true, vignettes: true, lines: true, service: true, weather: true, campus: true },
+  weather: 'auto',
+});
+
+/** Where the choice is remembered on this device (a convenience: the packs never change a save). */
+const KEY = 'hrp-packs';
+
+/** The packs as last chosen here, or the defaults; `?packs=street,lines` (or `none`) overrides both. */
+export function loadPacks(): PackSettings {
+  const out = defaultPacks();
+  try {
+    const kept = JSON.parse(localStorage.getItem(KEY) ?? 'null') as Partial<PackSettings> | null;
+    if (kept?.on) for (const p of PACKS) if (typeof kept.on[p.id] === 'boolean') out.on[p.id] = kept.on[p.id];
+    if (kept?.weather && WEATHER_MOODS.some((m) => m.id === kept.weather)) out.weather = kept.weather;
+  } catch { /* storage blocked or bad data: defaults */ }
+  const forced = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('packs') : null;
+  if (forced !== null) {
+    const ids = new Set(forced.split(','));
+    for (const p of PACKS) out.on[p.id] = ids.has(p.id);
+  }
+  return out;
+}
+
+export function savePacks(s: PackSettings): void {
+  try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* private mode: not kept */ }
+}

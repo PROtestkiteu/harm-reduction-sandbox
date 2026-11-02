@@ -60,6 +60,14 @@ export class ScenePipeline {
     generateMipmaps: false,
     depthBuffer: true,
   });
+  /**
+   * The sun's shadow map is redrawn every other frame: people move a few
+   * centimetres a frame, which a frame-old shadow does not show, and the pass
+   * costs about as many draw calls again as the scene. It is redrawn at once
+   * when the view or the light changes, so a pan or a new hour never lags.
+   */
+  private shadowFrame = 0;
+  private shadowsStale = true;
   private readonly hoverMaterial = new MeshBasicMaterial({ color: 0xff0000 });
   private readonly selectMaterial = new MeshBasicMaterial({ color: 0x00ff00, blending: AdditiveBlending, transparent: true });
   private readonly quadScene = new Scene();
@@ -274,6 +282,7 @@ export class ScenePipeline {
   }
 
   setCameraDepth(near: number, far: number, worldPerPixel: number, elevationDeg = 35.26): void {
+    this.shadowsStale = true;
     const u = this.composite.uniforms;
     // One render pixel up the screen on flat ground moves this far deeper.
     u.groundSlope.value = worldPerPixel / Math.tan((elevationDeg * Math.PI) / 180);
@@ -289,6 +298,7 @@ export class ScenePipeline {
 
   /** Blends the sky from day (`day` 1) through dusk to deep night (`night` 1); exposure eases off in daylight and lifts at night. */
   setNight(night: number, day = 0): void {
+    this.shadowsStale = true;
     const u = this.composite.uniforms;
     (u.skyTop.value as Vector3).lerpVectors(SKY.top, SKY.topDay, day).lerp(SKY.topNight, night);
     (u.skyMid.value as Vector3).lerpVectors(SKY.mid, SKY.midDay, day).lerp(SKY.midNight, night);
@@ -305,7 +315,8 @@ export class ScenePipeline {
   /** Renders the scene, the highlight mask (only when needed) and the composite. */
   render(scene: Scene, camera: OrthographicCamera, highlight: { hover: boolean; select: boolean } = { hover: false, select: false }): void {
     const r = this.renderer;
-    r.shadowMap.needsUpdate = true;
+    r.shadowMap.needsUpdate = this.shadowsStale || (this.shadowFrame++ & 1) === 0;
+    this.shadowsStale = false;
     r.setRenderTarget(this.colorTarget);
     r.render(scene, camera);
     (this.composite.uniforms.invViewProj.value as Matrix4).multiplyMatrices(camera.matrixWorld, camera.projectionMatrixInverse);

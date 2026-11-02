@@ -124,6 +124,8 @@ export interface World {
   setNightlife(open: number, partnered: ReadonlySet<number>): void;
   /** Building ids of the public hospital and the sobering-up centre. */
   landmarks: { hospital: number; sobering: number; police: number; cityHall: number };
+  /** The housing on the university's site (the campus flavour pack hides it). */
+  campusSite: Object3D;
   /** The pharmacy's building id (a business, with its own card). */
   pharmacyShop: number;
   /** Żabka convenience stores' building ids. */
@@ -649,6 +651,7 @@ export function buildWorld(random: Random): World {
     },
     squat,
     landmarks: beyond.landmarks,
+    campusSite: beyond.campusSite,
     camps,
     pharmacyShop: pharmacyShop.building,
     zabkas,

@@ -11,6 +11,8 @@ import { dynamic, mergeStatic } from './mergeStatic';
 import { car, train as trainModel } from './vehicles';
 import { acUnit, antenna, drainpipe, roofVent, satelliteDish, windowTrim } from './details';
 import { riverMaterial } from './puddles';
+import { CAMPUS } from '../config/flavour/campus';
+import { createRandom } from '../sim/random';
 import { curtainWall } from './curtainWall';
 
 const TOWER_TINTS = [0x9ab8c0, 0xa8b0bc, 0xc0aa90, 0x90a8b8];
@@ -37,6 +39,8 @@ export interface CityBeyond {
   applyKits(kits: Kits): void;
   /** Building ids of the public hospital and the sobering-up centre, for their cards. */
   landmarks: { hospital: number; sobering: number; police: number; cityHall: number };
+  /** Ordinary housing on the university's site, hidden while the campus pack shows the university. */
+  campusSite: Object3D;
 }
 
 const EDGE = DISTRICT + 2;
@@ -121,6 +125,14 @@ export function buildCityBeyond(scene: Object3D, random: Random): CityBeyond {
   const kitFallback = add(scene, dynamic(new Group()));
   buildHousing(kitFallback, random, lit, cool, kitSites, 3.2, 24);
   kitFallback.traverse((o) => { o.castShadow = false; });
+  // The university's site keeps its own housing (own random, so the rest of the city is the same either way).
+  const campusSite = add(scene, dynamic(new Group()));
+  const half = { x: (CAMPUS.x0 + CAMPUS.x1) / 2, z: (CAMPUS.z0 + CAMPUS.z1) / 2 };
+  buildHousing(campusSite, createRandom(613), lit, cool, [
+    { x0: CAMPUS.x0, x1: half.x - 2.5, z0: CAMPUS.z0, z1: half.z - 2.5 }, { x0: half.x + 2.5, x1: CAMPUS.x1, z0: CAMPUS.z0, z1: half.z - 2.5 },
+    { x0: CAMPUS.x0, x1: half.x - 2.5, z0: half.z + 2.5, z1: CAMPUS.z1 }, { x0: half.x + 2.5, x1: CAMPUS.x1, z0: half.z + 2.5, z1: CAMPUS.z1 },
+  ], 3.2, 24);
+  campusSite.traverse((o) => { o.castShadow = false; });
   blocksGroup.traverse((o) => { o.castShadow = false; });
   // The skyline merges by 80 m cell for the same reason.
   const sky = new Map<string, Group>();
@@ -146,6 +158,7 @@ export function buildCityBeyond(scene: Object3D, random: Random): CityBeyond {
     windows: [new WindowBank(lit, 0.75, 0.05, random), new WindowBank(cool, 0.9, 0.08, random), new WindowBank(towerGlass, 0.95, 0.75, random), new WindowBank([...farLit, ...farCool], 0.8, 0.1, random)],
     update: (dt) => station.update(dt),
     landmarks,
+    campusSite,
     applyKits(kits) {
       // Trees: the kit's, instanced, on the simple trees' spots.
       const broad = ['CommonTree_1', 'CommonTree_2', 'CommonTree_3'].map((n) => kits.piece(n)).filter(Boolean) as Object3D[];
@@ -857,6 +870,7 @@ const TAKEN: Rect[] = [
   { x0: SOBERING.x0 - 2, x1: SOBERING.x1 + 2, z0: SOBERING.z0 - 2, z1: SOBERING.z1 + 2 }, // the sobering-up centre
   { x0: STATION_CAMP.x0 - 2, x1: STATION_CAMP.x1 + 2, z0: STATION_CAMP.z0, z1: STATION_CAMP.z1 + 1 }, // the station forecourt and its camp
   { x0: POLICE_STATION.x0 - 2, x1: POLICE_STATION.x1 + 2, z0: POLICE_STATION.z0, z1: POLICE_STATION.z1 + 2 }, // the police station
+  CAMPUS, // the university (or, with its pack off, the housing kept for its site)
 ];
 
 /** Cuts every rect round the taken ground, keeping the free pieces `keep` accepts. */

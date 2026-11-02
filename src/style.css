@@ -2048,3 +2048,24 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
   :root:not([data-scene='night']) .sandbox-body *,
   :root:not([data-scene='night']) .column * { text-shadow: none; }
 }
+
+/* Flavour packs: overheard lines over the scene, and their settings topic. */
+.overheard { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.overheard-line {
+  position: absolute; left: 0; top: 0;
+  max-width: 220px; padding: 3px 8px; border-radius: 6px 6px 6px 1px;
+  background: rgba(14, 12, 10, 0.78); color: #f4ecdc;
+  font: italic 500 12.5px/1.25 var(--body);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+  transition: opacity 0.6s ease;
+}
+.overheard-line.fading { opacity: 0; }
+@media (prefers-reduced-motion: reduce) { .overheard-line { transition: none; } }
+.flavour-pack {
+  display: grid; grid-template-columns: auto 1fr; column-gap: 8px; align-items: baseline;
+  margin-top: 8px; font-size: 13px; cursor: pointer;
+}
+.flavour-pack input { margin: 0; accent-color: var(--accent, var(--reply)); }
+.flavour-pack .flavour-hint { grid-column: 2; color: var(--muted); font-size: 12px; }
+.flavour-mood { display: flex; gap: 8px; align-items: center; margin: 4px 0 0 22px; font-size: 13px; }
+.flavour-mood select { font: inherit; }

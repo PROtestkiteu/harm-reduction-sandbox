@@ -79,6 +79,8 @@ import { NeighbourhoodProps } from './world/neighbourhoodProps';
 import { CityProps } from './world/cityProps';
 import { SeasonProps, snowyNight } from './world/seasonProps';
 import { POPULATIONS, presence } from './config/populations';
+import { startFlavour } from './world/flavour/setup';
+import { flavourSection } from './ui/flavourSection';
 
 document.documentElement.lang = LANG;
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
@@ -352,6 +354,57 @@ const hud = new Hud(hudRoot, {
     if (kind === 'seller') return new HumanFigure(lib, { ...look, kit: { ...look.kit, hood: 'up' } });
     return new HumanFigure(lib, look);
   });
+}
+// Flavour packs: street life over the model (world/flavour). None of it touches the simulation;
+// a pack that is off is not built, and costs nothing per frame.
+let seasonWetness = 0;
+let flavourWetness = 0;
+const applyWetness = () => pipeline.setWetness(Math.max(seasonWetness, flavourWetness));
+const flavourPoint = new Vector3();
+const flavour = startFlavour({
+  scene: world.scene,
+  camera,
+  canvas,
+  overlay: hudRoot,
+  traffic: world.traffic,
+  toScreen: (x, y, z) => worldToClient(flavourPoint.set(x, y, z), camera, pipeline.frame),
+  setWetness: (w) => {
+    const q = Math.round(w * 16) / 16;
+    if (q !== flavourWetness) { flavourWetness = q; applyWetness(); }
+  },
+  campusSite: world.campusSite,
+  forEachCrowd: (visit) => {
+    const r2 = (((camera.right - camera.left) / 2) * 0.55) ** 2;
+    crowd.forEachVisible((p) => {
+      const { x, z } = p.root.position;
+      if ((x - rig.focus.x) ** 2 + (z - rig.focus.z) ** 2 < r2) visit(p.role, x, z, p.root);
+    });
+  },
+  season: () => sim.season,
+  buses: () => world.vehicles().flatMap((v) => (world.vehicle(v.id)?.kind === 'bus' ? [{ x: v.root.position.x, z: v.root.position.z }] : [])),
+});
+{
+  const lib = peopleLibrary();
+  if (lib) flavour.setFigures(lib);
+}
+let flavourSquatTimer = 0;
+/** Fills the packs' view of the city (one reused object) and runs them. */
+function updateFlavour(dt: number): void {
+  const c = flavour.context;
+  c.clock = sim.clockMinutes;
+  c.night = Math.max(0, lastNight);
+  c.day = Math.max(0, lastDay);
+  c.season = sim.season;
+  c.snowy = lastSeasonKey.endsWith('|true');
+  c.patrol = sim.context.patrol;
+  c.market = sim.neighbourhood.state.streetMarket;
+  c.squat = sim.camp.squat;
+  c.still = reducedMotion.matches;
+  if ((flavourSquatTimer -= dt) <= 0) {
+    flavourSquatTimer = 2;
+    flavour.setSquats([...(world.squat === null ? [] : [world.squat]), ...sim.property.squats.map((i) => world.shopUnits[i])]);
+  }
+  flavour.packs.update(dt, c);
 }
 const actionMenu = new ActionMenu(hudRoot);
 // The welcome box pauses the city while it is open, and leaves a pause the player chose alone.
@@ -712,6 +765,7 @@ const setDateClock = (v: { date: number; clock: number }) => {
 };
 sandbox.addAction(t('How it works'), () => welcome.show());
 sandbox.mount(randomSection(setDateClock));
+sandbox.mount(flavourSection(flavour.settings, { onPack: (id, on) => { flavour.setPack(id, on); dirty = true; }, onMood: (m) => { flavour.setMood(m); dirty = true; } }));
 const homeNote = homeScreenNote();
 if (homeNote) sandbox.mount(homeNote);
 sandbox.mount(languageSection((lang) => {
@@ -985,7 +1039,8 @@ function syncSeason(): void {
   const base = SEASON_PROFILES[sim.season];
   const look = sim.season === 'winter' ? { ...base.look, snow: snowy ? 1 : 0.3, drift: snowy ? ('snow' as const) : ('none' as const) } : base.look;
   world.setSeason(sim.season, { ...base, look });
-  pipeline.setWetness(look.wetness);
+  seasonWetness = look.wetness;
+  applyWetness();
   dirty = true;
 }
 
@@ -1140,6 +1195,7 @@ function applyView(): void {
   const framing = frameCamera(camera, world.frame.full, frame, hud.insets(), zoom * rig.zoom, rig.view, rig.focus, world.frame.bounds);
   // Shadows only need to cover what is on screen.
   world.setDetail(framing.worldPerPixel);
+  flavour.packs.setView(rig.focus.x, rig.focus.z, ((camera.right - camera.left) / 2) * 1.4, framing.worldPerPixel);
   coins.setPixelSize(framing.worldPerPixel);
   world.setViewFocus(rig.focus.x, rig.focus.z, ((camera.right - camera.left) / 2) * 1.4);
   // Haze starts well past the view's focus, so only the far city fades.
@@ -1221,6 +1277,7 @@ function frame(now: number): void {
     if (fx.version !== fxVersion) placeFxTags();
     marks.update(realDt);
     seasonProps.update(realDt * speed);
+    if (flavour.packs.running) updateFlavour(realDt * speed);
     dirty = true;
     hudTimer -= realDt;
     if (hudTimer <= 0) {
@@ -1321,5 +1378,5 @@ requestAnimationFrame(frame);
 
 if (import.meta.env.DEV) {
   // Diagnostics for local profiling only; stripped from production builds.
-  Object.assign(window, { __sandbox: { renderer, pipeline, world, camera, sim, crowd, rig, interaction, actionMenu, props, street, cityProps, syncEvents: () => { eventsDirty = true; syncEvents(); refreshOrg(); syncStreet(); } } });
+  Object.assign(window, { __sandbox: { renderer, pipeline, world, camera, sim, crowd, rig, interaction, actionMenu, props, street, cityProps, flavour, syncEvents: () => { eventsDirty = true; syncEvents(); refreshOrg(); syncStreet(); } } });
 }
