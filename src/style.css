@@ -228,7 +228,7 @@ button:focus-visible {
   z-index: 10;
 }
 
-/* The icon's lit skyline along the bottom; its windows come on in waves while the game loads. */
+/* The icon's skyline along the bottom, its windows unlit; the lit ones are laid over it. */
 .loading::after {
   content: '';
   position: absolute;
@@ -238,6 +238,10 @@ button:focus-visible {
   background: url('./assets/loading-skyline.svg') repeat-x left bottom / auto 100%;
   pointer-events: none;
 }
+/* The lit windows over it, the same height and tiles (src/loading.ts switches them on and off). */
+.loading-lights { position: absolute; z-index: 1; inset: auto 0 0; width: 100%; height: clamp(120px, 28%, 240px); pointer-events: none; }
+.loading-lights rect { fill: #edb300; opacity: 0; }
+.loading-lights rect.on { opacity: 0.85; }
 @media (max-height: 520px) { .loading { padding-bottom: 40px; } }
 
 /*
