@@ -155,6 +155,8 @@ const SPARK_W = 56;
 const SPARK_H = 14;
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const NARROW = '(max-width: 760px)';
+/** Phones either way up: narrow, or a short landscape screen. */
+export const COMPACT = '(max-width: 760px), (max-height: 520px)';
 
 
 /** A place's counts as icons: people being helped, people waiting, staff, people who turned back, the venue's crowd, the door. */
@@ -1121,6 +1123,19 @@ export class Hud {
     input.select();
   }
 
+  /**
+   * A layer opened over the replies (tonight's goals, the event feed): on small
+   * screens it shows alone, the conversation and replies stepping aside until
+   * it is folded again.
+   */
+  /** Told when a selection drops the open layer, so its owner can fold it. */
+  onLayerDrop: ((layer: string) => void) | null = null;
+
+  setLayer(layer: 'goals' | 'events', open: boolean): void {
+    if (open) this.column.dataset.layer = layer;
+    else if (this.column.dataset.layer === layer) delete this.column.dataset.layer;
+  }
+
   /** Folds the phone sheet down to the clock and Pause bar, or opens it again. */
   setFolded(folded: boolean): void {
     if (this.folded === folded) return;
@@ -1142,7 +1157,9 @@ export class Hud {
     // Phones: the column is a bottom sheet. Reserve room for the conversation
     // and for the reply rows a selection adds, so the framing never has to
     // change (and the scene never jumps) when something is selected.
-    if (!this.folded) this.optionsTopUnfolded = this.options.getBoundingClientRect().top;
+    // Measured only while the replies show: folded, or under an open layer, the last place holds.
+    const rect = this.options.getBoundingClientRect();
+    if (!this.folded && rect.height > 0) this.optionsTopUnfolded = rect.top;
     const optionsTop = this.optionsTopUnfolded;
     const rowsToCome = this.focusOpt.hidden ? 44 : 0;
     return { top, right: 0, bottom: vh - optionsTop + 150 + rowsToCome, left: 0 };
@@ -1416,8 +1433,13 @@ export class Hud {
   private render(): void {
     queueMicrotask(() => this.syncDrill());
     const m = this.mode;
-    // Picking something on the map opens a folded sheet to show it.
+    // Picking something on the map opens a folded sheet to show it, over any layer of the overview.
     if (m) this.setFolded(false);
+    const layer = this.column.dataset.layer;
+    if (m && layer) {
+      delete this.column.dataset.layer;
+      this.onLayerDrop?.(layer);
+    }
     this.column.dataset.mode = m ? m.kind : 'idle';
     if (m?.kind !== 'person') delete this.column.dataset.role;
     if (m?.kind !== 'location') delete this.column.dataset.status;

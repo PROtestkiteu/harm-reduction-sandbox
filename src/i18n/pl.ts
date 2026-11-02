@@ -1681,4 +1681,5 @@ export const PL: Record<string, string> = {
   "A good night. The funders will hear about this.": "Dobra noc. Darczyńcy się o tym dowiedzą.",
   "You, coordinator of {org}": "Ty, koordynacja: {org}",
   "I run this project. When nothing is selected, the side panel is us: it says what needs doing next.": "Prowadzę ten projekt. Gdy nic nie jest wybrane, panel boczny to my: mówi, co zrobić dalej.",
+  "{n} of {all} met so far": "Spełnione dotąd: {n} z {all}",
 };

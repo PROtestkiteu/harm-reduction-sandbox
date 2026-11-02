@@ -9,6 +9,8 @@ export interface EventFeedCallbacks {
   onHint(hint: Hint): void;
   /** An event's card was opened: bring where it happens into view. */
   onFocus(id: EventId): void;
+  /** The heading opened or folded the feed. */
+  onToggle?(open: boolean): void;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -62,8 +64,8 @@ export class EventFeed {
     this.heading.setAttribute('aria-expanded', 'false');
     this.heading.addEventListener('click', () => {
       const open = this.heading.getAttribute('aria-expanded') !== 'true';
-      this.heading.setAttribute('aria-expanded', String(open));
-      this.root.dataset.open = String(open);
+      this.setOpen(open);
+      cb.onToggle?.(open);
     });
     this.root.dataset.open = 'false';
     this.list = el('div', 'events-list');
@@ -87,6 +89,12 @@ export class EventFeed {
     }
     this.root.append(this.heading, this.list, this.recent, trigger);
     parent.append(this.root);
+  }
+
+  /** Opens or folds the feed; says nothing to `onToggle`. */
+  setOpen(open: boolean): void {
+    this.heading.setAttribute('aria-expanded', String(open));
+    this.root.dataset.open = String(open);
   }
 
   /** Puts an element (the organisation bar) above the event heading. */

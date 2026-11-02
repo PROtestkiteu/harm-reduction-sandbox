@@ -9,9 +9,14 @@ type DateClock = { date: number; clock: number };
 /** Where a "New city" click leaves the season and time for the next page. */
 const SHUFFLE_KEY = 'hrs-shuffle';
 
+/**
+ * A random date, and a start between 18:00 and 01:00 in five-minute steps: the
+ * night is what the game is about, so a start in the empty daytime hours is
+ * left to the Time of day slider.
+ */
 const pick = (): DateClock => ({
   date: 1 + Math.floor(Math.random() * 365),
-  clock: 18 * 60 + Math.floor((Math.random() * (24 * 60 - 5)) / 5) * 5,
+  clock: 18 * 60 + Math.floor((Math.random() * 7 * 60) / 5) * 5,
 });
 
 /**
@@ -45,17 +50,23 @@ export function randomSection(setDateClock: (v: DateClock) => void): HTMLFieldSe
   return section;
 }
 
-/** Applies the season and time a "New city" click left for this page, once. */
-export function applyShuffle(setDateClock: (v: DateClock) => void): void {
+/**
+ * The date and time a fresh game starts on: the ones a "New game" click left
+ * for this page (taken once), or else, when `draw` (the address set neither),
+ * a random date and evening hour of its own. Null leaves them as they are.
+ */
+export function startDateClock(draw: boolean): DateClock | null {
   let raw: string | null = null;
-  try { raw = sessionStorage.getItem(SHUFFLE_KEY); sessionStorage.removeItem(SHUFFLE_KEY); } catch { return; }
-  if (!raw) return;
-  try {
-    const v = JSON.parse(raw) as { date?: unknown; clock?: unknown };
-    const date = normalize('date', Number(v.date));
-    const clock = normalize('clock', Number(v.clock));
-    if (Number.isFinite(date) && Number.isFinite(clock)) setDateClock({ date, clock });
-  } catch { /* a bad value is ignored */ }
+  try { raw = sessionStorage.getItem(SHUFFLE_KEY); sessionStorage.removeItem(SHUFFLE_KEY); } catch { /* storage blocked: a fresh draw below */ }
+  if (raw) {
+    try {
+      const v = JSON.parse(raw) as { date?: unknown; clock?: unknown };
+      const date = normalize('date', Number(v.date));
+      const clock = normalize('clock', Number(v.clock));
+      if (Number.isFinite(date) && Number.isFinite(clock)) return { date, clock };
+    } catch { /* a bad value is ignored */ }
+  }
+  return draw ? pick() : null;
 }
 
 /** Language: each in its own name; picking one reloads the page in it, the game kept. */

@@ -28,7 +28,7 @@ import { loadPeople } from './agents/humanFigure';
 import { SEASON_PROFILES } from './config/seasons';
 import { LOCATION_IDS, SERVICE_IDS, serviceAt, type LocationId, type ServiceId, type ServiceStatus } from './sim/types';
 import { ContextSection } from './ui/contextSection';
-import { Hud, type PersonCamperOffer, type PlaceAction } from './ui/hud';
+import { COMPACT, Hud, type PersonCamperOffer, type PlaceAction } from './ui/hud';
 import { PORTRAIT_H, PORTRAIT_W, PortraitStudio } from './render/portraitStudio';
 import { describePerson } from './ui/personInfo';
 import { ActionMenu } from './ui/actionMenu';
@@ -72,7 +72,7 @@ import type { PolicyInfo } from './sim/simulation';
 import { EVENTS, type EventId } from './config/randomEvents';
 import { SandboxPanel } from './ui/sandboxPanel';
 import { buildSnapshot, driveView } from './ui/snapshot';
-import { aboutSection, applyShuffle, homeScreenNote, languageSection, randomSection } from './ui/sandboxTopics';
+import { aboutSection, homeScreenNote, languageSection, randomSection, startDateClock } from './ui/sandboxTopics';
 import { CityCards, PropertyView, SHOPS_FOR } from './game/cityState';
 import { SelectionMarker } from './ui/selection';
 import { ContextProps } from './world/contextProps';
@@ -710,6 +710,11 @@ const feed = new EventFeed(hud.eventsSlot, {
     dirty = true;
   },
   onFocus: (id) => focusPlace(EVENT_PLACE[id]),
+  // One layer at a time: the feed and tonight's goals never stand open together.
+  onToggle: (open) => {
+    if (open) goalsStrip.setOpen(false);
+    hud.setLayer('events', open);
+  },
   onHint: (hint) => {
     const input = document.getElementById(hintInputId(hint));
     const row = input?.closest(HINT_ROW) as HTMLElement | null;
@@ -1011,9 +1016,15 @@ async function startGame(): Promise<void> {
   document.addEventListener('visibilitychange', () => { if (document.hidden) live?.flush(); });
   window.addEventListener('pagehide', () => live?.flush());
   const code = location.hash.startsWith('#g=') ? location.hash.slice(3) : '';
-  // A fresh game: say where it starts and how it grows.
+  // A fresh game: a date and evening of its own (unless the address or a New game click chose them),
+  // then where it starts and how it grows, stamped with that start time.
   if (!resume && !linked && !code) {
-    queueOrg(() => sim.org.notice(sim.clockMinutes, t('You start with three services: the drop-in, the outreach camper and the club stand. Open more under Services once the money comes in steadily.')));
+    const start = startDateClock(fromUrl.date === undefined && fromUrl.clock === undefined);
+    if (start) setDateClock(start);
+    queueOrg(() => {
+      if (start) sim.configure(start);
+      sim.org.notice(sim.clockMinutes, t('You start with three services: the drop-in, the outreach camper and the club stand. Open more under Services once the money comes in steadily.'));
+    });
   }
   if (code) {
     const save = await unpackSave(code);
@@ -1033,7 +1044,14 @@ async function startGame(): Promise<void> {
 }
 feed.prependBar(org.bar);
 // Goals, news and why the meters move, where the player looks (above the event feed and on the meters).
-const goalsStrip = new GoalsStrip();
+const goalsStrip = new GoalsStrip(!window.matchMedia(COMPACT).matches, (open) => {
+  if (open) feed.setOpen(false);
+  hud.setLayer('goals', open);
+});
+hud.onLayerDrop = (layer) => {
+  if (layer === 'goals') goalsStrip.setOpen(false);
+  else feed.setOpen(false);
+};
 const notices = new NoticeStrip();
 hud.eventsSlot.before(goalsStrip.root, notices.root);
 const stressRow = document.querySelector<HTMLElement>('.stress-row');
@@ -1403,6 +1421,9 @@ window.addEventListener('pageshow', refit);
 window.addEventListener('focus', refit);
 window.visualViewport?.addEventListener('resize', refit);
 canvas.addEventListener('webglcontextrestored', refit);
+// Turning the phone: a free camera swung or zoomed for the old shape is easy to get lost in, so the
+// angles go back to the default (and the scale too, unless something is followed), then a re-fit.
+window.matchMedia('(orientation: portrait)').addEventListener('change', () => { rig.reorient(); refit(); });
 
 // Main loop. Simulation and crowd advance in fixed small steps; the frame only
 // redraws when something moved or the HUD asked for it.
@@ -1472,8 +1493,6 @@ const fromUrl = decodeSettings(params.get('set'));
 Object.assign(settings, fromUrl);
 sandbox.setAll(settings);
 sim.configure(fromUrl);
-// After the address's settings: a "New city" click picked this page's season and time.
-applyShuffle(setDateClock);
 syncSeason();
 world.setStill(reducedMotion.matches);
 reducedMotion.addEventListener('change', () => world.setStill(reducedMotion.matches));

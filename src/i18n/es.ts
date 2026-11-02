@@ -1631,4 +1631,5 @@ export const ES: Record<string, string> = {
   "A good night. The funders will hear about this.": "Una buena noche. Los financiadores se enterarán.",
   "You, coordinator of {org}": "Tú, coordinación de {org}",
   "I run this project. When nothing is selected, the side panel is us: it says what needs doing next.": "Dirijo este proyecto. Cuando no hay nada seleccionado, el panel lateral somos nosotros: dice qué hay que hacer a continuación.",
+  "{n} of {all} met so far": "{n} de {all} cumplidos hasta ahora",
 };

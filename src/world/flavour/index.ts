@@ -100,6 +100,8 @@ export class FlavourPacks {
   private readonly board = new Board();
   private readonly deps: PackDeps;
   private mood: WeatherMood = 'auto';
+  /** Per visit, so tonight's weather and street life differ from the last visit's. */
+  private readonly seed = (Math.random() * 0x7fffffff) | 0;
 
   constructor(
     deps: Omit<PackDeps, 'pool' | 'board' | 'random'>,
@@ -130,7 +132,7 @@ export class FlavourPacks {
     this.loading.add(id);
     const builder = await this.builders[id]();
     // Each pack its own seeded random, so one pack never shifts another's sequence.
-    const made = builder({ ...this.deps, random: createRandom(7919 * (Object.keys(this.builders).indexOf(id) + 1)) });
+    const made = builder({ ...this.deps, random: createRandom((this.seed + 7919 * (Object.keys(this.builders).indexOf(id) + 1)) | 0) });
     made.setMood?.(this.mood);
     this.built.set(id, made);
     this.loading.delete(id);

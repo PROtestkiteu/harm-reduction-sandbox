@@ -81,6 +81,15 @@ export class CameraRig {
     this.target(this.targetFocus.x, this.targetFocus.y, this.targetFocus.z, Math.min(this.targetZoom, 1));
   }
 
+  /**
+   * After the screen turns: the default angles again and, unless locked onto a
+   * subject, the base scale, keeping the spot in the middle of the view.
+   */
+  reorient(): void {
+    this.setView(DEFAULT_VIEW);
+    if (!this.locked) this.target(this.targetFocus.x, this.targetFocus.y, this.targetFocus.z, 1);
+  }
+
   /** Back to the opening view: home focus, base scale, default angles. */
   reset(): void {
     this.locked = false;
