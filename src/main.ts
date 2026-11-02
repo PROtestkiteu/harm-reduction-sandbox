@@ -1406,6 +1406,9 @@ const observer = new ResizeObserver(() => {
   resizeFrame = requestAnimationFrame(layout);
 });
 observer.observe(document.body);
+// The canvas is fixed to the screen, so its size can change while the page's does not (an iPhone's
+// bars and safe areas settling after a turn): it is watched itself. Drawing never sets its CSS size.
+observer.observe(canvas);
 /**
  * Coming back to the page (after a screenshot, an app switch, a rotation, a lost and restored
  * graphics context) re-fits and redraws, a frame after the browser has settled its sizes, so the
@@ -1422,7 +1425,31 @@ window.visualViewport?.addEventListener('resize', refit);
 canvas.addEventListener('webglcontextrestored', refit);
 // Turning the phone: a free camera swung or zoomed for the old shape is easy to get lost in, so the
 // angles go back to the default (and the scale too, unless something is followed), then a re-fit.
-window.matchMedia('(orientation: portrait)').addEventListener('change', () => { rig.reorient(); refit(); });
+// A phone settles its rotated size over several hundred milliseconds (the turn's animation, then the
+// bars and safe areas), so the re-fit runs again along the way and once more after it.
+let turnTimers: number[] = [];
+window.matchMedia('(orientation: portrait)').addEventListener('change', () => {
+  rig.reorient();
+  refit();
+  for (const id of turnTimers) clearTimeout(id);
+  turnTimers = [150, 400, 900].map((ms) => window.setTimeout(() => { layout(); dirty = true; }, ms));
+});
+window.addEventListener('resize', refit);
+/**
+ * A last guard against a stretched picture: twice a second, the canvas's laid-out size against the
+ * size it is drawn at; a mismatch (a resize no event reported) re-fits. Two reads, no writes.
+ */
+let sizeCheckAt = 0;
+function checkSize(now: number): void {
+  if (now < sizeCheckAt) return;
+  sizeCheckAt = now + 500;
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight;
+  if (w >= 40 && h >= 40 && (Math.abs(w - pipeline.frame.cssW) > 1 || Math.abs(h - pipeline.frame.cssH) > 1)) {
+    layout();
+    dirty = true;
+  }
+}
 
 // Main loop. Simulation and crowd advance in fixed small steps; the frame only
 // redraws when something moved or the HUD asked for it.
@@ -1436,6 +1463,7 @@ function frame(now: number): void {
   if (now - last < 100) resolution.sample(now - last, (now - last) / 1000);
   const realDt = Math.min(0.1, (now - last) / 1000);
   last = now;
+  checkSize(now);
   applyPending();
   if (!paused) {
     let remaining = realDt * speed;
