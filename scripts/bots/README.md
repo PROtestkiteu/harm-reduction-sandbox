@@ -10,6 +10,7 @@ Nothing here is imported by the game, so none of it reaches `dist/`.
 | `perf.mjs` | Frame cost: JavaScript ms per frame and draw calls, flavour packs off and on, same seeded city. |
 | `clearance.mjs` | Flavour props and standing spots against the crowd's walking lines and buildings, over several launches. |
 | `saves.mjs` | Saves: a used favour, an approved grant and the stress meters survive the update reload; an old save without the newer fields loads with start values; the Sandbox mark survives and keeps the run off the leaderboard. Exits 1 on a failure. |
+| `sound.mjs` | Renders the street ambience offline for four moods and measures it: level, peaks, clipping, share below 150 Hz (buzz on small speakers), loudness spread and flat share (monotony). `--recorded` mixes in the recorded street, `--wav dir` writes WAVs to listen to. |
 | `chrome.mjs` | The driver the others use; also a CLI that runs a JSON list of steps (`eval`, `wait`, `shot`, `profile`). |
 
 The page-side halves (`strategies.js`, `perf.js`, `clearance.js`) are single function expressions,

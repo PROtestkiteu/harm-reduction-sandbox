@@ -35,9 +35,23 @@ function thud(ctx: AudioContext, out: AudioNode, t: number, from: number, to: nu
   o.stop(t + 0.03 + decay * 6);
 }
 
-/** Plays `cue` now. Nodes are made per cue and dropped by the browser when they finish. */
-export function playCue(ctx: AudioContext, out: AudioNode, white: AudioBuffer, cue: UiCue, random: () => number): void {
+/** How loud each recorded cue plays. */
+const CUE_LEVEL: Record<UiCue, number> = { tap: 0.5, confirm: 0.55, warn: 0.45 };
+
+/** Plays `cue` now, recorded if loaded, else generated. Nodes are made per cue and dropped by the browser when they finish. */
+export function playCue(ctx: AudioContext, out: AudioNode, white: AudioBuffer, cue: UiCue, random: () => number, recorded?: AudioBuffer): void {
   const t = ctx.currentTime + 0.005;
+  if (recorded) {
+    // The recorded click (Kenney, CC0), a touch quieter for the warning so it does not startle.
+    const src = ctx.createBufferSource();
+    src.buffer = recorded;
+    src.playbackRate.value = 0.97 + random() * 0.06;
+    const g = ctx.createGain();
+    g.gain.value = CUE_LEVEL[cue];
+    src.connect(g).connect(out);
+    src.start(t);
+    return;
+  }
   const offset = random() * (white.duration - 0.1);
   switch (cue) {
     case 'tap':

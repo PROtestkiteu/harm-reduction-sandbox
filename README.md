@@ -62,6 +62,7 @@ Three.js and TypeScript, built with Vite.
 - People and animations: [Quaternius](https://quaternius.com), CC0. The prepared copies are in `public/people` (see `scripts/build-people.mjs`).
 - Trees, plants and a few city buildings: Quaternius's Downtown City MegaKit and Stylized Nature MegaKit, CC0. A small, compressed selection is in `public/kits` (see `scripts/build-kits.mjs`); it loads after the game starts.
 - Fonts: Permanent Marker (Apache 2.0) and Roboto Condensed (OFL), through Fontsource.
+- Sounds: "Paris by Night" by Joseph Sardin, [BigSoundBank](https://bigsoundbank.com), and Kenney's [Interface Sounds](https://kenney.nl/assets/interface-sounds), both CC0 (see `src/audio/assets/CREDITS.md`). The rest of the sound is generated in the browser.
 - Evidence notes come from the DrugsPRO research library and are cited in the panels.
 
 ## Licence

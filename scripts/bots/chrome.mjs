@@ -30,7 +30,7 @@ export async function drive(url, steps, { out = '.', size = '1280x800', seed = p
   const profile = mkdtempSync(join(tmpdir(), 'hrs-chrome-'));
   const chrome = spawn(CHROME, [
     '--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, `--window-size=${w},${h}`,
-    '--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', 'about:blank',
+    '--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--autoplay-policy=no-user-gesture-required', 'about:blank',
   ], { stdio: 'ignore' });
   const results = [];
   try {

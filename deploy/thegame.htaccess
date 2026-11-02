@@ -48,8 +48,8 @@ LimitRequestBody 16384
   Header always set Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
   Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' blob:; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'self'"
 
-  # Hashed build files never change; the page itself is always checked.
-  <FilesMatch "\.(js|css|woff2?)$">
+  # Hashed build files (scripts, styles, fonts, the sounds) never change; the page itself is always checked.
+  <FilesMatch "\.(js|css|woff2?|mp3|wav)$">
     Header set Cache-Control "public, max-age=31536000, immutable"
   </FilesMatch>
   <FilesMatch "\.(glb|txt)$">

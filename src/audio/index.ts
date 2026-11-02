@@ -1,6 +1,7 @@
 import { Ambience, type AmbienceMood } from './ambience';
 import { playCue, type UiCue } from './cues';
 import { audioRandom, makeNoise } from './noise';
+import { loadRecordings, type Recordings } from './recordings';
 import { loadSoundSettings, saveSoundSettings, type SoundSettings } from './settings';
 
 export type { UiCue } from './cues';
@@ -51,6 +52,7 @@ export class Sound {
   private master: GainNode | null = null;
   private white: AudioBuffer | null = null;
   private ambience: Ambience | null = null;
+  private recordings: Recordings | null = null;
   private readonly random = audioRandom(0x50da);
   private unlocked = false;
   private visible = typeof document === 'undefined' || document.visibilityState !== 'hidden';
@@ -112,7 +114,7 @@ export class Sound {
     if (cue === 'tap' && now - this.lastAnyCue < CUE_GAP.tap) return;
     this.lastCue[cue] = now;
     this.lastAnyCue = now;
-    playCue(this.ctx!, this.master!, this.white!, cue, this.random);
+    playCue(this.ctx!, this.master!, this.white!, cue, this.random, this.recordings?.cues[cue]);
   }
 
   setMuted(muted: boolean): void {
@@ -179,8 +181,24 @@ export class Sound {
     this.white = noise.white;
     this.master = ctx.createGain();
     this.master.gain.value = 0;
-    this.master.connect(ctx.destination);
+    // Nothing useful lives below 70 Hz on the speakers this is played on, and a limiter keeps
+    // a busy moment (a car passing the club in the rain) from ever clipping.
+    const floor = ctx.createBiquadFilter();
+    floor.type = 'highpass';
+    floor.frequency.value = 70;
+    const limit = ctx.createDynamicsCompressor();
+    limit.threshold.value = -14;
+    limit.knee.value = 6;
+    limit.ratio.value = 8;
+    limit.attack.value = 0.004;
+    limit.release.value = 0.25;
+    this.master.connect(floor).connect(limit).connect(ctx.destination);
     this.ambience = new Ambience(ctx, this.master, noise, this.random);
+    // The recordings come after the sound has started: until then, and if they fail, all of it is generated.
+    void loadRecordings(ctx).then((r) => {
+      this.recordings = r;
+      if (r.city) this.ambience?.useRecording(r.city);
+    });
     this.lastUpdate = ctx.currentTime;
     this.applyRunning();
   }
