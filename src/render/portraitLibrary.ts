@@ -24,11 +24,13 @@ export function portraitUrl(id: string): string {
 }
 
 /**
- * Coordinator portraits the player can be (public/portraits/dusk-v3): one so
- * far; add a file and its id here to offer another. The choice is kept on this
- * device by the caller.
+ * Portraits the player can be (public/portraits/dusk-v3): the coordinator's
+ * own first, then painted faces that read as anyone who might run a project
+ * (street roles such as police, a bouncer or a seller are left out). Add a
+ * file and its id here to offer another. The choice is kept on this device by
+ * the caller.
  */
-export const COORDINATOR_IDS = ['coordinator'] as const;
+export const COORDINATOR_IDS = ['coordinator', 'outreach', 'worker', 'office', 'older', 'everyday', 'student', 'goth', 'punk', 'queer-rave', 'metal', 'cleaner'] as const;
 export type CoordinatorId = (typeof COORDINATOR_IDS)[number];
 
 let coordinator: CoordinatorId = COORDINATOR_IDS[0];
