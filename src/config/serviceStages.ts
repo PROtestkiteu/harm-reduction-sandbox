@@ -53,20 +53,20 @@ export const SERVICE_STAGES: Record<ServiceId, readonly ServiceStage[]> = {
   ],
   dropIn: [
     { label: t('Counter and chairs'), does: t('A counter, a few chairs, hot drinks and supplies.'), places: -2, source: '2009_CharloisGuide_SaferNightLife p6; Vale 2025 p4 to p5' },
-    { label: t('Drop-in with test strips'), does: t('Test strips at the counter for whoever asks.'), places: 0, unlocks: ['checking'], source: '2018_Karamouzian_Evaluation of a fentanyl drug checking service p1' },
+    { label: t('Test strips at the counter'), does: t('Test strips at the counter for whoever asks.'), places: 0, unlocks: ['checking'], source: '2018_Karamouzian_Evaluation of a fentanyl drug checking service p1' },
     { label: t('Mobile consumption van'), does: t('A van with booths where the scene is: use with someone there.'), places: 2, source: 'Vale 2025 p3' },
     { label: t('Supervised consumption room'), does: t('Booths, oxygen and nurses: overdoses managed on the spot.'), places: 4, source: '2004_NEIL_HUNT_harm reduction review p22, p31 to p32' },
   ],
   shelter: [
     { label: t('Hall of beds'), does: t('Beds and a canteen for the night.'), places: -2, source: 'Vale 2025 p2' },
-    { label: t('Low-threshold shelter'), does: t('A dispensing room: substitution, clean kit and naloxone; places for women and LGBT people.'), places: 0, source: 'Vale 2025 p3, p9' },
+    { label: t('Dispensing room'), does: t('A dispensing room: substitution, clean kit and naloxone; places for women and LGBT people.'), places: 0, source: 'Vale 2025 p3, p9' },
     { label: t('Checking in the common room'), does: t('Visiting checking sessions where people live.'), places: 2, unlocks: ['checking'], source: 'Summers (HR Drug Checking) p1, p5; 2022_Wallace p8' },
   ],
   clinic: [
     { label: t('Naloxone at discharge'), does: t('Nasal naloxone and test strips handed over when people leave A&E.'), places: -2, source: 'Kannam (HR Drug Checking) p1; 2004_NEIL_HUNT_harm reduction review p10' },
     { label: t('Medical tent'), does: t('A first aid tent by the checking service: fewer ambulance runs.'), places: 0, source: 'Olsen (HR Drug Checking) p4, p11; 2021_Hutton p19' },
     { label: t('Clinical van'), does: t('Wound care and testing out on the street.'), places: 2, source: 'Carroll p3; Berry (HR Drug Checking) p4' },
-    { label: t('Substitution clinic'), does: t('Prescribed substitution with daily dispensing.'), places: 4, source: '2004_NEIL_HUNT_harm reduction review p14, p22' },
+    { label: t('Substitution treatment'), does: t('Prescribed substitution with daily dispensing.'), places: 4, source: '2004_NEIL_HUNT_harm reduction review p14, p22' },
   ],
 };
 

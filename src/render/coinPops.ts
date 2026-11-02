@@ -29,8 +29,8 @@ function coinTexture(fill: string, rim: string, mark: string): CanvasTexture {
   return tex;
 }
 
-/** What happened to someone, drawn as a badge: a death, an arrest, a trip to hospital. */
-export type MarkIcon = 'skull' | 'cuffs' | 'cross';
+/** What happened to someone, drawn as a badge: a death, an arrest, a trip to hospital, a need left unmet. */
+export type MarkIcon = 'skull' | 'cuffs' | 'cross' | 'unmet';
 
 function iconTexture(icon: MarkIcon): CanvasTexture {
   const n = 64;
@@ -40,12 +40,28 @@ function iconTexture(icon: MarkIcon): CanvasTexture {
   // A dark round badge with a light rim, so the mark reads on any ground.
   g.beginPath();
   g.arc(n / 2, n / 2, n / 2 - 3, 0, Math.PI * 2);
-  g.fillStyle = icon === 'cross' ? '#f4f4f4' : '#1c1c22';
+  g.fillStyle = icon === 'cross' ? '#f4f4f4' : icon === 'unmet' ? '#4a6fd0' : '#1c1c22';
   g.fill();
   g.lineWidth = 3;
   g.strokeStyle = icon === 'cross' ? '#c8202a' : '#e8e4dc';
   g.stroke();
-  if (icon === 'cross') {
+  if (icon === 'unmet') {
+    // Turned away: an arrow bending back, in the blue of the unmet glow and the Unmet count.
+    g.strokeStyle = '#f4f4f4';
+    g.lineWidth = 6;
+    g.lineCap = 'round';
+    g.beginPath();
+    g.moveTo(n / 2 + 12, n / 2 + 12);
+    g.lineTo(n / 2 + 12, n / 2 - 2);
+    g.arc(n / 2, n / 2 - 2, 12, 0, Math.PI, true);
+    g.stroke();
+    g.fillStyle = '#f4f4f4';
+    g.beginPath();
+    g.moveTo(n / 2 - 22, n / 2 - 4);
+    g.lineTo(n / 2 - 2, n / 2 - 4);
+    g.lineTo(n / 2 - 12, n / 2 + 10);
+    g.fill();
+  } else if (icon === 'cross') {
     g.fillStyle = '#d0222c';
     g.fillRect(n / 2 - 7, 14, 14, n - 28);
     g.fillRect(14, n / 2 - 7, n - 28, 14);
@@ -87,7 +103,7 @@ interface Coin { sprite: Sprite; material: SpriteMaterial; age: number; x: numbe
 export class CoinPops {
   private readonly gain = coinTexture('#f2c040', '#8a5a10', '+');
   private readonly loss = coinTexture('#e06050', '#6a1a12', '−');
-  private readonly icons: Record<MarkIcon, CanvasTexture> = { skull: iconTexture('skull'), cuffs: iconTexture('cuffs'), cross: iconTexture('cross') };
+  private readonly icons: Record<MarkIcon, CanvasTexture> = { skull: iconTexture('skull'), cuffs: iconTexture('cuffs'), cross: iconTexture('cross'), unmet: iconTexture('unmet') };
   private readonly coins: Coin[] = [];
   private next = 0;
   /** Metres per screen pixel now: coins keep about the same size on screen at any zoom. */

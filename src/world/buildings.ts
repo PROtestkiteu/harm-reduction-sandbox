@@ -24,6 +24,8 @@ export interface LocationVisual {
   readonly roofSign?: Object3D;
   /** 0 = service switched off and packed away, 1 = staffed and lit. */
   setServiceLevel(level: number): void;
+  /** Closed for good (switched off, shut down, not permitted): no light at all. Places that stay lit for other reasons ignore it. */
+  setShut?(shut: boolean): void;
   openDoor(): void;
   update(dt: number, time: number): void;
 }
@@ -173,6 +175,7 @@ function designDropIn(random: Random): LocationVisual {
   const door = new DoorState();
   let level = 0;
   let target = 0;
+  let shut = false;
 
   return {
     id: 'dropIn',
@@ -180,15 +183,18 @@ function designDropIn(random: Random): LocationVisual {
     labelAnchor: new Vector3(cx, 7.8, cz),
     footprint: { x: cx, z: cz + 1.6, rx: w / 2 + 1, rz: d / 2 + 2.4 },
     setServiceLevel: (v) => { target = v; },
+    setShut: (v) => { shut = v; },
     openDoor: () => door.request(),
     update(dt) {
       level = approach(level, target, 1.6, dt);
-      storefront.emissiveIntensity = 0.12 + 1.1 * level;
-      lobby.emissiveIntensity = 0.15 + 1.2 * level;
-      strip.emissiveIntensity = 0.1 + 1.6 * level;
-      sign.material.emissiveIntensity = 0.15 + 0.85 * level;
+      // Shut for good: the dim night glow goes too, and every window upstairs.
+      const base = shut ? 0 : 1;
+      storefront.emissiveIntensity = 0.12 * base + 1.1 * level;
+      lobby.emissiveIntensity = 0.15 * base + 1.2 * level;
+      strip.emissiveIntensity = 0.1 * base + 1.6 * level;
+      sign.material.emissiveIntensity = 0.15 * base + 0.85 * level;
       light.intensity = 9 * level;
-      upper.update(dt, 0.15 + 0.7 * level);
+      upper.update(dt, 0.15 + 0.7 * level, shut);
       const o = door.update(dt) * 0.74;
       doorL.position.x = SPOTS.centerDoor.x - 0.42 - o;
       doorR.position.x = SPOTS.centerDoor.x + 0.42 + o;

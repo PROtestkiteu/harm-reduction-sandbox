@@ -497,6 +497,7 @@ export class Crowd {
     const stopShort = officer ? radius + dist(officer.pos, goal) : 4.5;
     this.walk(a, shortenRoute(a.pos, full, stopShort), () => {
       this.sim.turnBack(service, a.visitor!);
+      this.onMark?.(a.pos, 'unmet');
       a.mode = 'pausing';
       a.pauseLeft = 1.6;
       a.faceHeading = headingTo(a.pos, goal);
@@ -731,6 +732,8 @@ export class Crowd {
   private onLeftUnserved(service: ServiceId, visitor: VisitorId): void {
     const a = this.byVisitor.get(visitor);
     if (!a) return;
+    // Gave up in the queue: counted as unmet, and seen as such where it happened.
+    this.onMark?.(a.pos, 'unmet');
     if (service === 'clubHr') return this.goToClubQueue(a);
     this.leaveAnywhere(a);
   }
@@ -1001,7 +1004,7 @@ export class Crowd {
   }
 
   /** Shows what happened to someone where it happened (a badge rising): set by the game. */
-  onMark: ((at: P2, icon: 'skull' | 'cuffs' | 'cross') => void) | null = null;
+  onMark: ((at: P2, icon: 'skull' | 'cuffs' | 'cross' | 'unmet') => void) | null = null;
 
   private collapse(a: Agent, acute: AcuteOutcome, then: () => void): void {
     this.onMark?.(a.pos, 'cross');
@@ -1100,6 +1103,8 @@ export class Crowd {
       a.pauseLeft = closed ? 8 + this.random() * 10 : 20 + this.random() * 25;
       a.faceHeading = headingTo(a.pos, door);
       a.onArrive = () => {
+        // Gave up waiting outside a full or closed service.
+        this.onMark?.(a.pos, 'unmet');
         a.crowding = undefined;
         if (a.carry === 'phone') a.carry = undefined;
         this.leaveAnywhere(a);
@@ -1315,6 +1320,8 @@ export class Crowd {
         const exit = pick(this.random, ENTRY_NODES);
         person.aftermath = undefined;
         this.onMark?.(person.pos, 'cuffs');
+        // A police car comes for the person arrested, as an ambulance comes for a collapse.
+        this.world.dispatch('police', person.pos.x, person.pos.z, t('An arrest: a car comes to take the person to the station.'));
         this.holdFor(person, 4, headingTo(person.pos, o.pos), () => { this.setMood(person, 'unmet', Infinity); this.leave(person, exit); });
         this.holdFor(o, 4.6, headingTo(o.pos, person.pos), () => this.leave(o, exit));
       } else {

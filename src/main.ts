@@ -4,7 +4,8 @@ import { LANG, LANG_KEY, t } from './i18n';
 import { ILLUSTRATIVE } from './config/illustrative';
 import { combineEffects, decodeContext, defaultContext, encodeContext, type ContextSelection } from './config/contextFactors';
 import { NATIONAL_MODELS, selectionFor } from './config/nationalModels';
-import { ORG } from './config/organisation';
+import { GRANTS, ORG } from './config/organisation';
+import { FAVOURS, type FavourId } from './config/favours';
 import { CAMPER_SPOTS, camperSpot } from './world/layout';
 import { exposureNow } from './sim/exposure';
 import { PARAM_BY_ID, decodeSettings, defaultSettings, encodeSettings, type ParamId, type SandboxSettings } from './config/sandboxParams';
@@ -34,6 +35,8 @@ import { Welcome } from './ui/welcome';
 import { SavePanel } from './ui/savePanel';
 import { GameOver } from './ui/gameOver';
 import { EventPopup } from './ui/eventPopup';
+import { ConfirmPopup } from './ui/confirmPopup';
+import { camperDecision, driveDecision, grantDecision, investDecision, pathDecision, recruitDecision, relaunchDecision, setupDecision, type Decision } from './game/decisions';
 import { budgetEvent, concessionEvent, pickEvent, type EventWorld, type Spectacle } from './game/majorEvents';
 import { EVENT_PLACE, type EventPlace } from './config/eventPlaces';
 import { CAMP_AT, EventFx, PARTY_AT } from './world/eventFx';
@@ -295,15 +298,16 @@ const hud = new Hud(hudRoot, {
   onSelect: (id) => interaction.selectLocation(id),
   onResetView: () => interaction.resetView(),
   onToggleFocus: () => interaction.toggleFocus(),
-  onAction: (service, action) => queuePlaceAction(service, action),
-  onBuildingAction: (action) => queueBuildingAction(action),
+  onAction: (service, action) => confirmSpend(placeDecision(service, action), () => queuePlaceAction(service, action)),
+  onBuildingAction: (action) => confirmSpend(buildingDecision(action), () => queueBuildingAction(action)),
   onTitle: () => sandbox.setOpen(true),
   onMoney: () => openOrg(),
-  onPersonCamper: () => queueOrg(() => sendCamperToSelected()),
+  // Moving the first camper is free; with it switched off or on the move, a new one is bought.
+  onPersonCamper: () => confirmSpend(!sim.outreachMoving && sim.services.outreach.switchedOn ? null : camperDecision(), () => queueOrg(() => sendCamperToSelected())),
   onMix: (service, activity, weight) => queueOrg(() => { sim.setMix(service, activity, weight); refreshHud(); }),
-  onMixSetUp: (service, activity) => queueOrg(() => { sim.setUpMix(service, activity); refreshHud(); }),
+  onMixSetUp: (service, activity) => confirmSpend(setupDecision(activity), () => queueOrg(() => { sim.setUpMix(service, activity); refreshHud(); })),
   onSettings: () => sandbox.setOpen(true),
-  onCamperPath: (path) => { if (sim.setCamperPath(path)) { refreshOrg(); refreshHud(); } },
+  onCamperPath: (path) => confirmSpend(pathDecision(path), () => { if (sim.setCamperPath(path)) { refreshOrg(); refreshHud(); } }),
   onFavour: (id) => queueOrg(() => { sim.askFavour(id); syncContextProps(); refreshHud(); }),
   onAid: (kind) => queueOrg(() => {
     if (kind === 'cold') sim.warmingBus = !sim.warmingBus;
@@ -471,6 +475,8 @@ function syncServiceVisuals(): void {
   for (const id of LOCATION_IDS) {
     const s = sim.services[serviceAt(id)];
     world.locations[id].setServiceLevel(LEVEL[s.status]);
+    // Closed for good, not just for the night: the building goes fully dark.
+    world.locations[id].setShut?.(s.closedReason === 'switchedOff' || s.closedReason === 'closedDown' || s.closedReason === 'notPermitted');
     // Grow with staff above the usual number, shrink below it (closed counts as short).
     const usual = ILLUSTRATIVE.services[s.id].staff;
     const onSite = s.status === 'closed' ? 0 : s.staffOnSite;
@@ -623,12 +629,16 @@ const queueOrg = (action: () => void) => {
   dirty = true;
 };
 const org = new OrgPanel({
-  onRecruit: (id) => queueOrg(() => sim.recruit(id)),
+  onRecruit: (id) => confirmSpend(recruitDecision(id), () => queueOrg(() => sim.recruit(id))),
   onLetGo: () => queueOrg(() => sim.letGo()),
-  onApply: (id) => queueOrg(() => sim.applyFor(id)),
-  onReopen: (id) => queueOrg(() => { sim.reopen(id); syncContextProps(); }),
+  onApply: (id) => {
+    const ctx = sim.applicationContext();
+    confirmSpend(grantDecision(id, GRANTS[id].chance(ctx) * (ctx.reputation ?? 1)), () => queueOrg(() => sim.applyFor(id)));
+  },
+  onReopen: (id) => confirmSpend(relaunchDecision(id), () => queueOrg(() => { sim.reopen(id); syncContextProps(); })),
   onAssign: (member, to) => queueOrg(() => sim.assignMember(member, to)),
-  onDrive: () => queueOrg(() => { sim.startDonationDrive(); refreshOrg(); refreshHud(); }),
+  onFavour: (id) => queueOrg(() => { sim.askFavour(id); syncContextProps(); refreshOrg(); refreshHud(); }),
+  onDrive: () => confirmSpend(driveDecision(), () => queueOrg(() => { sim.startDonationDrive(); refreshOrg(); refreshHud(); })),
   onOpen: () => openOrg(),
 });
 // The organisation has its own sheet, opened from the money in the top bar or the organisation bar.
@@ -701,6 +711,33 @@ const eventRandom = createRandom((Math.random() * 0x7fffffff) | 0);
 let nextBigEvent = 2 * 60 + eventRandom() * 2 * 60;
 let nextBudgetWarning = 0;
 let pausedBeforeEvent = false;
+/** Every decision that costs money is confirmed first, with its detail; the clock stops meanwhile. */
+let pausedBeforeConfirm = false;
+const confirmBox = new ConfirmPopup(document.body, (open) => {
+  if (open) { pausedBeforeConfirm = paused; setPaused(true); }
+  else if (!pausedBeforeConfirm) setPaused(false);
+});
+function confirmSpend(d: Decision | null, run: () => void): void {
+  if (!d || d.cost <= 0) return run();
+  confirmBox.ask(d, sim.org.budget, run);
+}
+/** What a place reply would spend, for the confirm box; null when it is free. */
+function placeDecision(service: ServiceId, action: PlaceAction): Decision | null {
+  if (action === 'hire') return recruitDecision('hirePaid');
+  if (action === 'volunteer') return recruitDecision('volunteerDrive');
+  if (action === 'relaunch') return relaunchDecision(service);
+  if (action.startsWith('camper:')) return camperDecision();
+  if (action === 'invest') return investDecision(service, sim.upgrades[service].level, sim.upgrades[service].progress);
+  return null;
+}
+/** A building card's paid reply, from the card itself. */
+function buildingDecision(action: string): Decision | null {
+  const sel = interaction.selected;
+  if (sel?.kind !== 'building') return null;
+  const a = cards.describeBuilding(sel.id).actions?.find((x) => x.id === action);
+  return a?.cost ? { title: a.label, cost: a.cost, lines: a.detail ? [a.detail] : [] } : null;
+}
+
 const eventPopup = new EventPopup(document.body, (open) => {
   if (open) { pausedBeforeEvent = paused; setPaused(true); }
   else { if (!pausedBeforeEvent) setPaused(false); refreshOrg(); refreshHud(); }
@@ -863,7 +900,7 @@ watchForUpdates(() => {
 
 function refreshOrg(): void {
   savePanel.sync();
-  org.update({ org: sim.org, stress: { police: sim.cityStress.police, medics: sim.cityStress.medics, sobering: sim.cityStress.sobering, district: sim.vitality.level }, services: sim.services, clock: sim.clockMinutes, incomePerHour: sim.fundingIncome, runningPerHour: sim.runningPerHour, payroll: sim.payroll, applicationContext: sim.applicationContext(), team: sim.team, drive: driveView(sim) });
+  org.update({ org: sim.org, stress: { police: sim.cityStress.police, medics: sim.cityStress.medics, sobering: sim.cityStress.sobering, district: sim.vitality.level }, services: sim.services, clock: sim.clockMinutes, incomePerHour: sim.fundingIncome, runningPerHour: sim.runningPerHour, payroll: sim.payroll, applicationContext: sim.applicationContext(), team: sim.team, drive: driveView(sim), favours: { held: sim.favours, owed: sim.concessionAt !== null, items: (Object.keys(FAVOURS) as FavourId[]).map((id) => ({ id, label: FAVOURS[id].label })) } });
 }
 
 function syncEvents(): void {
@@ -1053,6 +1090,11 @@ function writeUrl(): void {
 }
 
 function layout(): void {
+  // A phone mid-screenshot or mid-rotation can report a near-empty page for a moment: framing for
+  // that would aim the camera at the sky until the next move. Skip it; the next resize sets it right.
+  const w = canvas.clientWidth || window.innerWidth;
+  const h = canvas.clientHeight || window.innerHeight;
+  if (w < 40 || h < 40) return;
   // The canvas's own size: installed on a phone it runs under the status bar and the home bar,
   // past what the window reports.
   pipeline.resize(canvas.clientWidth || window.innerWidth, canvas.clientHeight || window.innerHeight, (window.devicePixelRatio || 1) * resolution.scale);
@@ -1104,6 +1146,20 @@ const observer = new ResizeObserver(() => {
   resizeFrame = requestAnimationFrame(layout);
 });
 observer.observe(document.body);
+/**
+ * Coming back to the page (after a screenshot, an app switch, a rotation, a lost and restored
+ * graphics context) re-fits and redraws, a frame after the browser has settled its sizes, so the
+ * view never stays aimed for a size the page no longer has.
+ */
+const refit = () => {
+  cancelAnimationFrame(resizeFrame);
+  resizeFrame = requestAnimationFrame(() => requestAnimationFrame(() => { layout(); dirty = true; }));
+};
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refit(); });
+window.addEventListener('pageshow', refit);
+window.addEventListener('focus', refit);
+window.visualViewport?.addEventListener('resize', refit);
+canvas.addEventListener('webglcontextrestored', refit);
 
 // Main loop. Simulation and crowd advance in fixed small steps; the frame only
 // redraws when something moved or the HUD asked for it.

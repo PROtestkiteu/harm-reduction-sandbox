@@ -210,7 +210,8 @@ export interface BuildingCard {
   /** The neighbourhood's measures as icon chips: `value` on screen, `label` the full sentence. */
   chips?: { icon: ChipIcon; value: string; label: string; state?: ChipState }[];
   /** Things to do here (rent a closed shop, give it back). */
-  actions?: { id: string; label: string; short: string; enabled: boolean; helps?: readonly Need[] }[];
+  /** `cost` and `detail` (when it costs money) feed the confirm box. */
+  actions?: { id: string; label: string; short: string; enabled: boolean; helps?: readonly Need[]; cost?: number; detail?: string }[];
   /** False for things with no name of their own to change (a passing police car). */
   renamable?: boolean;
 }
@@ -372,14 +373,8 @@ export class Hud {
     hall.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 1 1 4.5V6h14V4.5zM2.5 7h2v5.5h-2zm4.5 0h2v5.5H7zm4.5 0h2v5.5h-2zM1 13.5h14V15H1z"/></svg>';
     this.favourNum = el('span', 'favour-num', '0');
     this.favourCount.append(hall, this.favourNum);
-    this.favourCount.addEventListener('click', () => {
-      // Back to the overview, where the favours are, with them open.
-      if (this.mode) cb.onSelect(null);
-      this.favourOpen = true;
-      this.setFolded(false);
-      queueMicrotask(() => this.syncDrill());
-      if (this.lastSnapshot) this.update(this.lastSnapshot);
-    });
+    // The favours are listed in the organisation sheet: pressing the count opens it there.
+    this.favourCount.addEventListener('click', () => cb.onMoney());
     right.append(moneyBtn, this.favourCount);
     top.append(time, right);
     // Phones: a handle folds the sheet down to the clock and the Pause bar.
@@ -957,7 +952,7 @@ export class Hud {
     setText(this.said, card ? `${card.activity}.` : t('Walked out of the scene.'));
     if (this.said.dataset.alert) delete this.said.dataset.alert;
     const camera = !card ? '' : following ? ' ' + (card.inView ? t('The camera follows.') : t('Out of view inside; the camera waits.')) : '';
-    setText(this.aside, card ? `${card.subtitle}.${camera}` : t('Gone. The camera returns to the overview.'));
+    setText(this.aside, card ? `${card.subtitle}.${camera}` : t('The camera returns to the overview.'));
     // Only following a person stays a reply; looking closer is a double-click or pinch.
     this.focusOpt.hidden = !card;
     const pr = card?.profile;
@@ -978,7 +973,7 @@ export class Hud {
     if (!loc) return null;
     const status = statusText(loc);
     if (part === 'stand') return { title: loc.service, body: status, status: loc.status };
-    return { title: loc.name, body: `${loc.service}: ${status}`, status: loc.status };
+    return { title: loc.name, body: status, status: loc.status };
   }
 
   placeLabels(points: Record<LocationId, { x: number; y: number; below?: boolean }>): void {
@@ -1204,7 +1199,8 @@ export class Hud {
     const loc = s.locations[this.mode.id];
     setText(this.speaker, loc.name);
     // Open says nothing: the switch and the counts below already show it. Anything else is said once, here.
-    setText(this.said, (loc.status === 'open' || loc.closed?.ownChoice) && !loc.blockedByLaw ? '' : `${loc.service}: ${loc.blockedByLaw ? t('not permitted') : statusText(loc).toLowerCase()}.`);
+    // The place's name is right above: the line is the status alone.
+    setText(this.said, (loc.status === 'open' || loc.closed?.ownChoice) && !loc.blockedByLaw ? '' : `${loc.blockedByLaw ? t('Not permitted') : statusText(loc)}.`);
     const law = String(!!loc.blockedByLaw);
     if (this.said.dataset.alert !== law) this.said.dataset.alert = law;
     if (this.column.dataset.status !== loc.status) this.column.dataset.status = loc.status;

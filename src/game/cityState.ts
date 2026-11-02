@@ -141,6 +141,8 @@ export class CityCards {
           id: 'partner',
           label: t('Partner with the venue ({cost}; it pays {fee}/h)', { cost: price(VITALITY.partnerCost), fee: price(VITALITY.partnerFeePerHour) }),
           short: t('Partner with the venue.'),
+          cost: VITALITY.partnerCost,
+          detail: t('Harm reduction info and water in the venue; it pays {fee} an hour from then on.', { fee: price(VITALITY.partnerFeePerHour) }),
           enabled: sim.org.budget >= VITALITY.partnerCost,
           helps: PARTNER_NEEDS,
         }],
@@ -267,6 +269,8 @@ export class CityCards {
         id: 'sweep',
         label: sweepWait ? t('Next sweep for used kit from {time}', { time: at(sim.sweepAgainAt) }) : t('Sweep for used kit ({price})', { price: price(RESIDENTS.sweepCost) }),
         short: sweepWait ? t('Sweep again later.') : t('Sweep for used kit.'),
+        cost: RESIDENTS.sweepCost,
+        detail: t('The team picks up about half the used needles and kit in courtyards and stairwells.'),
         enabled: !sweepWait && sim.org.budget >= RESIDENTS.sweepCost,
         helps: ['district'],
       },
@@ -274,6 +278,8 @@ export class CityCards {
         id: 'meet',
         label: metNow ? t('Residents met: next round from {time}', { time: at(sim.meetAgainAt) }) : meetWait ? t('Next door-knocking from {time}', { time: at(sim.meetAgainAt) }) : t('Meet the residents ({price})', { price: price(RESIDENTS.meetCost) }),
         short: meetWait ? t('Meet them again later.') : t('Meet the residents.'),
+        cost: RESIDENTS.meetCost,
+        detail: t('Door-knocking: residents learn whom to call and the street feels safer for {h} h.', { h: RESIDENTS.meetHours }),
         enabled: !meetWait && sim.org.budget >= RESIDENTS.meetCost,
         helps: ['district'],
       },
@@ -293,7 +299,7 @@ export class CityCards {
     return {
       said: next ? ` ${q.title}: ${q.goal}${learnt}` : ` ${q.done}${learnt}`,
       facts: [[t('Allies'), next ? t('{done} of {all} steps', { done, all: q.steps.length }) : t('Yes')]],
-      actions: next ? [{ id: `quest:${id}`, label: next.cost ? t('{step} ({price})', { step: next.label, price: price(next.cost) }) : next.label, short: next.short, enabled: this.sim.org.budget >= next.cost, helps: QUEST_NEEDS[id] }] : [],
+      actions: next ? [{ id: `quest:${id}`, label: next.cost ? t('{step} ({price})', { step: next.label, price: price(next.cost) }) : next.label, short: next.short, cost: next.cost, detail: q.goal, enabled: this.sim.org.budget >= next.cost, helps: QUEST_NEEDS[id] }] : [],
     };
   }
 
@@ -324,7 +330,7 @@ export class CityCards {
       return {
         fact: [t('Harm reduction point'), t('{point}, level {level}', { point: POINT_NAME[q.service], level: q.level })],
         actions: [
-          ...(q.level < p.maxLevel ? [{ id: 'pointUp', label: t('Grow the point to level {level} ({price}; {places})', { level: q.level + 1, price: price(p.upgrade), places: placesPlus(p.placesPerLevel) }), short: t('Grow the point.'), enabled: sim.org.budget >= p.upgrade && sim.services[q.service].switchedOn, helps: serviceNeeds(q.service) }] : []),
+          ...(q.level < p.maxLevel ? [{ id: 'pointUp', label: t('Grow the point to level {level} ({price}; {places})', { level: q.level + 1, price: price(p.upgrade), places: placesPlus(p.placesPerLevel) }), short: t('Grow the point.'), cost: p.upgrade, detail: t('{places} for the {point}, and a little more rent.', { places: placesPlus(p.placesPerLevel), point: POINT_NAME[q.service] }), enabled: sim.org.budget >= p.upgrade && sim.services[q.service].switchedOn, helps: serviceNeeds(q.service) }] : []),
           { id: 'pointClose', label: t('Close the point.'), short: t('Close the point.'), enabled: true },
         ],
       };
@@ -337,6 +343,8 @@ export class CityCards {
           ? t('A drug checking point: not allowed by law.')
           : t('Open a {point} ({fitOut}, then {rent}/h; {places}).', { point: POINT_NAME[s], fitOut: price(p.fitOut), rent: price(p.rentPerHour), places: placesPlus(p.placesAtZero) }),
         short: t('Open a {point}.', { point: POINT_NAME[s] }),
+        cost: p.fitOut,
+        detail: t('{places} for the {point}, then {rent} an hour in rent.', { places: placesPlus(p.placesAtZero), point: POINT_NAME[s], rent: price(p.rentPerHour) }),
         // Only for services switched on: a point adds places to its service.
         enabled: sim.org.budget >= p.fitOut && (s !== 'drugChecking' || allowed) && sim.services[s].switchedOn,
         helps: serviceNeeds(s),
@@ -361,6 +369,8 @@ export class CityCards {
           id: `rent:${s}`,
           label: t('Rent it and open a {unit} ({cost}; {places}).', { unit: UNIT_NAME[s], cost, places: placesPlus(PROPERTY.satellitePlaces) }),
           short: t('Open a {point}.', { point: POINT_NAME[s] }),
+          cost: PROPERTY.fitOut,
+          detail: t('{places} for the {unit}, then {rent} an hour in rent.', { places: placesPlus(PROPERTY.satellitePlaces), unit: UNIT_NAME[s], rent: price(PROPERTY.rentPerHour) }),
           enabled: sim.org.budget >= PROPERTY.fitOut && sim.services[s].switchedOn,
           helps: serviceNeeds(s),
         })),

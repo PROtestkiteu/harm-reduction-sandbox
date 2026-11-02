@@ -143,28 +143,32 @@ function shell(f: Frame, lot: PlaceLot, s: Style, random: Random): Shell {
   return { storefront, lobby, sign: sign.material, windows: new WindowBank(mats, 1.1, 0.06, random), door: new DoorState(), doorL, doorR, doorX };
 }
 
-function visual(id: WalkInServiceId, f: Frame, lot: PlaceLot, sh: Shell, extra: (level: number, dt: number, time: number) => void): LocationVisual {
+function visual(id: WalkInServiceId, f: Frame, lot: PlaceLot, sh: Shell, extra: (level: number, dt: number, time: number, shut: boolean) => void): LocationVisual {
   const { x0, x1, z0, z1 } = lot.rect;
   mergeStatic(f.root);
   let level = 0;
   let target = 0;
+  let shut = false;
   return {
     id,
     root: f.root,
     labelAnchor: new Vector3((x0 + x1) / 2, lot.height + 1.6, (z0 + z1) / 2),
     footprint: { x: (x0 + x1) / 2, z: (z0 + z1) / 2, rx: (x1 - x0) / 2 + 1, rz: (z1 - z0) / 2 + 1 },
     setServiceLevel: (v) => { target = v; },
+    setShut: (v) => { shut = v; },
     openDoor: () => sh.door.request(),
     update(dt, time) {
       level = approach(level, target, 1.6, dt);
-      sh.storefront.emissiveIntensity = 0.12 + 1.0 * level;
-      sh.lobby.emissiveIntensity = 0.15 + 1.2 * level;
-      sh.sign.emissiveIntensity = 0.12 + 0.9 * level;
-      sh.windows.update(dt, 0.15 + 0.7 * level);
+      // Shut for good: no night glow left, every window dark.
+      const base = shut ? 0 : 1;
+      sh.storefront.emissiveIntensity = 0.12 * base + 1.0 * level;
+      sh.lobby.emissiveIntensity = 0.15 * base + 1.2 * level;
+      sh.sign.emissiveIntensity = 0.12 * base + 0.9 * level;
+      sh.windows.update(dt, 0.15 + 0.7 * level, shut);
       const o = sh.door.update(dt) * 0.74;
       sh.doorL.position.x = sh.doorX - 0.42 - o;
       sh.doorR.position.x = sh.doorX + 0.42 + o;
-      extra(level, dt, time);
+      extra(level, dt, time, shut);
     },
   };
 }
@@ -259,8 +263,8 @@ export function buildDrugChecking(random: Random): LocationVisual {
   for (const x of [sh.doorX + 1.6, sh.doorX + 6.2]) add(g, stanchion()).position.set(x, 0, front + 1.2);
   add(g, flowerPot(0.7, 1.2)).position.set(sh.doorX - 1.6, 0, front + 0.4);
   add(g, bin()).position.set(sh.doorX - 5.2, 0, front + 0.5);
-  return visual('drugChecking', f, lot, sh, (level) => {
-    info.material.emissiveIntensity = 0.1 + 0.5 * level;
+  return visual('drugChecking', f, lot, sh, (level, _dt, _time, shut) => {
+    info.material.emissiveIntensity = (shut ? 0 : 0.1) + 0.5 * level;
   });
 }
 
@@ -280,8 +284,8 @@ export function buildShelter(random: Random): LocationVisual {
   add(g, bike(0x5a7a5a), Math.PI / 2).position.set(sh.doorX + 5.0, 0, front + 0.8);
   add(g, planter(1.4, 0.6)).position.set(sh.doorX - 4.6, 0, front + 0.5);
   add(g, tree(1, 0.8)).position.set(-f.w / 2 + 1.2, 0, front + 1.4);
-  return visual('shelter', f, lot, sh, (level) => {
-    day.material.emissiveIntensity = 0.1 + 0.7 * level;
+  return visual('shelter', f, lot, sh, (level, _dt, _time, shut) => {
+    day.material.emissiveIntensity = (shut ? 0 : 0.1) + 0.7 * level;
   });
 }
 

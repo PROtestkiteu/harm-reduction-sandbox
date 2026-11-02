@@ -42,17 +42,20 @@ export class WindowBank {
     this.current = mats.map((_, i) => (this.lit[i] ? onIntensity : offIntensity));
   }
 
-  update(dt: number, occupancy: number): void {
+  /** `dark`: the building is shut, every window goes out and stays out. */
+  update(dt: number, occupancy: number, dark = false): void {
     for (let i = 0; i < this.mats.length; i++) {
       this.timers[i] -= dt;
-      if (this.timers[i] <= 0) {
+      if (dark) this.lit[i] = false;
+      else if (this.timers[i] <= 0) {
         this.lit[i] = this.random() < 0.15 + occupancy * 0.75;
         this.timers[i] = 4 + this.random() * 14;
       }
-      this.current[i] = approach(this.current[i], this.lit[i] ? this.onIntensity : this.offIntensity, 3, dt);
+      // Shut: not even the dim glass glow of an empty room.
+      this.current[i] = approach(this.current[i], this.lit[i] ? this.onIntensity : dark ? 0 : this.offIntensity, 3, dt);
       // By day nobody's lights read against the sun: the on/off difference fades out, so groups of
       // windows sharing a material never blink together in daylight; they twinkle from dusk on.
-      const off = this.offIntensity;
+      const off = dark ? 0 : this.offIntensity;
       this.mats[i].emissiveIntensity = off + (this.current[i] - off) * (1 - windowDaylight);
     }
   }

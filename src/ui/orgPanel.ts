@@ -3,6 +3,7 @@ import { METER_ORDER, NEED_ICONS, meterState, needsFor } from './needIcons';
 import { GRANT_IDS, GRANTS, ORG, RECRUIT, recruitChance, type ApplicationContext, type GrantId, type RecruitId } from '../config/organisation';
 import { price } from './money';
 import type { DriveView } from './snapshot';
+import type { FavourId } from '../config/favours';
 import { LOCALE, plural, t } from '../i18n';
 import type { Organisation } from '../sim/organisation';
 import type { ServiceModel } from '../sim/simulation';
@@ -23,6 +24,8 @@ export interface OrgPanelCallbacks {
   onOpen(): void;
   /** Starts a donation drive. */
   onDrive(): void;
+  /** Uses a favour with city hall. */
+  onFavour(id: FavourId): void;
 }
 
 export interface OrgView {
@@ -39,6 +42,8 @@ export interface OrgView {
   applicationContext: ApplicationContext;
   team: Team;
   drive: DriveView;
+  /** City hall favours: how many held, whether one is owed, and what can be asked. */
+  favours: { held: number; owed: boolean; items: { id: FavourId; label: string }[] };
 }
 
 interface MemberRow {
@@ -114,7 +119,10 @@ export class OrgPanel {
   private readonly meterRow: HTMLElement;
   private readonly nameRow: HTMLElement;
   private readonly driveBtn: HTMLButtonElement;
-  private readonly driveNote: HTMLElement;
+  private readonly favourBox: HTMLElement;
+  private readonly favourLine: HTMLElement;
+  private readonly favourActions: HTMLElement;
+  private favourKey = '';
 
   constructor(cb: OrgPanelCallbacks) {
     this.cb = cb;
@@ -203,12 +211,16 @@ export class OrgPanel {
     letGo.id = 'org-letGo';
     letGo.addEventListener('click', () => cb.onLetGo());
     actions.append(letGo);
-    // A donation drive: what it costs, what it brings and when, said on the reply itself.
+    // A donation drive: its price on the reply; the detail is in the confirm box.
     this.driveBtn = el('button', 'btn org-action org-drive');
     this.driveBtn.type = 'button';
     this.driveBtn.addEventListener('click', () => cb.onDrive());
-    this.driveNote = el('p', 'org-drive-note');
     actions.append(this.driveBtn);
+    // City hall favours: how many are held, and each one on offer as a reply.
+    this.favourLine = el('p', 'org-favour-line');
+    this.favourActions = el('div', 'org-actions org-favours');
+    this.favourBox = el('div', 'org-favour-box');
+    this.favourBox.append(this.favourLine, this.favourActions);
 
     // Services closed down when the money ran out: relaunch for a cost.
     this.closed = el('div', 'org-closed');
@@ -269,7 +281,7 @@ export class OrgPanel {
       sub.append(el('summary', undefined, label), part);
       return sub;
     };
-    this.section.append(this.nameRow, this.meterRow, stats, this.summary, this.recruiting, actions, this.driveNote, team, this.closed, fold(t('Funding applications'), grants), fold(t('What has happened'), this.log), note);
+    this.section.append(this.nameRow, this.meterRow, stats, this.summary, this.recruiting, actions, this.favourBox, team, this.closed, fold(t('Funding applications'), grants), fold(t('What has happened'), this.log), note);
   }
 
   /** Per-refresh update; text-only writes. */
@@ -279,9 +291,21 @@ export class OrgPanel {
     setText(this.driveBtn, d.until ? t('Donation drive on till {time}', { time: d.until }) : d.again ? t('Next donation drive from {time}', { time: d.again }) : t('Donation drive ({price})', { price: price(d.cost) }));
     const driveOff = d.until !== null || d.again !== null || o.budget < d.cost;
     if (this.driveBtn.disabled !== driveOff) this.driveBtn.disabled = driveOff;
-    setText(this.driveNote, d.until
-      ? t('Collecting on the street: donation boxes bring in double, and the tins come back at {time} with {min} to {max}.', { time: d.until, min: price(d.min), max: price(d.max) })
-      : t('Donation drive: {hours} h of collecting on the street, donation boxes double meanwhile, then {min} to {max} at the end (more with a good name, less in a crisis).', { hours: d.hours, min: price(d.min), max: price(d.max) }));
+    const f = v.favours;
+    setText(this.favourLine, f.held ? t('City hall favours: {n}. City hall asks something back later.', { n: f.held }) : f.owed ? t('No favour now: city hall is owed one.') : t("No favour now: agree to city hall's next request to earn one."));
+    // The replies are built once per set of favours; only whether they can be used changes.
+    const key = f.items.map((i) => i.id).join('|');
+    if (key !== this.favourKey) {
+      this.favourKey = key;
+      this.favourActions.replaceChildren(...f.items.map((item) => {
+        const b = el('button', 'btn org-action', item.label);
+        b.type = 'button';
+        b.dataset.favour = item.id;
+        b.addEventListener('click', () => this.cb.onFavour(item.id));
+        return b;
+      }));
+    }
+    for (const b of this.favourActions.querySelectorAll('button')) if (b.disabled === !!f.held) b.disabled = !f.held;
     for (const key of METER_ORDER) {
       const { root, fill } = this.meters[key];
       const w = `${Math.round(v.stress[key] * 100)}%`;
