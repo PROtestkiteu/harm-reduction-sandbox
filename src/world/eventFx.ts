@@ -11,6 +11,9 @@ import {
   type Object3D,
 } from 'three';
 import { bike } from './details';
+import { CharacterRig, randomAppearance, type Figure } from '../agents/character';
+import { HumanFigure, peopleLibrary } from '../agents/humanFigure';
+import { createRandom } from '../sim/random';
 import { add, box, cylinder, pixelTextTexture } from './kit';
 import { glowMat, mat } from './materials';
 
@@ -60,7 +63,7 @@ export class EventFx {
   private raid: { g: Group; washes: MeshBasicMaterial[]; torches: Group[]; until: number } | null = null;
   private sweep: { g: Group; beacon: MeshLambertMaterial; wash: MeshBasicMaterial; until: number } | null = null;
   private alert: { g: Group; rings: Mesh[]; until: number } | null = null;
-  private press: { g: Group; flashes: MeshBasicMaterial[]; until: number } | null = null;
+  private press: { g: Group; flashes: MeshBasicMaterial[]; crew: Figure[]; until: number } | null = null;
 
   constructor(scene: Object3D, private readonly reducedMotion: () => boolean) {
     scene.add(this.root);
@@ -193,6 +196,8 @@ export class EventFx {
         this.press.flashes.forEach((m, i) => {
           m.opacity = still ? 0 : Math.sin(t * (7.3 + i * 1.7) + i * 11) > 0.97 ? 0.9 : Math.max(0, m.opacity - dt * 6);
         });
+        // The crew stand and talk (the reporter) at the door; under reduced motion they hold still.
+        this.press.crew.forEach((f, i) => f.update(still ? 0 : dt, i === 0 ? 'talk' : 'stand', 0));
         changed = true;
       }
     }
@@ -328,17 +333,35 @@ export class EventFx {
     dish.position.set(-0.6, 3.3, 0);
     dish.rotation.set(-0.6, 0.5, 0);
     for (const x of [-1.2, 1.2]) for (const z of [-0.9, 0.9]) add(g, cylinder(0.35, 0.25, mat(0x141414), 10, x, 0, z)).rotation.x = Math.PI / 2;
-    // Reporters and camera operators, each with a flash.
+    // A reporter with a microphone and three camera operators, the crowd's own figures (sculpted once
+    // their assets have loaded), facing the door; each camera has a flash.
     const flashes: MeshBasicMaterial[] = [];
-    for (const [x, z] of [[-2.6, 2.2], [-1.4, 2.8], [0.2, 2.6], [1.4, 2.2]] as const) {
-      add(g, box(0.38, 1.15, 0.3, mat(0x2a2a34), x, 0.1, z));
-      add(g, box(0.26, 0.26, 0.26, mat(0xd8b898), x, 1.3, z));
-      add(g, box(0.3, 0.2, 0.35, mat(0x18181c), x + 0.2, 1.35, z - 0.25));
+    const crew: Figure[] = [];
+    const random = createRandom(7331);
+    const lib = peopleLibrary();
+    const kit = mat(0x18181c);
+    [[-2.6, 2.2], [-1.4, 2.8], [0.2, 2.6], [1.4, 2.2]].forEach(([x, z], i) => {
+      const look = { ...randomAppearance(random, false, i === 0 ? 'office' : 'everyday'), dog: false };
+      const f: Figure = lib ? new HumanFigure(lib, look) : new CharacterRig(look);
+      f.root.position.set(x, 0.12, z);
+      // People face +z; the door is towards -z.
+      f.root.rotation.y = Math.PI;
+      f.update(0, i === 0 ? 'talk' : 'stand', 0);
+      g.add(f.root);
+      crew.push(f);
       const m = glow(0xffffff, 0);
       flashes.push(m);
       add(g, pool(1.6, m)).position.set(x, 0.17, z - 1.4);
-      add(g, box(0.16, 0.16, 0.05, m, x + 0.2, 1.4, z - 0.45));
-    }
-    return { g, flashes, until: 0 };
+      if (i === 0) {
+        // The reporter's microphone, held up in front.
+        add(f.root, cylinder(0.025, 0.28, kit, 5, 0.18, 1.18, 0.28)).rotation.x = 0.5;
+        add(f.root, box(0.07, 0.07, 0.07, mat(0xc0282a), 0.18, 1.42, 0.4));
+      } else {
+        // A camera on the shoulder, its light at the front.
+        add(f.root, box(0.18, 0.2, 0.42, kit, 0.2, 1.42, 0.12));
+        add(f.root, box(0.12, 0.12, 0.04, m, 0.2, 1.46, 0.34));
+      }
+    });
+    return { g, flashes, crew, until: 0 };
   }
 }
