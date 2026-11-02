@@ -19,6 +19,7 @@ import {
 } from 'three';
 import type { Appearance, Archetype, BodyState, Figure, Kit, Pose } from '../../agents/character';
 import { dynamic } from '../mergeStatic';
+import type { Solids } from '../solids';
 
 /**
  * The people the flavour packs put in the street. One pool for all packs, so
@@ -42,7 +43,7 @@ export interface ActorLook {
 }
 
 /** A small light at the hand: an ember, a lighter's flame, a phone screen. */
-export type Glow = 'none' | 'ember' | 'flame' | 'phone';
+export type Glow = 'none' | 'ember' | 'flame' | 'phone' | 'vape';
 
 export interface Actor {
   x: number;
@@ -61,6 +62,8 @@ export interface Actor {
   glow: Glow;
   /** Puffs of smoke now and then (smokers, people using). */
   smokes: boolean;
+  /** Vaping: bigger clouds, more often. */
+  vapes?: boolean;
   /** Something that goes where they go (a bike, a guitar case, a box): placed under the actor each frame. */
   attach?: Object3D;
   /** What kind of line they might say (see config/flavour/lines.ts), or none. */
@@ -94,7 +97,7 @@ function dotTexture(): CanvasTexture {
   return t;
 }
 
-const GLOW_COLOUR: Record<Exclude<Glow, 'none'>, number> = { ember: 0xff6a2a, flame: 0xffc060, phone: 0xbcd8ff };
+const GLOW_COLOUR: Record<Exclude<Glow, 'none'>, number> = { ember: 0xff6a2a, flame: 0xffc060, phone: 0xbcd8ff, vape: 0x5ae0ff };
 
 const byDistance = (a: Actor, b: Actor) => a.d2 - b.d2;
 
@@ -171,9 +174,26 @@ export class ActorPool {
     if (!on) for (const f of this.figures.values()) f.root.visible = false;
   }
 
+  /** The street's fixed obstacles (benches, bins, trees, parked cars): walkers are kept clear of them. */
+  private solids: Solids | null = null;
+  private readonly push = { x: 0, z: 0 };
+  setSolids(solids: Solids): void {
+    this.solids = solids;
+  }
+
   /** Draws every actor at the detail the camera needs. */
   update(dt: number): void {
     this.clock += dt;
+    // People walking a pack's route step round what stands in the way, as the crowd does (agents/crowd.ts);
+    // those standing, sitting or lying were placed clear of it already.
+    const solids = this.solids;
+    if (solids) {
+      for (const a of this.actors) {
+        if (a.shown <= 0.01 || a.pose !== 'walk' || a.lift > 0) continue;
+        this.push.x = this.push.z = 0;
+        if (solids.push(a.x, a.z, 0.22, this.push)) { a.x += this.push.x; a.z += this.push.z; }
+      }
+    }
     const view = this.view;
     const tiny = !this.make || 1.7 / view.mpp < TINY_PX;
     // Sculpted figures for the actors nearest the middle of the view, up to the budget (arrays reused, nothing allocated).
@@ -239,6 +259,7 @@ export class ActorPool {
         // The hand: at the mouth for a draw now and then, else at the hip; a lighter is held low and in front.
         const up = a.glow === 'flame' ? (a.pose === 'crouch' ? 0.55 : a.pose === 'sit' ? 0.75 : 1.1)
           : a.glow === 'phone' ? (a.pose === 'sit' ? 0.85 : 1.25)
+          : a.glow === 'vape' ? (Math.sin(this.clock * 0.7 + a.x) > 0.5 ? 1.5 : 1.0)
           : Math.sin(this.clock * 0.9 + a.x) > 0.6 ? (a.pose === 'sit' ? 1.05 : 1.5) : (a.pose === 'sit' ? 0.6 : 0.95);
         const fwd = a.glow === 'ember' ? 0.18 : 0.3;
         gp.setXYZ(g, a.x + Math.sin(a.heading) * fwd, up, a.z + Math.cos(a.heading) * fwd);
@@ -247,7 +268,11 @@ export class ActorPool {
         gc.setXYZ(g, this.c.r, this.c.g, this.c.b);
         g++;
       }
-      if (a.smokes && !a.lying && this.random() < dt * 0.5) this.puff(a);
+      if (a.smokes && !a.lying && this.random() < dt * (a.vapes ? 0.9 : 0.5)) {
+        this.puff(a);
+        // A vape breathes out a cloud, not a wisp: a second puff beside the first.
+        if (a.vapes) this.puff(a);
+      }
     }
     this.bodies.count = this.heads.count = n;
     this.bodies.visible = this.heads.visible = n > 0;

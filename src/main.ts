@@ -138,7 +138,8 @@ world.scene.add(marker.group);
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 // Reduced motion: what people carry stays still (no steam, swing or drifting sigh).
 crowd.setStill(reducedMotion.matches);
-reducedMotion.addEventListener('change', () => crowd.setStill(reducedMotion.matches));
+world.puffs.still = reducedMotion.matches;
+reducedMotion.addEventListener('change', () => { crowd.setStill(reducedMotion.matches); world.puffs.still = reducedMotion.matches; });
 const hazeDir = new Vector3();
 const hazePoint = new Vector3();
 const rig = new CameraRig(world.frame.full.getCenter(new Vector3()), DISTRICT - 4);
@@ -378,7 +379,12 @@ const hud = new Hud(hudRoot, {
 // a pack that is off is not built, and costs nothing per frame.
 let seasonWetness = 0;
 let flavourWetness = 0;
-const applyWetness = () => pipeline.setWetness(Math.max(seasonWetness, flavourWetness));
+const applyWetness = () => {
+  const w = Math.max(seasonWetness, flavourWetness);
+  pipeline.setWetness(w);
+  // Wet roads raise no grit (world/puffs.ts); the seasons run about 0 to 3.
+  world.puffs.wet = Math.min(1, w / 2);
+};
 const flavourPoint = new Vector3();
 const flavour = startFlavour({
   scene: world.scene,
@@ -406,6 +412,7 @@ const flavour = startFlavour({
   const lib = peopleLibrary();
   if (lib) flavour.setFigures(lib);
 }
+flavour.packs.setSolids(world.solids);
 let flavourSquatTimer = 0;
 /** Fills the packs' view of the city (one reused object) and runs them. */
 function updateFlavour(dt: number): void {
@@ -1189,6 +1196,8 @@ function syncSeason(): void {
   const base = SEASON_PROFILES[sim.season];
   const look = sim.season === 'winter' ? { ...base.look, snow: snowy ? 1 : 0.3, drift: snowy ? ('snow' as const) : ('none' as const) } : base.look;
   world.setSeason(sim.season, { ...base, look });
+  // Exhaust shows in cold air.
+  world.puffs.cold = ({ winter: 1, autumn: 0.7, spring: 0.55, summer: 0.3 } as const)[sim.season];
   seasonWetness = look.wetness;
   applyWetness();
   dirty = true;
@@ -1360,6 +1369,8 @@ function applyView(): void {
   world.setDetail(framing.worldPerPixel);
   flavour.packs.setView(rig.focus.x, rig.focus.z, ((camera.right - camera.left) / 2) * 1.4, framing.worldPerPixel);
   coins.setPixelSize(framing.worldPerPixel);
+  world.puffs.setPixelSize(framing.worldPerPixel, 1);
+  world.puffs.setView(rig.focus.x, rig.focus.z, ((camera.right - camera.left) / 2) * 1.4);
   world.setViewFocus(rig.focus.x, rig.focus.z, ((camera.right - camera.left) / 2) * 1.4);
   // Haze starts well past the view's focus, so only the far city fades.
   camera.getWorldDirection(hazeDir);

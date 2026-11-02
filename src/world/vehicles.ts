@@ -335,7 +335,10 @@ export function car(color: number, lit: boolean, kind?: CarKind): Group {
     if (random() < 0.5) part(g, lampGeo, vehicleMat(0x3a4048, 1), 0, y + 0.1, -0.5, 0.46, 0.14, 0.62);
   }
   g.traverse((o) => { o.castShadow = true; });
-  solid(g, p.width, p.length + 0.3);
+  // A parked car (unlit) is a fixed obstacle people step round; a lit one drives, and the crowd steers
+  // round it as it moves (agents/crowd.ts). Tagged, a moving car was fixed wherever it stood at build
+  // time: for the pooled traffic and emergency fleet that was the middle of the square.
+  if (!lit) solid(g, p.width, p.length + 0.3);
   // Tired suspension: one corner sits a touch low.
   g.rotation.z = (random() - 0.5) * 0.025;
   return g;
@@ -405,7 +408,8 @@ export function bus(): Group {
   for (let z = -3.6; z <= 3.8; z += 1.25) for (const x of [-1.18, 1.18]) g.add(box(0.05, 1.5, 0.12, paint, x, 1.2, z));
   g.add(box(2.1, 0.1, 8.0, BUS_GLASS, 0, 2.62, 0));
   g.traverse((o) => { o.castShadow = true; });
-  return solid(g, BUS.width, BUS.length + 0.3);
+  // Buses only ever drive: never a fixed obstacle (see car()).
+  return g;
 }
 const BUS_GLASS = glowMat(0x2f3a52, 0xffe2b0, 0.35);
 

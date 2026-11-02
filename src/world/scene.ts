@@ -56,6 +56,7 @@ import { t } from '../i18n';
 import { PROPERTY } from '../sim/property';
 import { Expansion, type ExpansionKind, type Facing } from './expansion';
 import { collectSolids, type Solids } from './solids';
+import { Puffs } from './puffs';
 import type { SeasonProfile, Season } from '../config/seasons';
 import { dynamic, mergeStatic } from './mergeStatic';
 import { bus, car, CAR_COLOURS, setVehicleDaylight } from './vehicles';
@@ -156,6 +157,8 @@ export interface World {
   works(): { id: LocationId; progress: number; building: boolean }[];
   /** Ground footprints of benches, bins, posts, trees, parked cars and shelters. */
   solids: Solids;
+  /** Exhaust and grit in the air (world/puffs.ts). */
+  puffs: Puffs;
 }
 
 /** Pick id of the warming bus, clear of the ambient fleet's ids. */
@@ -322,7 +325,8 @@ export function buildWorld(random: Random): World {
   // Every vehicle on the road reports here, so none drives through another.
   const traffic = new Traffic();
   const lights = new TrafficLights(scene, traffic);
-  const ambient = buildAmbient(scene, mulberry(31), traffic);
+  const puffs = new Puffs(scene);
+  const ambient = buildAmbient(scene, mulberry(31), traffic, puffs);
   const parkActivities = new ParkActivities(scene);
   let detail = 0.2;
   buildStreets(scene, mulberry(29));
@@ -558,6 +562,7 @@ export function buildWorld(random: Random): World {
   const solids = collectSolids(scene);
   return {
     solids,
+    puffs,
     scene,
     locations,
     club,
@@ -759,6 +764,7 @@ export function buildWorld(random: Random): World {
       beyond.update(dt);
       lights.update(dt);
       ambient.update(dt);
+      puffs.update(dt);
       for (const w of beyond.windows) w.update(dt, 0.4);
       for (const w of infill) w.update(dt, 0.45);
       updateNeon(time, neonLevel);

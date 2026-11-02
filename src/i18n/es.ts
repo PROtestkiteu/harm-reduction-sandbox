@@ -1674,5 +1674,9 @@ export const ES: Record<string, string> = {
   "I'm fixing the bike, then I'm off.": "Arreglo la bici y me piro.",
   "Who's looking at me?": "¿Quién me está mirando?",
   "Who uses what": "Quién consume qué",
-  "Small groups along the inner ring: opioid users bent over in the fentanyl fold, cannabis smokers on a bench, clubbers after hours, people tripping, people slumped on benzos and stimulant users pacing.": "Pequeños grupos a lo largo del anillo interior: personas que usan opioides dobladas por el fentanilo, fumadores de cannabis en un banco, gente de discoteca después del cierre, personas en pleno viaje, personas adormecidas por las benzodiacepinas y consumidores de estimulantes que no paran de andar.",
+  "Small groups along the inner ring: smokers and vapers, opioid users bent over in the fentanyl fold, cannabis smokers on a bench, clubbers after hours, people tripping, people slumped on benzos and stimulant users pacing.": "Pequeños grupos a lo largo del anillo interior: fumadores y vapeadores, personas que usan opioides dobladas por el fentanilo, fumadores de cannabis en un banco, gente de discoteca después del cierre, personas en pleno viaje, personas adormecidas por las benzodiacepinas y consumidores de estimulantes que no paran de andar.",
+  "Got a light?": "¿Tienes fuego?",
+  "I'm quitting in January.": "Lo dejo en enero.",
+  "Is that mango or mint?": "¿Eso es de mango o de menta?",
+  "Just one, then I'm going in.": "Solo uno y entro.",
 };

@@ -41,6 +41,7 @@ import { Dog } from './dog';
 import type { PatrolStyle } from '../config/contextFactors';
 import { nearestNode, routeTo } from './nav';
 import { movingBox, pushFromBox } from '../world/solids';
+import type { Tailpipe } from '../world/puffs';
 import { PoliceRings, deterrenceRadius } from './policeRings';
 import { cityBuilding } from '../world/cityBuildings';
 import { t } from '../i18n';
@@ -183,6 +184,8 @@ interface Car {
   stopLeft?: number;
   /** Its place in the city's traffic, so cross traffic sees it and it sees cross traffic. */
   rec: TrafficCar;
+  /** Exhaust and grit (world/puffs.ts). */
+  pipe: Tailpipe;
 }
 
 const isWalkIn = (id: ServiceId | undefined): id is WalkInServiceId => !!id && (WALK_IN_SERVICE_IDS as readonly string[]).includes(id);
@@ -1362,7 +1365,7 @@ export class Crowd {
     const group = car(pick(this.random, CAR_COLOURS), true);
     group.position.set(ROAD.laneX, 0.02, -CAR_RUN);
     this.world.scene.add(group);
-    this.cars.push({ group, z: -CAR_RUN, speed: 5.5, half: 2, cruise: 4.5 + this.random() * 2.8, rec: this.world.traffic.add(2.2) });
+    this.cars.push({ group, z: -CAR_RUN, speed: 5.5, half: 2, cruise: 4.5 + this.random() * 2.8, rec: this.world.traffic.add(2.2), pipe: { t: this.random(), v: 5.5 } });
   }
 
   // City life: night bus, cleaners, street incidents
@@ -1382,7 +1385,7 @@ export class Crowd {
     const z = -CAR_RUN - 2.5;
     group.position.set(ROAD.laneX, 0.02, z);
     this.world.scene.add(group);
-    this.cars.push({ group, z, speed: 5, half: 4.5, cruise: 5, stopAt: BUS_STOP_Z, stopLeft: 7, rec: this.world.traffic.add(5.2) });
+    this.cars.push({ group, z, speed: 5, half: 4.5, cruise: 5, stopAt: BUS_STOP_Z, stopLeft: 7, rec: this.world.traffic.add(5.2), pipe: { t: this.random(), v: 5 } });
   }
 
   /** The bus is at the stop: people waiting board, and a few people get off. */
@@ -1503,6 +1506,7 @@ export class Crowd {
       c.z += c.speed * dt;
       rollWheels(c.group, c.speed * dt);
       c.group.position.z = c.z;
+      this.world.puffs.vehicle(c.pipe, ROAD.laneX, c.z, 0, 1, c.speed, dt, c.half > 3);
     }
     while (this.cars.length && this.cars[0].z > CAR_RUN) {
       const gone = this.cars.shift()!;

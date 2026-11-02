@@ -3,6 +3,7 @@ import { CapsuleGeometry, Color, Group, InstancedMesh, Matrix4, MeshLambertMater
 import type { Random } from '../sim/random';
 import { GROW, ROAD, STREETS } from './layout';
 import { bus, car, CAR_COLOURS, emergencyVehicle, rollWheels, type EmergencyVehicle } from './vehicles';
+import type { Puffs, Tailpipe } from './puffs';
 import { dynamic } from './mergeStatic';
 import { approach } from './animated';
 import { speedForGap, stood, type Traffic, type TrafficCar } from './traffic';
@@ -70,6 +71,9 @@ interface Driver {
   car: TrafficCar;
   /** Seconds off the road before its next run. */
   wait?: number;
+  /** Exhaust and grit (world/puffs.ts). */
+  pipe: Tailpipe;
+  bus: boolean;
 }
 interface Walker { run: Run; t: number; speed: number; length: number; phase: number; height: number }
 
@@ -79,7 +83,7 @@ const RIVER = { x0: 55 + GROW, x1: 77 + GROW };
 /** The big park, south of the district: its lawn's edges and its long path. */
 const PARK = { x0: -44 - GROW, x1: 48 + GROW, z0: 52 + GROW, z1: 117 + GROW, path: 76 + GROW };
 
-export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic): Ambient {
+export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic, puffs: Puffs): Ambient {
   const runs: Run[] = [];
   const lane = (a: [number, number], b: [number, number]) => runs.push({ from: new Vector3(a[0], 0, a[1]), to: new Vector3(b[0], 0, b[1]) });
   // Through-traffic, one way per street, horizon to horizon, so no car ever
@@ -111,7 +115,7 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic):
     g.add(group);
     const speed = 8 + random() * 7;
     if (isBus) busDrivers.push(drivers.length);
-    drivers.push({ group, run, t: random(), speed, v: speed, length: dir.length(), car: traffic.add(isBus ? 5.2 : 2.2) });
+    drivers.push({ group, run, t: random(), speed, v: speed, length: dir.length(), car: traffic.add(isBus ? 5.2 : 2.2), pipe: { t: random(), v: speed }, bus: isBus });
   }
 
   // Walkers: where people stroll outside the district.
@@ -194,7 +198,7 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic):
     v.group.traverse((o) => { o.castShadow = false; });
     g.add(v.group);
     patrols.push(v.group);
-    drivers.push({ group: v.group, run, t: random(), speed: 8, v: 8, length: dir.length(), car: traffic.add(2.3) });
+    drivers.push({ group: v.group, run, t: random(), speed: 8, v: 8, length: dir.length(), car: traffic.add(2.3), pipe: { t: random(), v: 8 }, bus: false });
   }
   /**
    * A route in from the city's edge to the road nearest (x, z), to stop there, and where to pull
@@ -376,6 +380,7 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic):
         // Up onto the bridge decks over the river.
         at.y = at.x > RIVER.x0 && at.x < RIVER.x1 ? 0.37 : 0.02;
         d.group.position.copy(at);
+        puffs.vehicle(d.pipe, at.x, at.z, hx, hz, d.v, dt, d.bus);
         // Full size the whole way: a car shrinking to nothing reads as a toy.
         d.group.visible = true;
       }

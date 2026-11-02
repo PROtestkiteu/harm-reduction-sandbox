@@ -120,12 +120,14 @@ export function buildStreetscape(scene: Object3D, random: Random): Steam[] {
   add(g, busShelter(advert), Math.PI).position.set(-30, 0.12, -22.4);
   add(g, busShelter(advert), 0).position.set(36, 0.12, 22.3);
   add(g, busShelter(advert), Math.PI / 2).position.set(30.6, 0.12, -34);
-  const kiosk = add(g, solid(new Group(), 2.3, 1.8));
-  kiosk.position.set(-12, 0.12, 22.8);
-  add(kiosk, box(2.0, 2.3, 1.4, mat(0x3f5a4a), 0, 0, 0));
-  add(kiosk, box(2.3, 0.2, 1.8, mat(0x2a3a30), 0, 2.3, 0.1));
-  add(kiosk, box(1.5, 0.9, 0.05, glowMat(0x2c3a44, 0xffd8a0, 0.9), 0, 1.0, 0.72));
-  add(kiosk, box(1.8, 0.08, 0.5, mat(PALETTE.concrete), 0, 0.95, 0.95));
+  // A slim news kiosk at the back of the south pavement (2.5 m deep), its counter towards the
+  // passers-by: a deeper one stood across the walking line and people walked through it.
+  const kiosk = add(g, solid(new Group(), 2.3, 1.05), Math.PI);
+  kiosk.position.set(-12, 0.12, 23.42);
+  add(kiosk, box(2.0, 2.3, 0.9, mat(0x3f5a4a), 0, 0, 0));
+  add(kiosk, box(2.3, 0.2, 1.15, mat(0x2a3a30), 0, 2.3, 0.08));
+  add(kiosk, box(1.5, 0.9, 0.05, glowMat(0x2c3a44, 0xffd8a0, 0.9), 0, 1.0, 0.47));
+  add(kiosk, box(1.8, 0.08, 0.2, mat(PALETTE.concrete), 0, 0.95, 0.56));
   add(g, postBox()).position.set(-9.2, 0.12, 20.0);
   add(g, advertPillar(glowMat(0xe0d2b4, 0xffe0b0, 0.35))).position.set(31.2, 0.12, 12.0);
   add(g, signPost(0x3f5f9a)).position.set(22.2, 0.12, -27.5);

@@ -6,7 +6,7 @@ import type { Pack, PackDeps } from './index';
 import { parkBench } from './props';
 
 /**
- * Who uses what (config/flavour/users.ts): a few small groups on the inner
+ * Who uses what (config/flavour/users.ts): smokers and vapers, and a few small groups on the inner
  * ring's pavements, each out in its own hours, more of them on a busy street
  * night, and most moving off under heavy policing. People pace, sway, fold
  * over or lie down as their substance makes them; the figures' body states
@@ -36,7 +36,7 @@ export function buildUsers({ pool, random, scene }: PackDeps): Pack {
       a.pose = spot.pose;
       a.body = spot.body;
       a.voice = group.voice;
-      if (spot.smokes) { a.glow = spot.smokes; a.smokes = true; }
+      if (spot.smokes) { a.glow = spot.smokes; a.smokes = true; a.vapes = spot.smokes === 'vape'; }
       if (spot.pose === 'dance') a.speed = 0.8;
       people.push({ a, spot, group, rank, out: true, down: 0 });
     });

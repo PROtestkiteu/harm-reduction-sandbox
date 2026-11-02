@@ -279,10 +279,11 @@ export function buildShelter(random: Random): LocationVisual {
   const front = f.d / 2;
   const day = signBoard('DAY CENTRE', 2.8, 0.5, '#fff1d8', '#3a2f3a', 0.3);
   add(g, day.mesh).position.set(sh.doorX + 3.6, 2.15, front + 0.1);
-  add(g, bench()).position.set(sh.doorX - 2.8, 0, front + 0.6);
+  // Against the wall, clear of the pavement's walking line.
+  add(g, bench()).position.set(sh.doorX - 2.8, 0, front + 0.3);
   for (const x of [sh.doorX + 5.0, sh.doorX + 5.8]) add(g, box(0.06, 0.7, 0.6, mat(PALETTE.metal), x, 0, front + 0.8));
   add(g, bike(0x5a7a5a), Math.PI / 2).position.set(sh.doorX + 5.0, 0, front + 0.8);
-  add(g, planter(1.4, 0.6)).position.set(sh.doorX - 4.6, 0, front + 0.5);
+  add(g, planter(1.4, 0.6)).position.set(sh.doorX - 4.6, 0, front + 0.32);
   add(g, tree(1, 0.8)).position.set(-f.w / 2 + 1.2, 0, front + 1.4);
   return visual('shelter', f, lot, sh, (level, _dt, _time, shut) => {
     day.material.emissiveIntensity = (shut ? 0 : 0.1) + 0.7 * level;

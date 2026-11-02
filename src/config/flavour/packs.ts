@@ -24,7 +24,7 @@ export const PACKS: readonly PackInfo[] = [
   { id: 'weather', label: t('Rain and fog'), hint: t('Rain some evenings and ground fog before dawn.') },
   { id: 'chaos', label: t('Street scene spiralling'), hint: t('Boarded-up shops and tags, burning bins, people slumped in doorways, fights and ambulances, as the street scene grows.') },
   { id: 'campus', label: t('University'), hint: t('A university and its students, on the south-west edge of the district.') },
-  { id: 'users', label: t('Who uses what'), hint: t('Small groups along the inner ring: opioid users bent over in the fentanyl fold, cannabis smokers on a bench, clubbers after hours, people tripping, people slumped on benzos and stimulant users pacing.') },
+  { id: 'users', label: t('Who uses what'), hint: t('Small groups along the inner ring: smokers and vapers, opioid users bent over in the fentanyl fold, cannabis smokers on a bench, clubbers after hours, people tripping, people slumped on benzos and stimulant users pacing.') },
 ];
 
 /** Weather moods the Rain and fog pack can show; `auto` picks one each evening. */

@@ -33,6 +33,7 @@ export const LINES: Record<string, readonly string[]> = {
   rider: [t("Order isn't ready yet."), t("Third time this week at this door.")],
   crew: [t("Lift with your knees."), t("Who parked there?")],
   // Who uses what (config/flavour/users.ts).
+  nicotine: [t("Got a light?"), t("I'm quitting in January."), t("Is that mango or mint?"), t("Just one, then I'm going in.")],
   opioid: [t("I'm not asleep, I'm resting."), t("Is there naloxone at the van?"), t("Don't call anyone, I'm fine."), t("My legs went funny again.")],
   cannabis: [t("Pass it this way."), t("Nobody's in a rush, man."), t("Anyone got snacks?"), t("Listen to this tune.")],
   clubber: [t("Is there an after-party?"), t("Drink some water, seriously."), t("My jaw is going."), t("Where's my coat?")],

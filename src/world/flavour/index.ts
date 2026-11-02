@@ -119,6 +119,11 @@ export class FlavourPacks {
     this.pool.setFigureMaker(make);
   }
 
+  /** The street's fixed obstacles, for walkers to step round. */
+  setSolids(solids: import('../solids').Solids): void {
+    this.pool.setSolids(solids);
+  }
+
   setView(x: number, z: number, radius: number, mpp: number): void {
     this.pool.setView(x, z, radius, mpp);
   }

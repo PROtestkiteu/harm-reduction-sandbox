@@ -9,6 +9,8 @@ import type { P } from './street';
  * `npm run clearance`), and the hours are rough. Nothing here mocks anyone:
  * these are people the services in the game are there for.
  *
+ * - Nicotine, the most used of all: cigarettes and vapes, outside every
+ *   bar and bus stop, all evening.
  * - Opioids (fentanyl, often cut with xylazine): standing bent over at the
  *   waist for minutes at a time, the "fentanyl fold", and nodding off.
  * - Cannabis: a few friends smoking on a bench, slow and talkative.
@@ -21,7 +23,7 @@ import type { P } from './street';
  * - Stimulants (methamphetamine, cathinones like mephedrone): pacing fast,
  *   talking a lot, jaw and hands busy, up long after everyone else.
  */
-export type UserKind = 'opioid' | 'cannabis' | 'club' | 'psychedelic' | 'benzo' | 'stimulant';
+export type UserKind = 'nicotine' | 'opioid' | 'cannabis' | 'club' | 'psychedelic' | 'benzo' | 'stimulant';
 
 export interface UserSpot {
   at: P;
@@ -32,8 +34,8 @@ export interface UserSpot {
   body: BodyState;
   /** Paces between `at` and here (stimulants) or sways in place when absent. */
   pace?: P;
-  /** A light at the hand and smoke now and then. */
-  smokes?: 'ember' | 'flame';
+  /** A light at the hand and smoke now and then; a vape's light and bigger clouds. */
+  smokes?: 'ember' | 'flame' | 'vape';
   /** Lies down now and then (a friend stays near). */
   liesDown?: boolean;
 }
@@ -58,6 +60,15 @@ const E = 46.2;
 const S = 46.2;
 
 export const USER_GROUPS: readonly UserGroup[] = [
+  {
+    kind: 'nicotine', style: 'everyday', hours: [1080, 2100], stubborn: true, voice: 'nicotine',
+    spots: [
+      { at: { x: 18.0, z: 45.4 }, face: Math.PI, pose: 'stand', body: 'normal', smokes: 'ember' },
+      { at: { x: 19.1, z: 46.6 }, face: -Math.PI * 0.8, pose: 'talk', body: 'normal', smokes: 'vape' },
+      { at: { x: 20.4, z: 45.6 }, face: Math.PI * 0.9, pose: 'stand', body: 'normal', smokes: 'vape' },
+      { at: { x: 21.5, z: 46.8 }, face: -Math.PI * 0.7, pose: 'stand', body: 'normal', smokes: 'ember' },
+    ],
+  },
   {
     kind: 'opioid', style: 'unhoused', hours: [1320, 1980], stubborn: true, voice: 'opioid',
     spots: [
