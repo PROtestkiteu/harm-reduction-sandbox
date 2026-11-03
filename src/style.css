@@ -395,6 +395,8 @@ button:focus-visible {
 .column[data-status='opening'] { --tone: var(--opening); }
 .column[data-status='closing'] { --tone: var(--closing); }
 .column[data-status='closed'] { --tone: var(--closed); }
+/* A person whose glow shows on the map: their name in the same hue, nudged toward the text colour so it reads on a dark or a light panel. */
+.column[data-role][data-mood] { --tone: color-mix(in srgb, var(--mood) 78%, var(--text)); }
 
 .aside { margin-top: 6px !important; color: var(--muted); }
 
@@ -1774,6 +1776,61 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
   .top-bar .stress-bar { min-width: 0; }
 }
 
+/*
+ * Wide, tall screens: no side column. The column's parts are framed windows over the map, each as
+ * tall as what it holds, crisp edged like a strategy game's panels: the status block at the top right
+ * (date, speed, money, the city's meters and any crisis), then the overview (tonight's goals, the
+ * news, the events), then the selection with its replies, which has a close button while something
+ * is picked. The map shows between and around them. Elsewhere the groups lay out as before.
+ */
+.outliner, .window { display: contents; }
+.window-close { display: none; }
+@media (min-width: 761px) and (min-height: 521px) {
+  :root { --window-w: min(420px, 38vw); --window-gap: 8px; --window-edge: max(12px, env(safe-area-inset-right)); }
+  .top-bar, .outliner, .window {
+    background: var(--grain), rgba(var(--fade), 0.95);
+    border: 1px solid rgba(201, 162, 72, 0.55);
+    border-top: 2px solid var(--reply);
+    border-radius: 2px;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04), 0 6px 18px rgba(0, 0, 0, 0.45);
+    pointer-events: auto;
+  }
+  .top-bar {
+    position: absolute; z-index: 3;
+    top: max(12px, var(--safe-top)); right: var(--window-edge);
+    width: var(--window-w); box-sizing: border-box; padding: 8px 12px 9px;
+    color: var(--text); font-size: 15px; line-height: 1.4;
+  }
+  .top-bar .crisis-box { margin: 8px 0 0; }
+  .column {
+    top: calc(max(12px, var(--safe-top)) + var(--topbar-h, 90px) + var(--window-gap));
+    right: var(--window-edge); bottom: auto;
+    width: var(--window-w); box-sizing: border-box;
+    max-height: calc(100% - max(12px, var(--safe-top)) - var(--topbar-h, 90px) - var(--window-gap) - 12px);
+    padding: 0; gap: var(--window-gap);
+    background: none; pointer-events: none;
+  }
+  .outliner { display: block; flex: none; padding: 8px 12px 10px; }
+  .outliner:not(:has(> :not(:empty):not([hidden]))) { display: none; }
+  .outliner .column-events { margin-top: 6px; }
+  .outliner > :first-child, .outliner .column-events:first-child { margin-top: 0; }
+  .window { position: relative; display: flex; flex-direction: column; flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 4px 14px 10px; }
+  .window .log { flex: none; overflow: visible; padding: 8px 0 4px; }
+  .window .log::before { display: none; }
+  .window .options { margin-bottom: 4px; }
+  .column:not([data-mode='idle']) .window-close {
+    display: flex; align-items: center; justify-content: center;
+    position: sticky; top: 0; align-self: flex-end; z-index: 1;
+    width: 32px; height: 32px; margin: 2px -8px -30px 0; padding: 0;
+    border: 1px solid rgba(201, 162, 72, 0.55); border-radius: 2px;
+    background: rgba(var(--fade), 0.9); color: var(--muted); font-size: 20px; line-height: 1; cursor: pointer;
+  }
+  .window-close:hover { color: var(--text); border-color: var(--reply); }
+  .window-close:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  /* The title and the settings keep clear of the windows on the right. */
+  .hud-header { right: calc(var(--window-w) + 24px); }
+}
+
 /* Configure: a button over the scene on wide screens, a reply in the bottom menu on phones. */
 .options > li.phone-only { display: none; }
 @media (max-width: 760px) {
@@ -1920,7 +1977,7 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
   .column { max-height: 72dvh; overflow-y: auto; overscroll-behavior: contain; }
   .column:has(.options[data-drill]) { max-height: 86dvh; }
   /* The sheet scrolls as one: its parts keep their size instead of squeezing each other. */
-  .column > * { flex-shrink: 0; }
+  .column > *, .column > .outliner > *, .column > .window > * { flex-shrink: 0; }
   .options { grid-template-columns: 1fr; }
   .options > li.nested { padding-left: 0; }
   .opt { min-height: 40px; }
@@ -2176,7 +2233,7 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
     overscroll-behavior: contain;
     touch-action: pan-y;
   }
-  .column > * { flex-shrink: 0; }
+  .column > *, .column > .outliner > *, .column > .window > * { flex-shrink: 0; }
   .column .log { flex: none; max-height: none; overflow: visible; padding: 4px 0; }
   .column .clock { font-size: 20px; }
   .column .line { font-size: 15px; }

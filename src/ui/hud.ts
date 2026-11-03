@@ -1,5 +1,6 @@
 import type { GuideAct, GuideStep } from '../game/guide';
 import { CAMPER_PATH, CAMPER_PATH_IDS, type CamperPath } from '../config/camperPaths';
+import { MOOD_HUES } from '../agents/moodIcons';
 import { ACTIVITY, type Activity } from '../config/serviceMix';
 import type { FavourId } from '../config/favours';
 import { ORG, RECRUIT, recruitChance } from '../config/organisation';
@@ -156,6 +157,8 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 const NARROW = '(max-width: 760px)';
 /** Phones either way up: narrow, or a short landscape screen. */
 export const COMPACT = '(max-width: 760px), (max-height: 520px)';
+/** Wide, tall screens: the column becomes framed windows over the map (see style.css). */
+const WINDOWED = '(min-width: 761px) and (min-height: 521px)';
 
 
 /** A place's counts as icons: people being helped, people waiting, staff, people who turned back, the venue's crowd, the door. */
@@ -762,19 +765,40 @@ export class Hud {
       meters.append(m);
       this.stressFill[key] = fill;
     }
-    this.column.append(this.foldBtn, top, this.stressRow, this.unmet, this.eventsSlot, this.log, this.options, this.works);
-    // Phones: the clock, money and meters live in a block at the top of the screen; the sheet keeps the rest.
+    // Two groups that wide screens frame as windows of their own (elsewhere they lay out as before):
+    // the overview (tonight's goals, the news, the event feed) and the selection with its replies.
+    const outliner = el('div', 'outliner');
+    outliner.append(this.eventsSlot);
+    const selection = el('div', 'window');
+    const close = button('window-close', '×');
+    close.setAttribute('aria-label', t('Close'));
+    close.title = t('Close');
+    close.addEventListener('click', () => cb.onSelect(null));
+    selection.append(close, this.log, this.options, this.works);
+    this.column.append(this.foldBtn, top, this.stressRow, this.unmet, outliner, selection);
+    // Phones and wide screens: the clock, money and meters live in a block at the top of the screen
+    // (wide screens add the crisis line to it); the column keeps the rest. Phones on their side keep
+    // everything in the side column.
     this.topBar = el('div', 'top-bar');
     const placeIndicators = () => {
       if (window.matchMedia(NARROW).matches) {
         if (top.parentElement !== this.topBar) this.topBar.append(top, this.stressRow);
+        if (this.unmet.parentElement !== this.column) outliner.before(this.unmet);
+      } else if (window.matchMedia(WINDOWED).matches) {
+        if (this.unmet.parentElement !== this.topBar) this.topBar.append(top, this.stressRow, this.unmet);
       } else if (top.parentElement !== this.column) {
-        this.foldBtn.after(top, this.stressRow);
+        this.foldBtn.after(top, this.stressRow, this.unmet);
       }
       this.headerBottom = 0;
     };
     placeIndicators();
     window.matchMedia(NARROW).addEventListener('change', placeIndicators);
+    window.matchMedia(WINDOWED).addEventListener('change', placeIndicators);
+    // The top block's height, so the windows below it start just under it.
+    new ResizeObserver(() => {
+      const h = `${Math.round(this.topBar.offsetHeight)}px`;
+      if (this.root.style.getPropertyValue('--topbar-h') !== h) this.root.style.setProperty('--topbar-h', h);
+    }).observe(this.topBar);
     // The sheet's height, for what sits just above it on phones (the portrait): measured as it folds and opens.
     new ResizeObserver(() => {
       const h = `${Math.round(this.column.offsetHeight)}px`;
@@ -1028,6 +1052,16 @@ export class Hud {
     }
     const role = card ? card.role : 'left';
     if (this.column.dataset.role !== role) this.column.dataset.role = role;
+    // Their name takes the hue of the glow around them on the map, while it shows.
+    const mood = card?.mood ? `rgb(${MOOD_HUES[card.mood]})` : '';
+    if (this.column.style.getPropertyValue('--mood') !== mood) {
+      if (mood) this.column.style.setProperty('--mood', mood);
+      else this.column.style.removeProperty('--mood');
+    }
+    if ((this.column.dataset.mood !== undefined) !== !!mood) {
+      if (mood) this.column.dataset.mood = '';
+      else delete this.column.dataset.mood;
+    }
     setText(this.speaker, card?.title ?? lastTitle ?? t('Person'));
     setText(this.said, card ? `${card.activity}.` : t('Walked out of the scene.'));
     if (this.said.dataset.alert) delete this.said.dataset.alert;
@@ -1462,7 +1496,7 @@ export class Hud {
       this.onLayerDrop?.(layer);
     }
     this.column.dataset.mode = m ? m.kind : 'idle';
-    if (m?.kind !== 'person') delete this.column.dataset.role;
+    if (m?.kind !== 'person') { delete this.column.dataset.role; delete this.column.dataset.mood; this.column.style.removeProperty('--mood'); }
     if (m?.kind !== 'location') delete this.column.dataset.status;
     this.idle.hidden = m !== null;
     (this.speaker.parentElement as HTMLElement).hidden = m === null && !this.guide;

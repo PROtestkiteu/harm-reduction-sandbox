@@ -1,5 +1,6 @@
 import type { Archetype } from '../agents/character';
 import type { PersonRole, PersonState } from '../agents/crowd';
+import type { Mood } from '../agents/moodIcons';
 import { SERVICE_TEXT } from '../config/places';
 import { displayName } from './names';
 import { LANG, t } from '../i18n';
@@ -18,6 +19,8 @@ export interface PersonCard {
   activity: string;
   inView: boolean;
   profile?: UseProfile;
+  /** The state their glow on the map shows, so the card's name can share its hue. */
+  mood?: Mood;
 }
 
 /** A stable 0..1 number per person, so their archetype never changes while watched. */
@@ -172,7 +175,7 @@ function contextActivity(p: PersonState): string {
 export function describePerson(p: PersonState): PersonCard {
   // A name the player gave this person, if any, stands in for the role.
   const card = describeRole(p);
-  return { ...card, title: displayName('person', p.id, card.title) };
+  return { ...card, title: displayName('person', p.id, card.title), mood: p.mood };
 }
 
 function describeRole(p: PersonState): PersonCard {

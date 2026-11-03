@@ -138,6 +138,8 @@ export interface PersonState {
   readonly seated: boolean;
   readonly moving: boolean;
   readonly visible: boolean;
+  /** The state their glow shows now, if any (agents/moodIcons.ts). */
+  readonly mood?: Mood;
   readonly root: Object3D;
 }
 
@@ -316,6 +318,7 @@ export class Crowd {
       seated: a.pose === 'sit' && !a.route.length,
       moving: a.route.length > 0,
       visible: a.visible,
+      mood: a.mood && a.moodLeft > 0 ? a.mood : undefined,
       root: a.rig.root,
     };
   }

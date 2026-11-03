@@ -14,8 +14,8 @@ import {
 /** States the crowd shows around a person. Each comes from a simulation outcome. */
 export type Mood = 'relieved' | 'unmet' | 'intoxicated' | 'adverse';
 
-/** One hue per state: served, need unmet, visibly intoxicated, the adverse placeholder. */
-const HUES: Record<Mood, string> = {
+/** One hue per state: served, need unmet, visibly intoxicated, the adverse placeholder (r,g,b; the card's name shares it). */
+export const MOOD_HUES: Record<Mood, string> = {
   relieved: '63,196,122',
   unmet: '74,111,208',
   intoxicated: '240,168,32',
@@ -59,10 +59,10 @@ export class MoodIcons {
   private camera: Camera | null = null;
 
   constructor(private readonly parent: Group) {
-    for (const mood of Object.keys(HUES) as Mood[]) {
+    for (const mood of Object.keys(MOOD_HUES) as Mood[]) {
       const common = { transparent: true, depthWrite: false, blending: AdditiveBlending, toneMapped: false } as const;
-      this.auraMats[mood] = new MeshBasicMaterial({ map: glowTexture(HUES[mood], true), ...common });
-      this.poolMats[mood] = new MeshBasicMaterial({ map: glowTexture(HUES[mood], false), ...common });
+      this.auraMats[mood] = new MeshBasicMaterial({ map: glowTexture(MOOD_HUES[mood], true), ...common });
+      this.poolMats[mood] = new MeshBasicMaterial({ map: glowTexture(MOOD_HUES[mood], false), ...common });
     }
   }
 
