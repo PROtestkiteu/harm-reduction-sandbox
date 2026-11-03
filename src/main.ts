@@ -1218,7 +1218,7 @@ const mapLayers = new MapLayers(hudRoot, (kind) => {
   if (!DOTS[kind]) overlays.clearPeople();
   else updatePeopleOverlay();
   refreshOverlay(kind);
-}, (x, y, title, items) => actionMenu.show(x, y, title, items), (x, z) => {
+}, actionMenu, (x, z) => {
   // Not closer than the opening view; a place past the edge the camera can pan to (the city's own
   // buildings) is brought in by zooming out instead.
   const past = Math.max(Math.abs(x), Math.abs(z)) > DISTRICT - 4;

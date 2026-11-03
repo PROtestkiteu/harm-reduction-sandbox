@@ -1894,7 +1894,6 @@ export const ES: Record<string, string> = {
   'The foot patrol is back at its table: it reached {n} person out there.': 'La patrulla a pie ha vuelto a su mesa: atendió a {n} persona.',
   'The foot patrol is back at its table: it reached {n} people out there.': 'La patrulla a pie ha vuelto a su mesa: atendió a {n} personas.',
   "Map overlay: off. Press to choose one.": "Capa del mapa: ninguna. Pulsa para elegir una.",
-  "Map overlay: {name}. Press to turn it off.": "Capa del mapa: {name}. Pulsa para quitarla.",
   // Sky, river, children, pioneers, school and library (config/flavour, game/cityState.ts)
   "Nothing biting tonight.": "Esta noche no pica nada.",
   "Shh, you'll scare them off.": "Chis, que los espantas.",
@@ -2121,4 +2120,5 @@ export const ES: Record<string, string> = {
   "not ready": "no está listo",
   "Show the earlier news": "Mostrar las noticias anteriores",
   "Press to close": "Pulsa para cerrar",
+  "Map overlay: {name}. Press to choose another or turn it off.": "Capa del mapa: {name}. Pulsa para elegir otra o desactivarla.",
 };

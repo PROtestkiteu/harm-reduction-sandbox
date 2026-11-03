@@ -7,6 +7,8 @@ export interface MenuItem {
   icon?: string;
   /** The one chosen now, of a set of choices: marked, and announced as checked. */
   current?: boolean;
+  /** Choosing it leaves the menu open (the caller shows it again with the new state), to try one after another. */
+  keepOpen?: boolean;
 }
 
 /**
@@ -19,6 +21,8 @@ export class ActionMenu {
   private readonly title: HTMLElement;
   private readonly list: HTMLUListElement;
   private returnFocus: HTMLElement | null = null;
+  /** The button that opened the menu, if any: a press on it is the owner's to handle (it toggles the menu), not a press elsewhere. */
+  private owner: HTMLElement | null = null;
 
   constructor(parent: HTMLElement) {
     this.root = document.createElement('div');
@@ -41,7 +45,7 @@ export class ActionMenu {
     });
     // Anything outside closes it; capture so it closes before the canvas reacts.
     window.addEventListener('pointerdown', (e) => {
-      if (!this.root.hidden && !this.root.contains(e.target as Node)) this.close();
+      if (!this.root.hidden && !this.root.contains(e.target as Node) && !this.owner?.contains(e.target as Node)) this.close();
     }, true);
     window.addEventListener('resize', () => this.close());
   }
@@ -50,9 +54,18 @@ export class ActionMenu {
     return !this.root.hidden;
   }
 
-  show(x: number, y: number, title: string, items: readonly MenuItem[]): void {
+  /** True while the menu is open from `owner`. */
+  openFor(owner: HTMLElement): boolean {
+    return !this.root.hidden && this.owner === owner;
+  }
+
+  show(x: number, y: number, title: string, items: readonly MenuItem[], owner: HTMLElement | null = null): void {
     if (!items.length) return this.close();
-    this.returnFocus = document.activeElement as HTMLElement | null;
+    // Shown again in place (a choice that keeps it open): where focus returns to stays as it was.
+    if (this.root.hidden || this.owner !== owner) this.returnFocus = document.activeElement as HTMLElement | null;
+    if (this.owner !== owner) this.owner?.setAttribute('aria-expanded', 'false');
+    this.owner = owner;
+    owner?.setAttribute('aria-expanded', 'true');
     this.title.textContent = title;
     this.list.replaceChildren(...items.map((item) => {
       const li = document.createElement('li');
@@ -72,7 +85,7 @@ export class ActionMenu {
       } else b.textContent = item.label;
       b.disabled = item.disabled;
       b.addEventListener('click', () => {
-        this.close();
+        if (!item.keepOpen) this.close();
         item.run();
       });
       li.append(b);
@@ -85,12 +98,14 @@ export class ActionMenu {
     const left = x + w + 8 > window.innerWidth ? Math.max(8, x - w) : x;
     const top = y + h + 8 > window.innerHeight ? Math.max(8, y - h) : y;
     this.root.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
-    this.list.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true });
+    (this.list.querySelector<HTMLButtonElement>('[aria-checked="true"]:not(:disabled)') ?? this.list.querySelector<HTMLButtonElement>('button:not(:disabled)'))?.focus({ preventScroll: true });
   }
 
   close(): void {
     if (this.root.hidden) return;
     this.root.hidden = true;
+    this.owner?.setAttribute('aria-expanded', 'false');
+    this.owner = null;
     const back = this.returnFocus;
     this.returnFocus = null;
     if (back && document.contains(back)) back.focus({ preventScroll: true });

@@ -1935,7 +1935,6 @@ export const PL: Record<string, string> = {
   'Out at {spot} until {time}: {n} reached so far. The table is shut meanwhile.': 'Na patrolu do {time}, miejsce: {spot}. Dotarł już do: {n}. Stolik jest w tym czasie zamknięty.',
   'Needs its table open and someone on shift there before it can go out.': 'Żeby wyjść, potrzebuje otwartego stolika i kogoś na zmianie.',
   "Map overlay: off. Press to choose one.": "Nakładka na mapę: wyłączona. Naciśnij, żeby wybrać.",
-  "Map overlay: {name}. Press to turn it off.": "Nakładka na mapę: {name}. Naciśnij, żeby wyłączyć.",
   // Sky, river, children, pioneers, school and library (config/flavour, game/cityState.ts)
   "Nothing biting tonight.": "Dziś nic nie bierze.",
   "Shh, you'll scare them off.": "Ćśś, wystraszysz je.",
@@ -2162,4 +2161,5 @@ export const PL: Record<string, string> = {
   "not ready": "niegotowy",
   "Show the earlier news": "Pokaż wcześniejsze wiadomości",
   "Press to close": "Naciśnij, aby zamknąć",
+  "Map overlay: {name}. Press to choose another or turn it off.": "Nakładka mapy: {name}. Naciśnij, aby wybrać inną albo ją wyłączyć.",
 };
