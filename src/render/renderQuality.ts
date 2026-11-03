@@ -73,11 +73,24 @@ function keepMode(mode: QualityMode): void {
  * computers high. The controller then moves from there on measured cost.
  */
 export function startTier(gl: WebGL2RenderingContext): QualityTier {
-  if (QUALITY.low) return 'low';
+  if (QUALITY.low || legacyGpu(gl)) return 'low';
   const info = gl.getExtension('WEBGL_debug_renderer_info');
   const gpu = String(info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER));
   if (/SwiftShader|llvmpipe|softpipe|Mali-[4T]|Adreno \(TM\) [3-5]\d\d|PowerVR|Intel.*HD Graphics [2-5]\d{2,3}\b/i.test(gpu)) return 'low';
   return matchMedia('(pointer: coarse)').matches ? 'medium' : 'high';
+}
+
+/**
+ * Apple's first Metal GPUs (A7, A8, A8X: iPad Air 2, iPad mini 4, iPhone 6): the newest system they get is
+ * iOS or iPadOS 15. Safari names every Apple GPU alike, but these report a largest texture of 8192
+ * where every later one reports 16384. On them each point light is shaded on every lit pixel and
+ * uploaded with every material, which measured at more than half the frame on an iPad Air 2, so
+ * they go without point lights and the sun's shadow map (a capability, not a tier: Settings keeps both off).
+ */
+export function legacyGpu(gl: WebGL2RenderingContext): boolean {
+  const info = gl.getExtension('WEBGL_debug_renderer_info');
+  const gpu = String(info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER));
+  return /^Apple GPU$/.test(gpu) && (gl.getParameter(gl.MAX_TEXTURE_SIZE) as number) < 16384;
 }
 
 /** Zoom bands, each with its own tier: far out (the whole district), the default view, close up. */

@@ -4,7 +4,7 @@ import { clientToNdc } from './render/camera';
 import { TIRED } from './sim/team';
 import { locationOf, nextStep, type GuideView } from './game/guide';
 import { QUALITY } from './render/quality';
-import { DirectionalLight, Plane, Raycaster, Vector3, WebGLRenderer, type Object3D } from 'three';
+import { DirectionalLight, Plane, Raycaster, Vector3, WebGLRenderer, type Object3D, type PointLight } from 'three';
 import { DaemonFigure } from './agents/daemonFigure';
 import { FAVOUR } from './config/favours';
 import { QUESTS } from './config/institutionQuests';
@@ -29,7 +29,7 @@ import { createIsoCamera, frameCamera, worldToClient } from './render/camera';
 import { CameraRig, MIN_ZOOM, PHONE_MIN_ZOOM } from './render/cameraRig';
 import { Highlight, OVERLAY_LAYER } from './render/highlight';
 import { ScenePipeline } from './render/scenePipeline';
-import { QualityController, TIER_SETTINGS, applyAnisotropy, savedMode, setShadowMapSize, startTier } from './render/renderQuality';
+import { QualityController, TIER_SETTINGS, applyAnisotropy, legacyGpu as isLegacyGpu, savedMode, setShadowMapSize, startTier } from './render/renderQuality';
 import { whenViewportSettled } from './render/viewportSettle';
 import { watchCamera } from './render/viewEdge';
 import { CoinPops } from './render/coinPops';
@@ -165,6 +165,14 @@ const quality = new QualityController(startTier(renderer.getContext() as WebGL2R
 });
 pipeline.setTier(quality.tier);
 const world = buildWorld(createRandom(ILLUSTRATIVE.seed));
+// The oldest Apple GPUs (renderQuality.legacyGpu) draw without point lights and the sun's shadows, set
+// once here before anything is compiled; the lamps keep their glowing bulbs and light cones.
+const legacyGpu = isLegacyGpu(renderer.getContext() as WebGL2RenderingContext);
+const dropPointLights = (root: Object3D) => root.traverse((o) => { if ((o as PointLight).isPointLight) o.visible = false; });
+if (legacyGpu) {
+  renderer.shadowMap.enabled = false;
+  dropPointLights(world.scene);
+}
 const camera = createIsoCamera();
 watchCamera(camera);
 camera.layers.enable(OVERLAY_LAYER);
@@ -2118,7 +2126,7 @@ void whenViewportSettled(canvas).then(() => {
 void startGame();
 // The Quaternius kits load after the first frame, so a phone is never kept waiting for them.
 // The scenery kits are 2 MB: skipped on weak phones and slow or data-saving connections.
-if (QUALITY.kits) void loadKits().then((kits) => { if (kits) world.applyKits(kits); });
+if (QUALITY.kits) void loadKits().then((kits) => { if (kits) { world.applyKits(kits); if (legacyGpu) dropPointLights(world.scene); } });
 
 // The player gate: queue when the server is short of memory, a time limit while busy.
 let pausedBeforeQueue = false;

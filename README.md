@@ -46,7 +46,7 @@ The game needs WebGL 2 and a browser from about 2021 on:
 
 The build target in `vite.config.ts` is set from this list. three.js 0.186 uses class static blocks, which Safari only has from 16.4, and Safari 15 has a bug with class fields, so the build rewrites both for Safari 15. That adds about 0.2% to the gzipped scripts. The few APIs those browsers lack are stood in for in `src/compat/` and `saveGame.ts` (canvas `roundRect`, and fflate for save links where `CompressionStream` is missing), fetched only by the browsers that need them. A new web API newer than Safari 15.4 needs the same.
 
-On devices without half-float colour buffers the scene renders in 8 bits. If the game cannot start at all (no WebGL 2, a failed download, an older browser), the loading screen says what failed and offers a retry, where before it would wait forever.
+On devices without half-float colour buffers the scene renders in 8 bits. The oldest Apple GPUs (A7 and A8: iPad Air 2, iPad mini 4, iPhone 6, which stop at iOS 15) play without point lights and the sun's shadows, which took more than half of each frame there; an iPad Air 2 went from about 2 to about 10 frames a second. If the game cannot start at all (no WebGL 2, a failed download, an older browser), the loading screen says what failed and offers a retry, where before it would wait forever.
 
 ## Leaderboard
 
