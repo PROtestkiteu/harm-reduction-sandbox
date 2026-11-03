@@ -1732,7 +1732,7 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
 @media (prefers-reduced-motion: reduce) { .loading-logo, .loading-line { animation: none; } .loading-line { color: var(--muted); background: none; } }
 /* When the game cannot start: what failed and a retry, in place of the phrase. Plain CSS that any browser the loading screen reaches can draw. */
 .loading-failed .loading-logo { animation: none; opacity: 0.6; }
-.loading-error { position: relative; z-index: 2; box-sizing: border-box; width: min(92vw, 440px); padding: 0 16px; text-align: center; color: var(--text); line-height: 1.4; }
+.loading-error { --fade: 10, 9, 8; position: relative; z-index: 2; box-sizing: border-box; width: min(92vw, 440px); padding: 14px 16px 16px; text-align: center; color: var(--text); line-height: 1.4; background: rgba(var(--fade), 0.9); border-top: 2px solid var(--reply); }
 .loading-error p { margin: 0 0 8px; }
 .loading-error-title { font-weight: 700; font-size: 18px; }
 .loading-error code { display: block; margin: 4px 0 14px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
@@ -2565,3 +2565,21 @@ body:has(.action-menu:not([hidden])) .map-legend { display: none; }
 /* One row per thing under way (works, hires on the way, the patrol out). */
 .works-row { display: flex; flex-direction: column; gap: 3px; }
 .works-row[hidden] { display: none; }
+
+/*
+ * Safari before 16.2 (iPadOS 15) has no color-mix(): those declarations are dropped, so tracks, thin
+ * borders and pressed states would vanish. Plain stand-ins, only where it is missing.
+ */
+@supports not (color: color-mix(in srgb, red 50%, blue)) {
+  .speed-toggle { border: 1px solid currentColor; }
+  .column[data-role][data-mood] { --tone: var(--mood); }
+  .works-track, .stress-bar { background: rgba(128, 128, 128, 0.3); }
+  .action-menu button[aria-checked='true'] { background: rgba(237, 179, 0, 0.14); }
+  .meter-causes .cause-act { border-top: 1px solid rgba(128, 128, 128, 0.3); }
+  .crisis-box, .crisis-box[data-state='rising'] { background: rgba(128, 128, 128, 0.15); }
+  .btn.sound-preset { border: 1px solid rgba(128, 128, 128, 0.6); }
+  .btn.sound-preset[aria-pressed='true'] { border-color: currentColor; background: rgba(128, 128, 128, 0.2); }
+  .night-report .night-tile { border: 1px solid rgba(128, 128, 128, 0.4); }
+  .night-report .night-tile[data-state='bad'] { border-color: var(--closing); }
+  .column[data-mode='idle'][data-tutorial='true'] .line { background: rgba(237, 179, 0, 0.12); }
+}
