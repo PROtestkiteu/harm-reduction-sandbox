@@ -482,6 +482,8 @@ function buildRailway(g: Object3D): { update(dt: number): void; span(): readonly
 /** The public hospital across the river, east of the district; the sobering-up centre by the railway, north. */
 // Between the north and south streets (roads at z -21.5..-16.5 and 16.5..21.5), its 2 m forecourt up to their kerbs, so through traffic passes it.
 const HOSPITAL = { x0: 88 + GROW, x1: 124 + GROW, z0: -13.5, z1: 14.5 };
+/** The hospital's rooftop helipad: the middle of its deck, at the deck's height (set once the hospital is built). */
+export const HELIPAD = { x: 0, y: 0, z: 0 };
 /** City hall: on the old town's edge nearest the district, facing it across the main street west. */
 // South of the north street (road z -21.5..-16.5, its pavement to -14), its 2 m forecourt up to that pavement.
 const CITY_HALL = { x0: -68 - GROW, x1: -54 - GROW, z0: -12, z1: 3 };
@@ -569,6 +571,7 @@ function buildLandmarks(g: Object3D, lit: MeshLambertMaterial[]): { hospital: nu
   // The helipad on four legs above the roof: a deck, the H, lamps round its edge, a stair down.
   const padX = (tw.x0 + tw.x1) / 2;
   const padZ = (tw.z0 + tw.z1) / 2;
+  Object.assign(HELIPAD, { x: padX, y: towerTop + 3.2, z: padZ });
   for (const [dx, dz] of [[-3, -3], [3, -3], [3, 3], [-3, 3]] as const) add(g, box(0.4, 2.2, 0.4, mat(0x6a7078), padX + dx, towerTop + 0.6, padZ + dz));
   add(g, cylinder(5.6, 0.35, mat(0x4a5058), 20, padX, towerTop + 2.8, padZ));
   add(g, cylinder(4.6, 0.02, mat(0xd8d8d0), 20, padX, towerTop + 3.16, padZ));

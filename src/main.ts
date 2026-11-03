@@ -4,7 +4,7 @@ import { clientToNdc } from './render/camera';
 import { TIRED } from './sim/team';
 import { locationOf, nextStep, type GuideView } from './game/guide';
 import { QUALITY } from './render/quality';
-import { Plane, Raycaster, Vector3, WebGLRenderer, type Object3D } from 'three';
+import { DirectionalLight, Plane, Raycaster, Vector3, WebGLRenderer, type Object3D } from 'three';
 import { DaemonFigure } from './agents/daemonFigure';
 import { FAVOUR } from './config/favours';
 import { QUESTS } from './config/institutionQuests';
@@ -29,20 +29,22 @@ import { createIsoCamera, frameCamera, worldToClient } from './render/camera';
 import { CameraRig, MIN_ZOOM, PHONE_MIN_ZOOM } from './render/cameraRig';
 import { Highlight, OVERLAY_LAYER } from './render/highlight';
 import { ScenePipeline } from './render/scenePipeline';
-import { DynamicResolution } from './render/dynamicResolution';
+import { QualityController, TIER_SETTINGS, applyAnisotropy, savedMode, setShadowMapSize, startTier } from './render/renderQuality';
 import { whenViewportSettled } from './render/viewportSettle';
 import { watchCamera } from './render/viewEdge';
 import { CoinPops } from './render/coinPops';
 import { dayFactor, formatClock, nightFactor } from './sim/clock';
 import { createRandom } from './sim/random';
 import { LAUNCH_STREAM, launchRandom } from './config/launch';
-import { Simulation } from './sim/simulation';
+import { Simulation, VENUE_NAMES } from './sim/simulation';
+import { VITALITY, VENUE_KINDS } from './sim/vitality';
+import { SUPPLIES, type SupplyId } from './config/supplies';
 import { loadPeople } from './agents/humanFigure';
 import { SEASON_PROFILES } from './config/seasons';
 import { LOCATION_IDS, SERVICE_IDS, serviceAt, type LocationId, type ServiceId, type ServiceStatus } from './sim/types';
 import { ContextSection } from './ui/contextSection';
 import { Hud, type PersonCamperOffer, type PlaceAction } from './ui/hud';
-import { COORDINATOR_IDS, PORTRAIT_H, PORTRAIT_W, PortraitLibrary, playerPortraitId, playerPortraitUrl, portraitId, portraitUrl, setPlayerPortrait } from './render/portraitLibrary';
+import { COORDINATOR_IDS, PORTRAIT_H, PORTRAIT_W, PortraitLibrary, playerPortraitId, playerPortraitUrl, portraitId, portraitTinted, portraitUrl, setPlayerPortrait } from './render/portraitLibrary';
 import { describePerson } from './ui/personInfo';
 import { ActionMenu } from './ui/actionMenu';
 import { HumanFigure, peopleLibrary } from './agents/humanFigure';
@@ -87,6 +89,7 @@ import { buildSnapshot, driveView } from './ui/snapshot';
 import { aboutSection, homeScreenNote, languageSection, randomSection, startDateClock } from './ui/sandboxTopics';
 import { CityCards, PropertyView, SHOPS_FOR } from './game/cityState';
 import { SelectionMarker } from './ui/selection';
+import { Ghosts } from './world/ghosts';
 import { ContextProps } from './world/contextProps';
 import { DISTRICT } from './world/layout';
 import { buildWorld, configureRenderer } from './world/scene';
@@ -98,14 +101,17 @@ import { POPULATIONS, presence } from './config/populations';
 import { startFlavour } from './world/flavour/setup';
 import { NoticeStrip } from './ui/noticeStrip';
 import { GoalsStrip } from './ui/goalsStrip';
-import { MeterCauses } from './ui/meterCauses';
+import { MeterCauses, type MeterAction, type MeterKey } from './ui/meterCauses';
 import { NightReportBox } from './ui/nightReport';
 import { scenariosSection } from './ui/scenariosSection';
 import { scenarioById, scenarioProgress } from './config/scenarios';
 import type { NightReport } from './sim/goals';
 import { Sound, type SoundState } from './audio';
 import { soundSection } from './ui/soundSection';
-import { SPOTS } from './world/layout';
+import { graphicsSection } from './ui/graphicsSection';
+import { FESTIVAL, SPOTS, STADIUM, STATION_CAMP } from './world/layout';
+import { RIVER_X } from './world/bridges';
+import { RAIL_Z } from './world/cityBeyond';
 import { RAIN } from './config/flavour/weather';
 import { StakesSection } from './ui/stakesSection';
 import { tutorialHidden } from './ui/tutorials';
@@ -144,6 +150,20 @@ const loading = document.getElementById('loading');
 const renderer = new WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
 configureRenderer(renderer);
 const pipeline = new ScenePipeline(renderer);
+/**
+ * Render quality (render/renderQuality.ts): a tier per zoom band, from the device at start and then
+ * from measured frame cost (or fixed in Settings). A change swaps precompiled shaders and re-fits.
+ */
+/** Updates the Graphics setting's note when Auto changes tier (set once that section exists). */
+let syncGraphics = () => {};
+const quality = new QualityController(startTier(renderer.getContext() as WebGL2RenderingContext), savedMode(), (tier) => {
+  pipeline.setTier(tier);
+  syncShadowMap();
+  layout();
+  syncGraphics();
+  dirty = true;
+});
+pipeline.setTier(quality.tier);
 const world = buildWorld(createRandom(ILLUSTRATIVE.seed));
 const camera = createIsoCamera();
 watchCamera(camera);
@@ -345,7 +365,12 @@ function showSpectacle(s: Spectacle): void {
   dirty = true;
 }
 // What happens to people shows where it happens: a skull, handcuffs, a red cross (none with reduced motion).
-crowd.onMark = (at, icon) => { if (!reducedMotion.matches) coins.mark(at, icon); };
+// Someone who dies leaves their body: a pale likeness rises from where they lie (world/ghosts.ts).
+const ghosts = new Ghosts(world.scene);
+crowd.onMark = (at, icon) => {
+  if (icon === 'skull') ghosts.spawn(at.x, at.z, reducedMotion.matches);
+  if (!reducedMotion.matches) coins.mark(at, icon);
+};
 /**
  * Early warning of a service falling behind: an hourglass pops over its door every few seconds while
  * people queue, amber once the queue is half its waiting places, red when it is nearly full or the
@@ -480,6 +505,8 @@ const hud = new Hud(hudRoot, {
   if (lib) world.setFigureFactory((kind) => {
     const look = randomAppearance(r, false, kind === 'seller' ? 'technoBlack' : kind === 'police' ? 'everyday' : styles[Math.floor(r() * styles.length)], sim.season);
     if (kind === 'police') return new HumanFigure(lib, { ...look, police: true, kit: {} });
+    // Fire crew: a dark tunic with reflective bands.
+    if (kind === 'firefighter') return new HumanFigure(lib, { ...look, staff: true, vestColour: 0x26282c, extra: 'jacket', kit: {} });
     if (kind === 'seller') return new HumanFigure(lib, { ...look, kit: { ...look.kit, hood: 'up' } });
     return new HumanFigure(lib, look);
   });
@@ -516,6 +543,7 @@ const flavour = startFlavour({
   },
   season: () => sim.season,
   buses: () => world.vehicles().flatMap((v) => (world.vehicle(v.id)?.kind === 'bus' ? [{ x: v.root.position.x, z: v.root.position.z }] : [])),
+  dispatch: (kind, x, z, reason) => world.dispatch(kind, x, z, reason),
 });
 {
   const lib = peopleLibrary();
@@ -766,6 +794,61 @@ function sendCamperToSelected(): void {
   refreshHud();
 }
 
+/** The next step of an institution's side quest (run between simulation steps). */
+function runQuest(id: InstitutionId): void {
+  const step = sim.questStep(id);
+  // Allies change how the city works with you: police by agreement, a council that backs the services.
+  if (step?.finished && id === 'police') eventWorld.setFactor('policing', 'agreement');
+  if (step?.finished && id === 'cityHall') eventWorld.setFactor('council', 'supportive');
+  refreshOrg();
+}
+
+/**
+ * The replies in a meter's panel (ui/meterCauses.ts): what works on that meter, run from there with
+ * the same prices and confirm boxes as anywhere else, so a meter can be dealt with without finding
+ * the place on the map. Built when the panel is open, twice a second at most.
+ */
+function meterActions(key: MeterKey): MeterAction[] {
+  const out: MeterAction[] = [];
+  const budget = sim.org.budget;
+  // More hands where people are turned away most: from this meter's causes, else the busiest door.
+  const away = key === 'district' ? undefined : sim.cityStress.causesOf(key).find((c) => c.cause.startsWith('turnedAway:'));
+  const busiest = SERVICE_IDS.filter((id) => sim.services[id].status === 'open').sort((a, b) => sim.services[b].turnedBack - sim.services[a].turnedBack)[0];
+  const staffAt = (svc: ServiceId | undefined) => {
+    if (!svc) return;
+    const loc = LOCATION_IDS.find((l) => serviceAt(l) === svc);
+    if (!loc) return;
+    const s = sim.services[svc];
+    out.push({ label: t('More staff at {place}', { place: displayName('location', loc, LOCATION_NAMES[loc]) }), note: t('{have} of {need} on shift', { have: s.staffOnSite, need: s.params.staff }), disabled: s.status !== 'open', run: () => confirmSpend(placeDecision(svc, 'moreStaff'), () => queuePlaceAction(svc, 'moreStaff')) });
+  };
+  const patrol = (spot: PatrolSpot) => {
+    const why = !sim.services.footPatrol.switchedOn ? t('not running') : sim.patrol.spot ? t('out now') : !sim.patrolReady ? t('not ready') : !sim.patrolSpots().includes(spot) ? t('nothing there now') : budget < PATROL.cost ? t('not enough money') : null;
+    out.push({ label: t('Send the foot patrol to {spot}', { spot: PATROL.spots[spot].label }), note: why ?? price(PATROL.cost), disabled: why !== null, run: () => queueOrg(() => { sim.sendPatrol(spot, patrolPoint(spot)); refreshHud(); }) });
+  };
+  const favour = (id: FavourId) => out.push({ label: FAVOURS[id].label, note: sim.favours ? t('{n} held', { n: sim.favours }) : t('none'), disabled: sim.favours <= 0, run: () => queueOrg(() => { sim.askFavour(id); syncContextProps(); refreshOrg(); refreshHud(); }) });
+  const order = (id: SupplyId) => {
+    const arriving = sim.stakes.supplies.arriving[id] !== undefined;
+    out.push({ label: t('Order {item}', { item: SUPPLIES[id].label.toLowerCase() }), note: arriving ? t('on its way') : t('{n} on the shelf, {price}', { n: sim.stakes.supplies.stock[id], price: price(SUPPLIES[id].price) }), disabled: arriving || budget < SUPPLIES[id].price, run: () => queueOrg(() => { sim.orderSupply(id); refreshOrg(); }) });
+  };
+  const quest = (id: InstitutionId) => {
+    const steps = QUESTS[id].steps;
+    const done = sim.quests[id];
+    if (done >= steps.length) { out.push({ label: QUESTS[id].title, note: t('done'), disabled: true, run: () => {} }); return; }
+    const step = steps[done];
+    out.push({ label: `${QUESTS[id].title}: ${step.short}`, note: `${done + 1}/${steps.length} · ${price(step.cost)}`, disabled: budget < step.cost, run: () => confirmSpend({ title: step.label, lines: [step.lesson], cost: step.cost }, () => queueOrg(() => runQuest(id))) });
+  };
+  const partner = () => {
+    const i = [...Array(sim.vitality.venues).keys()].find((v) => !sim.vitality.partners.has(v));
+    if (i === undefined) return;
+    out.push({ label: t('Partner the {venue}', { venue: VENUE_NAMES[VENUE_KINDS[i]] }), note: sim.unlocked('partnerVenue') ? price(VITALITY.partnerCost) : t('not yet open to you'), disabled: !sim.unlocked('partnerVenue') || budget < VITALITY.partnerCost, run: () => queueOrg(() => { sim.partnerVenue(i); refreshHud(); }) });
+  };
+  if (key === 'police') { staffAt(away ? away.cause.slice(11) as ServiceId : busiest); patrol('camp'); patrol('club'); favour('police'); favour('camp'); quest('police'); }
+  else if (key === 'medics') { staffAt(away ? away.cause.slice(11) as ServiceId : busiest); order('naloxone'); patrol('camp'); patrol('party'); quest('hospital'); }
+  else if (key === 'sobering') { staffAt('clubHr'); patrol('club'); partner(); quest('sobering'); }
+  else { staffAt(busiest); partner(); favour('camp'); quest('cityHall'); out.push({ label: t('Your organisation: team, money, grants'), run: () => openOrg() }); }
+  return out;
+}
+
 function queueBuildingAction(action: string): void {
   const sel = interaction.selected;
   if (sel?.kind !== 'building') return;
@@ -778,15 +861,9 @@ function queueBuildingAction(action: string): void {
     else if (action === 'sweep') sim.sweepForKit();
     else if (action === 'meet') sim.meetResidents();
     else if (action === 'partner') sim.partnerVenue(world.nightlife.indexOf(building));
-    else if (action.startsWith('quest:')) {
-      const id = action.slice(6) as InstitutionId;
-      const step = sim.questStep(id);
-      // Allies change how the city works with you: police by agreement, a council that backs the services.
-      if (step?.finished && id === 'police') eventWorld.setFactor('policing', 'agreement');
-      if (step?.finished && id === 'cityHall') eventWorld.setFactor('council', 'supportive');
-      refreshOrg();
-    }
+    else if (action.startsWith('quest:')) runQuest(action.slice(6) as InstitutionId);
     else if (unit >= 0 && action === 'release') sim.releaseUnit(unit);
+    else if (unit >= 0 && action === 'unitUp') sim.upgradeUnit(unit);
     else if (unit >= 0 && action.startsWith('rent:')) sim.rentUnit(unit, action.slice(5) as SatelliteService);
     property.sync();
     refreshHud();
@@ -841,6 +918,7 @@ function refreshHud(): void {
       festival: !fest ? 0 : fest.phase === 'on' ? Math.max(0.6, fest.crowd) : 0.4 * fest.crowd,
       match: h.some((x) => x.id === 'match' && x.phase === 'on') ? 1 : 0,
     });
+    world.setTeamBus(h.some((x) => x.id === 'match' && x.phase !== 'leaving'));
   }
   world.setParkActivities(sim.park.now);
   world.setNightlife(sim.vitality.venues, sim.vitality.partners);
@@ -1061,14 +1139,34 @@ const setDateClock = (v: { date: number; clock: number }) => {
 sandbox.addAction(t('How it works'), () => welcome.show());
 sandbox.mount(randomSection((v) => { markSandboxed(); setDateClock(v); }));
 sandbox.mount(scenariosSection(new URLSearchParams(location.search).get('scenario')));
-// Sound (src/audio): generated street ambience and soft cues. Nothing is made before the first press, nothing runs while muted.
+// Sound (src/audio): a recorded street under generated city life, in seven channels the player mixes.
+// Nothing is made before the first press, nothing runs while muted, and the state is filled only when due.
 const sound = new Sound();
-sandbox.mount(soundSection(sound.settings, { onMute: (m) => sound.setMuted(m), onVolume: (v) => sound.setVolume(v) }));
+{
+  const mid = (r: { x0: number; x1: number; z0: number; z1: number }) => ({ x: (r.x0 + r.x1) / 2, z: (r.z0 + r.z1) / 2 });
+  const bars = world.barSpots.length
+    ? { x: world.barSpots.reduce((a, b) => a + b.at.x, 0) / world.barSpots.length, z: world.barSpots.reduce((a, b) => a + b.at.z, 0) / world.barSpots.length }
+    : SPOTS.clubDoor;
+  sound.setPlaces({
+    clubDoor: SPOTS.clubDoor, park: CAMP_AT, riverX: (RIVER_X.x0 + RIVER_X.x1) / 2, railZ: RAIL_Z,
+    festival: mid(FESTIVAL), stadium: mid(STADIUM), camps: [CAMP_AT, mid(STATION_CAMP)], bars,
+  });
+}
+sandbox.mount(soundSection(sound));
+// Graphics: Auto (render/renderQuality.ts) or a fixed tier; kept on this device.
+const graphics = graphicsSection(quality.mode, { onMode: (m) => quality.setMode(m), tier: () => quality.tier });
+sandbox.mount(graphics.section);
+syncGraphics = graphics.sync;
 const TAP_TARGETS = 'button, a[href], summary, select, input, [role="button"], [role="option"], [role="menuitem"], [role="tab"]';
 document.addEventListener('pointerdown', (e) => { if (e.target instanceof Element && e.target.closest(TAP_TARGETS)) sound.ui('tap'); }, { passive: true });
-const soundState: SoundState = { clock: 0, night: 0, nearClub: 0, clubOpen: false, rain: 0, paused: false, speed: 1 };
+const soundState: SoundState = {
+  view: { x: 0, z: 0, rightX: 1, rightZ: 0, half: 30 }, clock: 0, night: 0, clubOpen: false, rain: 0, paused: false, speed: 1,
+  season: 'autumn', snow: 0, festival: 0, match: 0, venues: 0, camp: 0, rave: null, police: [], vehicles: [], train: null, heli: null,
+};
+const soundHeli = { x: 0, z: 0 };
+const soundRave = { x: 0, z: 0 };
 let soundSelection: unknown = null;
-/** Each frame: one comparison for a new selection; the state is filled only when the sound is due an update. */
+/** Each frame: one comparison for a new selection; the state is filled only when the sound is due an update (4 a second). */
 function updateSound(): void {
   if (interaction.selected !== soundSelection) {
     soundSelection = interaction.selected;
@@ -1076,15 +1174,51 @@ function updateSound(): void {
   }
   if (!sound.due) return;
   const s = soundState;
-  const half = (camera.right - camera.left) / 2;
-  const away = Math.hypot(rig.focus.x - SPOTS.clubDoor.x, rig.focus.z - SPOTS.clubDoor.z);
+  const v = s.view;
+  v.x = rig.focus.x;
+  v.z = rig.focus.z;
+  // Screen-right on the ground, from the camera's own axes.
+  const m = camera.matrixWorld.elements;
+  const len = Math.hypot(m[0], m[2]) || 1;
+  v.rightX = m[0] / len;
+  v.rightZ = m[2] / len;
+  v.half = (camera.right - camera.left) / 2;
   s.clock = sim.clockMinutes;
   s.night = Math.max(0, lastNight);
-  s.nearClub = Math.max(0, 1 - away / (8 + half * 0.8)) * Math.min(1, 30 / half);
   s.clubOpen = sim.clubOpen;
   s.rain = flavourWetness / RAIN.wetness;
   s.paused = paused;
   s.speed = speed;
+  s.season = sim.season;
+  s.snow = lastSeasonKey.endsWith('|true') ? 1 : 0;
+  const h = sim.happenings();
+  const fest = h.find((x) => x.id === 'festival');
+  s.festival = !fest ? 0 : fest.phase === 'on' ? Math.max(0.6, fest.crowd) : 0.4 * fest.crowd;
+  s.match = h.some((x) => x.id === 'match' && x.phase === 'on') ? 1 : 0;
+  s.venues = Math.min(1, sim.vitality.venues / 4);
+  s.camp = Math.max(sim.camp.size, sim.camp.station);
+  s.rave = null;
+  s.police.length = 0;
+  for (const a of fx.active()) {
+    if (a.kind === 'rave') s.rave = Object.assign(soundRave, { x: a.x, z: a.z });
+    else if (a.kind !== 'press') s.police.push({ x: a.x, z: a.z });
+  }
+  let n = 0;
+  for (const veh of world.vehicles()) {
+    const info = world.vehicle(veh.id);
+    if (!info) continue;
+    const o = s.vehicles[n] ?? (s.vehicles[n] = { id: 0, kind: 'bus', x: 0, z: 0, onCall: false, stopped: false });
+    o.id = veh.id;
+    o.kind = info.kind;
+    o.x = veh.root.position.x;
+    o.z = veh.root.position.z;
+    o.onCall = info.state === 'On the way';
+    o.stopped = info.state === 'Held up' || info.state === 'At the scene' || info.state === 'Parked';
+    n++;
+  }
+  s.vehicles.length = n;
+  s.train = world.trainSpan();
+  s.heli = world.helicopter(soundHeli);
   sound.update(s);
 }
 if (import.meta.env.DEV) Object.assign(window, { __sound: sound });
@@ -1441,7 +1575,7 @@ hud.onLayerDrop = (layer) => {
 const notices = new NoticeStrip();
 hud.eventsSlot.before(goalsStrip.root, notices.root);
 const stressRow = document.querySelector<HTMLElement>('.stress-row');
-const meterCauses = stressRow ? new MeterCauses(stressRow, (m) => sim.cityStress.causesOf(m)) : null;
+const meterCauses = stressRow ? new MeterCauses(stressRow, (m) => sim.cityStress.causesOf(m), meterActions) : null;
 // A scenario comes with the address (`?scenario=`); a loaded game brings its own.
 {
   const q = new URLSearchParams(location.search);
@@ -1669,7 +1803,9 @@ function syncPortrait(): boolean {
   portraitKey = key;
   portraitBox.hidden = !key;
   portraitBox.dataset.who = you ? 'player' : 'person';
-  portraitLibrary.show(!key ? null : you ? playerPortraitUrl() : portraitUrl(portraitId(person!)));
+  // A person's painted face wears their figure's top (a jacket's colour when they have one); role portraits keep their uniforms.
+  const tint = person && portraitTinted(person) ? (person.look.extra === 'jacket' ? person.look.accent : person.look.top) : null;
+  portraitLibrary.show(!key ? null : you ? playerPortraitUrl() : portraitUrl(portraitId(person!)), tint);
   return false;
 }
 
@@ -1735,6 +1871,12 @@ function writeUrl(): void {
   }
 }
 
+/** The sun's shadow map at the quality tier's size (the sun is the scene's one shadow-casting directional light). */
+function syncShadowMap(): void {
+  const sun = world.scene.children.find((o): o is DirectionalLight => o instanceof DirectionalLight && o.castShadow);
+  if (sun) setShadowMapSize(sun, TIER_SETTINGS[quality.tier].shadowMap, QUALITY.shadowMap, renderer.capabilities.maxTextureSize);
+}
+
 function layout(): void {
   // A phone mid-screenshot or mid-rotation can report a near-empty page for a moment: framing for
   // that would aim the camera at the sky until the next move. Skip it; the next resize sets it right.
@@ -1743,12 +1885,9 @@ function layout(): void {
   if (w < 40 || h < 40) return;
   // The canvas's own size: installed on a phone it runs under the status bar and the home bar,
   // past what the window reports.
-  pipeline.resize(canvas.clientWidth || window.innerWidth, canvas.clientHeight || window.innerHeight, (window.devicePixelRatio || 1) * resolution.scale);
+  pipeline.resize(canvas.clientWidth || window.innerWidth, canvas.clientHeight || window.innerHeight, window.devicePixelRatio || 1);
   rig.invalidate();
 }
-
-// Render scale drops on slow frames and recovers when there is room (render/dynamicResolution.ts).
-const resolution = new DynamicResolution(QUALITY.minScale, layout);
 
 /** Re-aims the camera for the current orbit angles; cheap, no render-target changes. */
 function applyView(): void {
@@ -1756,6 +1895,7 @@ function applyView(): void {
   // Portrait screens start a little closer so people stay legible.
   const zoom = frame.cssW / frame.cssH < 0.8 ? 1.3 : 1;
   const framing = frameCamera(camera, world.frame.full, frame, hud.insets(), zoom * rig.zoom, rig.view, rig.focus, world.frame.bounds);
+  quality.setZoom(zoom * rig.zoom);
   // Shadows only need to cover what is on screen.
   world.setDetail(framing.worldPerPixel);
   flavour.packs.setView(rig.focus.x, rig.focus.z, ((camera.right - camera.left) / 2) * 1.4, framing.worldPerPixel);
@@ -1847,10 +1987,14 @@ const STEP = 1 / 30;
 let last = performance.now();
 let sceneTime = 0;
 let hudTimer = 0;
+/** Whether the last frame was drawn: only intervals between two drawn frames say what drawing costs. */
+let drewLast = false;
+const gpuSample = (ms: number) => quality.sampleGpu(ms);
 
 function frame(now: number): void {
-  // Only steady frames count: a hidden tab or a stall says nothing about render cost.
-  if (now - last < 100) resolution.sample(now - last, (now - last) / 1000);
+  // Only steady frames count: a hidden tab, a stall or an idle (undrawn) frame says nothing about render cost.
+  pipeline.pollGpu(gpuSample);
+  if (drewLast && now - last < 100) quality.sampleFrame(now - last);
   const realDt = Math.min(0.1, (now - last) / 1000);
   last = now;
   checkSize(now);
@@ -1868,6 +2012,7 @@ function frame(now: number): void {
       for (let i = 0; i < parts; i++) crowd.update((dt * pace) / parts);
       syncServiceVisuals();
       world.update(dt, sceneTime);
+      ghosts.update(dt);
       sceneTime += dt;
     }
     syncNight();
@@ -1897,6 +2042,7 @@ function frame(now: number): void {
   if (coins.update(realDt)) dirty = true;
   syncPortrait();
   updateSound();
+  drewLast = dirty;
   if (dirty) {
     pipeline.render(world.scene, camera, interaction.highlightFlags);
     dirty = false;
@@ -1952,7 +2098,11 @@ refreshHud();
 // The framing reserves room for the HUD (hud.insets), which only now holds tonight's events and
 // options: re-aim, or the next re-aim (any resize) slides the scene up by the sheet's new height.
 applyView();
+applyAnisotropy(world.scene, renderer.capabilities.getMaxAnisotropy(), quality.tier);
+syncShadowMap();
 pipeline.render(world.scene, camera);
+// Every tier's finishing pass is compiled now, behind the loading screen, so switching never hitches.
+const precompileMs = pipeline.precompile();
 // Installed on an iPhone the page gets its full height just after launch: the loading screen stays
 // up until then, so the first frame shown is already framed for the whole screen. One more re-aim
 // for whatever the HUD settled into meanwhile, drawn by the main loop before the screen lifts.
@@ -1984,5 +2134,5 @@ requestAnimationFrame(frame);
 
 if (import.meta.env.DEV) {
   // Diagnostics for local profiling only; stripped from production builds.
-  Object.assign(window, { __sandbox: { renderer, pipeline, world, camera, sim, crowd, rig, interaction, actionMenu, props, street, cityProps, flavour, hud, nightBox, eventPopup, fx, syncEvents: () => { eventsDirty = true; syncEvents(); refreshOrg(); syncStreet(); } } });
+  Object.assign(window, { __sandbox: { renderer, pipeline, quality, precompileMs, world, camera, sim, crowd, rig, interaction, actionMenu, props, street, cityProps, flavour, hud, nightBox, eventPopup, fx, syncEvents: () => { eventsDirty = true; syncEvents(); refreshOrg(); syncStreet(); } } });
 }

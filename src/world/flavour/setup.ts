@@ -41,6 +41,10 @@ const BUILDERS: Record<PackId, () => Promise<PackBuilder>> = {
   clergy: () => import('./clergy').then((m) => m.buildClergy),
   business: () => import('./business').then((m) => m.buildBusiness),
   crowds: () => import('./crowds').then((m) => m.buildCrowds),
+  nightlife: () => import('./nightlife').then((m) => m.buildNightlife),
+  signs: () => import('./signs').then((m) => m.buildSigns),
+  bins: () => import('./bins').then((m) => m.buildBins),
+  skaters: () => import('./skaters').then((m) => m.buildSkaters),
 };
 
 export interface FlavourHost {
@@ -56,6 +60,7 @@ export interface FlavourHost {
   forEachCrowd: (visit: (role: string, x: number, z: number, root: import('three').Object3D) => void) => void;
   season: () => Season;
   buses: () => readonly { x: number; z: number }[];
+  dispatch?: (kind: 'fire' | 'ambulance' | 'police', x: number, z: number, reason: string) => boolean;
 }
 
 export interface Flavour {
@@ -82,6 +87,7 @@ export function startFlavour(host: FlavourHost): Flavour {
     setWetness: host.setWetness,
     setCampusSite: (campus) => { host.campusSite.visible = !campus; },
     buses: host.buses,
+    dispatch: host.dispatch,
     crowdVoices: () => {
       const out: { voice: string; at: () => { x: number; y: number; z: number } }[] = [];
       host.forEachCrowd((role, _x, _z, root) => {

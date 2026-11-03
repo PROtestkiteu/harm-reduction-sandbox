@@ -110,5 +110,6 @@ export default defineConfig({
   // In development the leaderboard runs on PHP's built-in server (server/board.php on port 5203).
   server: { port: 5199, strictPort: true, proxy: { '/api/board.php': { target: 'http://127.0.0.1:5203', rewrite: (path) => path.replace(/^\/api\/board\.php/, '/board.php') } } },
   preview: { port: 5199, strictPort: true },
-  build: { target: 'es2022', outDir: 'dist' },
+  // Safari 15 (iPadOS 15.8): three's static blocks and class fields are rewritten for it; see README, Browser support.
+  build: { target: ['safari15', 'chrome111', 'edge111', 'firefox114'], outDir: 'dist' },
 });

@@ -33,11 +33,11 @@ interface Page {
 
 /**
  * Topics in menu order: the game first (new game, scenarios, saves, language,
- * sound, flavour, about), then one fold that changes the world itself. Anything
+ * sound, graphics, flavour, about), then one fold that changes the world itself. Anything
  * mounted that is not listed goes just above that fold.
  */
 const WORLD = 'world';
-const ORDER = ['random-section', 'scenarios-section', 'save-section', 'language-section', 'sound-section', 'flavour-section', 'about-section', WORLD];
+const ORDER = ['random-section', 'scenarios-section', 'save-section', 'language-section', 'sound-section', 'graphics-section', 'flavour-section', 'about-section', WORLD];
 /** Under the world fold, in this order: the night, the street, the budget, the services, the context. */
 const WORLD_ORDER = ['group-night', 'group-demand', 'group-org', 'services', 'context-section'];
 

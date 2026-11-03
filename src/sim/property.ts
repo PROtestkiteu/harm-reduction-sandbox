@@ -29,6 +29,12 @@ export const PROPERTY = {
   rentPerHour: 20,
   /** Places a satellite adds to its service. */
   satellitePlaces: 2,
+  /**
+   * Fitting a rented unit out further, level by level: each level adds places
+   * and a little rent, and from level 2 the unit brings its service's extra to
+   * the street (UNIT_EXTRA), stronger at level 3.
+   */
+  unit: { upgrade: 220, rentPerLevel: 8, placesPerLevel: 2, maxLevel: 3 },
   /** A second (or third) camper: one-off, then per clock hour. */
   camperCost: 400,
   camperPerHour: 25,
@@ -53,7 +59,21 @@ export type UnitState =
   | { kind: 'trading' }
   | { kind: 'vacant'; since: number }
   | { kind: 'squatted'; since: number }
-  | { kind: 'rented'; service: SatelliteService };
+  | { kind: 'rented'; service: SatelliteService; level: number };
+
+/**
+ * What a fitted-out unit brings to the street from level 2, by service, and
+ * how much per unit-level per clock hour. ILLUSTRATIVE sizes.
+ */
+export const UNIT_EXTRA: Record<SatelliteService, { name: string; said: string; perHour: number }> = {
+  // A sharps bin and a vending machine by the door, open all night: less used kit dropped in the street.
+  footPatrol: { name: t('24-hour sharps bin and vending machine'), said: t('Less used kit dropped in the street.'), perHour: 0.03 },
+  // Showers and a laundry: people sleeping in the camp have somewhere to go in the day.
+  dropIn: { name: t('Showers and a laundry'), said: t('Fewer people need the camp.'), perHour: 0.006 },
+  // A walk-in lab with results while people wait: word gets round. Gentle: reputation pulls visitors and
+  // feeds funders' trust, and it also settles back towards the share of demand met (sim/neighbourhood.ts).
+  drugChecking: { name: t('Walk-in lab, results while you wait'), said: t('Your services gain a better name.'), perHour: 0.002 },
+};
 
 export type PropertyEvent =
   | { kind: 'closed'; unit: number }
@@ -84,14 +104,15 @@ export class Property {
     if (id === 'outreach') return this.extraCampers * PROPERTY.camperPlaces;
     const p = PROPERTY.point;
     const points = this.points.filter((q) => q.service === id).reduce((n, q) => n + p.placesAtZero + q.level * p.placesPerLevel, 0);
-    return this.units.filter((u) => u.kind === 'rented' && u.service === id).length * PROPERTY.satellitePlaces + points;
+    const units = this.units.reduce((n, u) => n + (u.kind === 'rented' && u.service === id ? PROPERTY.satellitePlaces + u.level * PROPERTY.unit.placesPerLevel : 0), 0);
+    return units + points;
   }
 
   /** Running cost per clock hour of everything rented. */
   get costPerHour(): number {
-    const rented = this.units.filter((u) => u.kind === 'rented').length;
+    const units = this.units.reduce((n, u) => n + (u.kind === 'rented' ? PROPERTY.rentPerHour + u.level * PROPERTY.unit.rentPerLevel : 0), 0);
     const points = this.points.reduce((n, q) => n + PROPERTY.point.rentPerHour + q.level * PROPERTY.point.rentPerLevel, 0);
-    return rented * PROPERTY.rentPerHour + this.extraCampers * PROPERTY.camperPerHour + points;
+    return units + this.extraCampers * PROPERTY.camperPerHour + points;
   }
 
   pointAt(building: number): Point | undefined {
@@ -127,8 +148,23 @@ export class Property {
 
   rent(unit: number, service: SatelliteService): boolean {
     if (this.units[unit]?.kind !== 'vacant') return false;
-    this.units[unit] = { kind: 'rented', service };
+    this.units[unit] = { kind: 'rented', service, level: 0 };
     return true;
+  }
+
+  /** Fits a rented unit out one level further. */
+  upgradeUnit(unit: number): boolean {
+    const u = this.units[unit];
+    if (u?.kind !== 'rented' || u.level >= PROPERTY.unit.maxLevel) return false;
+    u.level++;
+    return true;
+  }
+
+  /** How strongly each service's units bring their extra to the street: a unit at level 2 counts 1, at level 3 counts 2. */
+  get extras(): Record<SatelliteService, number> {
+    const out = { dropIn: 0, drugChecking: 0, footPatrol: 0 };
+    for (const u of this.units) if (u.kind === 'rented') out[u.service] += Math.max(0, u.level - 1);
+    return out;
   }
 
   /** Hands a rented unit back; it stands empty again. */
@@ -149,7 +185,7 @@ export class Property {
       let i = this.units.length - 1;
       while (i >= 0 && this.units[i].kind !== 'rented') i--;
       if (i >= 0) {
-        const u = this.units[i] as { kind: 'rented'; service: SatelliteService };
+        const u = this.units[i] as { kind: 'rented'; service: SatelliteService; level: number };
         out.push({ kind: 'lost', unit: i, service: u.service });
         this.release(i, now);
       } else if (this.points.length > 0) {

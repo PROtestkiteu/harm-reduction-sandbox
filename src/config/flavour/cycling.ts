@@ -7,9 +7,12 @@ import type { P } from './street';
  * outer north pavement, which faces the camera (checked by `npm run clearance`).
  */
 export const CYCLING = {
-  /** The middle of the ring road's bike lane, and how far right of it each way rides. */
-  ring: 50, // world/layout.ts: INNER + 5
-  keepRight: 0.28,
+  /**
+   * The ring road's two bike lanes, one along each kerb (world/district.ts), as distances
+   * from the middle: clockwise riders keep right in the inner lane, the others in the outer.
+   */
+  inner: 48.15, // world/layout.ts: INNER + 2.5 (the inner kerb) + half a lane
+  outer: 51.85, // INNER + 7.5 (the outer kerb) - half a lane
   riders: 6,
   /** Metres a second. */
   speed: [3.4, 5.4] as const,

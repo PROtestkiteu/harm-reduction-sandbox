@@ -91,6 +91,8 @@ export interface PackDeps {
   buses: () => readonly { x: number; z: number }[];
   /** Crowd people in view, for the lines pack: position and role. */
   crowdVoices: () => readonly { voice: string; at: () => { x: number; y: number; z: number } }[];
+  /** Sends an emergency vehicle to (x, z) with what happened (world.dispatch); false when none is free. */
+  dispatch?: (kind: 'fire' | 'ambulance' | 'police', x: number, z: number, reason: string) => boolean;
 }
 
 export interface Pack {

@@ -30,7 +30,6 @@ export function worshipFront(parent: Object3D, b: CityBuilding, kind: Worship): 
   const g = add(parent, new Group());
   const h = b.height;
   const w = b.x1 - b.x0;
-  const d = b.z1 - b.z0;
   const cx = (b.x0 + b.x1) / 2;
   const cz = (b.z0 + b.z1) / 2;
   if (kind === 'church') {
@@ -61,17 +60,23 @@ export function worshipFront(parent: Object3D, b: CityBuilding, kind: Worship): 
     for (const s of [-1, 1]) add(g, cylinder(0.25, 0.2, mat(STONE), 10, cx + s * 0.25, h + 1.6, b.z1 - 0.2)).rotation.x = Math.PI / 2;
     archedWindows(g, b, 1.4, Math.max(2, Math.floor((w - 2) / 1.6)), 0x2a3a5a);
   } else {
-    // A green dome on a drum, crowned with a crescent, and a slender minaret at the south-east corner.
-    const domeR = Math.min(w, d) * 0.32;
-    add(g, cylinder(domeR * 1.02, 0.9, mat(STONE), 16, cx, h + 0.12, cz));
+    // A green dome on a drum in the middle of the roof's open deck (clear of a higher end or a set-back
+    // floor), crowned with a crescent, and a slender minaret at the deck's south-east corner. The drum
+    // stands 2 m tall, so the dome clears the roof's water tank and plant.
+    const deck = b.deck ?? { x0: b.x0 + 0.4, x1: b.x1 - 0.4, z0: b.z0 + 0.4, z1: b.z1 - 0.4 };
+    const dx = (deck.x0 + deck.x1) / 2;
+    const dz = (deck.z0 + deck.z1) / 2;
+    const domeR = Math.min(deck.x1 - deck.x0, deck.z1 - deck.z0) * 0.3;
+    const base = h + 2.1;
+    add(g, cylinder(domeR * 1.02, 2.0, mat(STONE), 16, dx, h + 0.12, dz));
     const dome = add(g, new Mesh(new SphereGeometry(domeR, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), mat(0x2a7a5a)));
-    dome.position.set(cx, h + 1.0, cz);
+    dome.position.set(dx, base, dz);
     const crescent = add(g, new Mesh(new TorusGeometry(0.32, 0.06, 6, 12, Math.PI * 1.4), mat(GOLD)));
-    crescent.position.set(cx, h + 1.0 + domeR + 0.75, cz);
+    crescent.position.set(dx, base + domeR + 0.75, dz);
     crescent.rotation.z = Math.PI * 0.8;
-    add(g, box(0.06, 0.5, 0.06, mat(GOLD), cx, h + 1.0 + domeR, cz));
-    // The minaret rises from the roof's south-east corner, inside the building's footprint (never on the pavement).
-    const mx = b.x1 - 0.8, mz = b.z1 - 0.8;
+    add(g, box(0.06, 0.5, 0.06, mat(GOLD), dx, base + domeR, dz));
+    // The minaret rises from the deck's south-east corner, inside the building's footprint (never on the pavement).
+    const mx = deck.x1 - 0.6, mz = deck.z1 - 0.6;
     add(g, cylinder(0.55, 9, mat(STONE), 12, mx, h, mz));
     add(g, cylinder(0.85, 0.25, mat(STONE), 12, mx, h + 6.5, mz));
     const cap = add(g, new Mesh(new ConeGeometry(0.6, 2.2, 12), mat(0x2a7a5a)));

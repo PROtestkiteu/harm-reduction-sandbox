@@ -104,16 +104,13 @@ export function buildStreetscape(scene: Object3D, random: Random): Steam[] {
     for (const z of along(STREETS.east.road, 'z', 6.2, random)) if (random() < 0.5) park(x, z, x < 26 ? Math.PI : 0);
   }
   for (const z of along(STREETS.main.road, 'z', 6.2, random)) if (Math.abs(z) > HALF + 3 && random() < 0.6) park(ROAD.parkX, z, 0);
-  // The ring road carries no through-traffic: cars parked along both kerbs, more thinly.
+  // The ring road has a bike lane along each kerb (world/district.ts) and no parking.
+  // The draws are still made, so everything placed after keeps its place from launch to launch.
   for (const s of [STREETS.ringNorth, STREETS.ringSouth]) {
-    for (const z of [s.road.z0 + 1.0, s.road.z1 - 1.0]) {
-      for (const x of along(s.road, 'x', 6.2, random)) if (random() < 0.35) park(x, z, Math.PI / 2 + (z < (s.road.z0 + s.road.z1) / 2 ? Math.PI : 0));
-    }
+    for (let k = 0; k < 2; k++) for (const _x of along(s.road, 'x', 6.2, random)) random();
   }
   for (const s of [STREETS.ringWest, STREETS.ringEast]) {
-    for (const x of [s.road.x0 + 1.0, s.road.x1 - 1.0]) {
-      for (const z of along(s.road, 'z', 6.2, random)) if (random() < 0.35) park(x, z, x < (s.road.x0 + s.road.x1) / 2 ? Math.PI : 0);
-    }
+    for (let k = 0; k < 2; k++) for (const _z of along(s.road, 'z', 6.2, random)) random();
   }
 
   // Bus shelters on the cross streets, a kiosk on a corner, a post box. The shelters stand at the

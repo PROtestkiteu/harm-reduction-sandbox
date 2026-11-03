@@ -51,13 +51,15 @@ import { TrafficLights } from './trafficLights';
 import { ParkActivities } from './parkActivities';
 import { buildMurals, type MuralSpot } from './murals';
 import { campPitch } from './camps';
+import { TeamBus } from './teamBus';
 import type { Figure } from '../agents/character';
 import { Letting, type UnitLook } from './letting';
 import { OpeningFx } from './openingFx';
 import { seatClear } from './flavour/squatDoors';
 import { LAUNCH_SEED } from '../config/launch';
 import { DistrictLife, type DistrictNow, type FrontState } from './districtLife';
-import { DOOR_ALONG, allBuildings, cityBuilding, frontDoor, frontFrame, registerBuilding, type CityBuilding } from './cityBuildings';
+import { FitOuts, type FitOutLook } from './fitOut';
+import { DOOR_ALONG, allBuildings, claimLook, cityBuilding, frontDoor, frontFrame, registerBuilding, type CityBuilding } from './cityBuildings';
 import { t } from '../i18n';
 import { PROPERTY } from '../sim/property';
 import { Expansion, type ExpansionKind, type Facing } from './expansion';
@@ -105,16 +107,23 @@ export interface World {
   /** Every vehicle on the road: the crowd's cars report here too. */
   readonly traffic: Traffic;
   /** Sends an ambulance or a police car to a spot: it drives in, stops with lights flashing, then leaves. */
-  dispatch(kind: 'ambulance' | 'police', x: number, z: number, reason: string): boolean;
+  dispatch(kind: 'ambulance' | 'police' | 'fire', x: number, z: number, reason: string): boolean;
+  /** Brings the rare flying saucer now (an easter egg, world/ufo.ts); for the dev checks. */
+  summonUfo(): boolean;
   /** Police cars and ambulances on screen, for picking, and what each is doing. */
   vehicles(): readonly { id: number; root: Object3D }[];
   vehicle(id: number): VehicleInfo | undefined;
+  /** The train's ends along x while it is on the line, else null; and the helicopter while it is up (for the sound). */
+  trainSpan(): readonly [number, number] | null;
+  helicopter(out: { x: number; z: number }): { x: number; z: number } | null;
   /** Which of those shops a building is, if any. */
   shopAt(buildingId: number): ShopKind | null;
   /** Extra outreach campers, by spot index in CAMPER_SPOTS. */
   setExtraCampers(spots: readonly number[]): void;
   /** Shows a harm reduction point's sign on a building, or takes it down (null). */
   setPoint(building: number, look: UnitLook | null): void;
+  /** How far a building the organisation has taken over (a rented unit or a point) is fitted out, on its front; null once given back. */
+  setFitOut(building: number, look: FitOutLook | null): void;
   /** The park camp at `size` and the station camp at `station` (0 to 1): up to 14 and 10 tents, nearest the district first. */
   setCamp(size: number, station: number): void;
   /** Shows the warming bus (parked, lit) and the water and shade point while they run. */
@@ -136,6 +145,8 @@ export interface World {
   barSpots: readonly { venue: number; at: P2; face: number }[];
   /** Lights the festival grounds and the stadium: how far each occasion is under way, 0 (nothing on) to 1. */
   setHappenings(v: { festival: number; match: number }): void;
+  /** The home team in town (before and through a match): its coach comes to the stadium and waits, then drives off. */
+  setTeamBus(on: boolean): void;
   /**
    * The district now, for its ordinary buildings to run down or get done up
    * (world/districtLife.ts); `minute` counts game minutes and only goes up.
@@ -460,6 +471,7 @@ export function buildWorld(random: Random): World {
   const lights = new TrafficLights(scene, traffic, beyond.trainSpan);
   const puffs = new Puffs(scene);
   const ambient = buildAmbient(scene, mulberry(31), traffic, puffs, beyond.streets);
+  const teamBus = new TeamBus(scene, traffic);
   const parkActivities = new ParkActivities(scene);
   let detail = 0.2;
   buildStreets(scene, mulberry(29));
@@ -649,8 +661,8 @@ export function buildWorld(random: Random): World {
   for (const kind of ['church', 'synagogue', 'mosque'] as const) {
     const spots = [...worship.keys()].map((id) => cityBuilding(id)!);
     const pool = allBuildings()
-      // The mosque's dome wants a flat roof; all three a building of some size, within the district.
-      .filter((b) => !taken.has(b.id) && b.id !== squat && b.storeys >= 2 && b.x1 - b.x0 >= 5 && b.z1 - b.z0 >= 4.5 && (kind !== 'mosque' || b.roof === 'flat') && Math.max(Math.abs((b.x0 + b.x1) / 2), Math.abs((b.z0 + b.z1) / 2)) < 64);
+      // The mosque's dome wants an open deck on a flat roof (clear of a higher end or a set-back floor); all three a building of some size, within the district.
+      .filter((b) => !taken.has(b.id) && b.id !== squat && b.storeys >= 2 && b.x1 - b.x0 >= 5 && b.z1 - b.z0 >= 4.5 && (kind !== 'mosque' || (!!b.deck && b.deck.x1 - b.deck.x0 >= 4.5 && b.deck.z1 - b.deck.z0 >= 4.5)) && Math.max(Math.abs((b.x0 + b.x1) / 2), Math.abs((b.z0 + b.z1) / 2)) < 64);
     const apart = (b: CityBuilding, m: number) => spots.every((o) => Math.hypot((o.x0 + o.x1) / 2 - (b.x0 + b.x1) / 2, (o.z0 + o.z1) / 2 - (b.z0 + b.z1) / 2) > m);
     const pick = pool.find((b) => apart(b, 30)) ?? pool.find((b) => apart(b, 15));
     if (!pick) continue;
@@ -716,16 +728,19 @@ export function buildWorld(random: Random): World {
   });
   // The city's own openings and closings: balloons up from a new business, a puff of dust from one that shuts.
   const opening = new OpeningFx(scene, () => still, mulberry(97 ^ launch));
+  // Buildings the organisation takes over grow their fronts level by level (world/fitOut.ts).
+  const fitOuts = new FitOuts(scene, glowMat(PALETTE.glassDark, PALETTE.warmWindow, 0.8));
   // The district's ordinary buildings run down or get done up with the district (world/districtLife.ts):
   // all but the ones with a look of their own (shops, venues, the squat, civic buildings, landmarks).
   const ownLook = new Set([...taken, ...nightlife.map((n) => n.b.id), ...(squat === null ? [] : [squat]), ...Object.values(beyond.landmarks)]);
+  // Pizza, Żabkas, the fast food and the like are in `taken`; the nightlife pack dresses only what is left.
+  claimLook([...ownLook, ...zabkas, ...worship.keys(), ...[pizza, fastFood, bookshop, school, library].filter((id): id is number => id !== null && id !== undefined)]);
   const district = new DistrictLife(
     scene,
     allBuildings().filter((b) => !ownLook.has(b.id) && Math.max(Math.abs((b.x0 + b.x1) / 2), Math.abs((b.z0 + b.z1) / 2)) < DISTRICT),
     [...Object.values(LOTS).map((l) => l.door), VENUE_FRAME.club, VENUE_FRAME.dropIn],
     glowMat(PALETTE.glassDark, PALETTE.warmWindow, 0.75),
     mulberry(101 ^ launch),
-    roofOf,
     (b, to, _from, roof) => {
       if (to === 'smart') opening.opened((b.x0 + b.x1) / 2, roof, (b.z0 + b.z1) / 2);
       else if (to === 'boarded') opening.closed((b.x0 + b.x1) / 2, roof, (b.z0 + b.z1) / 2);
@@ -834,9 +849,12 @@ export function buildWorld(random: Random): World {
     hazeHex: () => `#${(scene.fog as Fog).color.getHexString()}`,
     // The warming bus, when out, joins the vehicles that can be clicked.
     vehicles: () => (aid.bus.visible ? [...ambient.vehicles(), { id: WARMING_BUS_ID, root: aid.bus }] : ambient.vehicles()),
+    trainSpan: () => beyond.trainSpan(),
+    helicopter: (out) => ambient.helicopter(out),
     vehicle: (id) => (id === WARMING_BUS_ID
       ? aid.bus.visible ? { kind: 'warmingBus', reason: t('Your warming bus: hot drinks, blankets and a warm seat on cold nights, and a word with your team.'), state: 'Parked' } : undefined
       : ambient.vehicle(id)),
+    summonUfo: () => ambient.summonUfo(),
     dispatch(kind, x, z, reason) {
       return ambient.dispatch(kind, x, z, reason);
     },
@@ -888,6 +906,7 @@ export function buildWorld(random: Random): World {
     setDistrict: (v, minute) => district.set(v, minute),
     frontState: (id) => district.state(id),
     setHappenings: (v) => beyond.events.set(v),
+    setTeamBus: (on) => teamBus.setMatch(on),
     setNightlife(open, partnered) {
       nightlife.forEach((n, i) => {
         const key = i < open ? (partnered.has(i) ? 'p' : 'o') : '';
@@ -914,6 +933,10 @@ export function buildWorld(random: Random): World {
         campers.set(spot, { pivot, arrive: 0 });
       }
       for (const [spot, c] of campers) if (!spots.includes(spot)) { scene.remove(c.pivot); campers.delete(spot); }
+    },
+    setFitOut(id, look) {
+      const b = cityBuilding(id);
+      if (b) fitOuts.set(b, look);
     },
     setPoint(id, look) {
       let sign = pointSigns.get(id);
@@ -990,6 +1013,7 @@ export function buildWorld(random: Random): World {
       beyond.update(dt);
       lights.update(dt);
       ambient.update(dt);
+      teamBus.update(dt);
       puffs.update(dt);
       for (const w of beyond.windows) w.update(dt, 0.4);
       for (const w of infill) w.update(dt, 0.45);
@@ -1013,6 +1037,7 @@ export function buildWorld(random: Random): World {
     setNight(night, day = 0) {
       lighting.setNight(night, day);
       ambient.setNight(night);
+      teamBus.setNight(night);
       // Haze in the colour of the horizon the player sees: grey-blue by day, dusky, dark blue at night.
       (scene.fog as Fog).color.copy(HAZE_DUSK).lerp(HAZE_NIGHT, night).lerp(HAZE_DAY, day);
       setLampNight(night, day);

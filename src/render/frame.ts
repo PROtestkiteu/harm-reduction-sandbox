@@ -13,10 +13,12 @@ export interface RenderFrame {
 }
 
 /**
- * Picks the render resolution: device pixels, capped at 2 so 3x phones do
- * not pay for detail nobody can see. Multisampling handles edge aliasing.
+ * Picks the render resolution: device pixels times the quality tier's scale,
+ * capped by the tier (2 at High, so 3x phones do not pay for detail nobody can
+ * see; up to 1.5x on low-density screens at Ultra; lower on lower tiers). Multisampling handles edge aliasing.
  */
-export function chooseFrame(cssW: number, cssH: number, deviceDpr: number): RenderFrame {
-  const dpr = Math.min(deviceDpr || 1, QUALITY.maxDpr);
+export function chooseFrame(cssW: number, cssH: number, deviceDpr: number, maxDpr = QUALITY.maxDpr, scale = 1): RenderFrame {
+  // A scale above 1 supersamples: the browser scales the larger drawing down to the screen.
+  const dpr = Math.min((deviceDpr || 1) * scale, maxDpr);
   return { cssW, cssH, dpr, factor: 1, lowW: Math.max(1, Math.floor(cssW * dpr)), lowH: Math.max(1, Math.floor(cssH * dpr)) };
 }

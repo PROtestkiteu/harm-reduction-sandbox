@@ -238,10 +238,18 @@ button:focus-visible {
   background: url('./assets/loading-skyline.svg') repeat-x left bottom / auto 100%;
   pointer-events: none;
 }
-/* The lit windows over it, the same height and tiles (src/loading.ts switches them on and off). */
-.loading-lights { position: absolute; z-index: 1; inset: auto 0 0; width: 100%; height: clamp(120px, 28%, 240px); pointer-events: none; }
-.loading-lights rect { fill: #edb300; opacity: 0; }
-.loading-lights rect.on { opacity: 0.85; }
+/* The lit windows over it: layers of the same box and tiling as the skyline, each blinking on and
+   off by its own opacity animation (src/loading.ts), which the compositor runs while the page is busy. */
+.loading-lit {
+  position: absolute; z-index: 1; inset: auto 0 0; height: clamp(120px, 28%, 240px); pointer-events: none;
+  background: repeat-x left bottom / auto 100%; opacity: 0; will-change: opacity;
+  animation: lit-blink 5s steps(1, end) infinite;
+}
+@keyframes lit-blink { 0% { opacity: 0; } 35% { opacity: 1; } 80% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .loading-lit { animation: none; }
+  .loading-lit[data-still='on'] { opacity: 1; }
+}
 @media (max-height: 520px) { .loading { padding-bottom: 40px; } }
 
 /*
@@ -313,6 +321,9 @@ button:focus-visible {
 /* Small to look at (about 30 by 24), with an invisible margin keeping the tap area at 44 px. */
 .speed-toggle {
   position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-width: 30px;
   min-height: 24px;
   padding: 0 6px;
@@ -336,6 +347,8 @@ button:focus-visible {
 .column-right { display: flex; flex-direction: column; align-items: flex-end; min-width: 0; line-height: 1.25; }
 .money { color: var(--text); font-size: 17px; font-variant-numeric: tabular-nums; }
 .money::before { content: '●'; margin-right: 6px; color: var(--reply); font-size: 0.7em; vertical-align: 0.15em; }
+/* Where the device draws the gold coin (src/ui/money.ts), the top bar's money wears it too. */
+:root[data-coin='gold'] .money::before { content: '\1F7E1'; margin-right: 5px; font-size: 0.8em; vertical-align: 0.08em; }
 .money[data-state='falling'] { color: var(--closing); }
 .money[data-state='low'] { color: var(--closing); font-weight: 600; }
 .clock { font-size: 24px; color: var(--text); font-variant-numeric: tabular-nums; }
@@ -526,6 +539,8 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
 }
 /* Paused, the speed toggle shows a pause sign in the bar's gold. */
 .speed-toggle[data-paused='true'] { background: var(--bar); border-color: var(--bar); color: var(--bar-text); font-weight: 700; }
+/* The pause mark: two bars drawn in the text colour, centred in the button (a glyph sat off centre in some fonts). */
+.speed-toggle[data-paused='true']::after { content: ''; width: 8px; height: 10px; box-sizing: border-box; border-left: 3px solid currentColor; border-right: 3px solid currentColor; }
 
 /* Hover tooltip over the scene: bare text with a soft shadow. */
 
@@ -1300,11 +1315,11 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
 .sandbox-sub > summary::-webkit-details-marker { display: none; }
 /* A fold's title with its state beside it (money in and out, favours held, the patrol out till when). */
 .sandbox-sub > summary .fold-title { flex: 1 1 auto; min-width: 0; }
-.sandbox-sub > summary .fold-note { flex: none; margin-left: 10px; color: var(--muted); font-size: 13px; font-weight: 400; white-space: nowrap; }
+.sandbox-sub > summary .fold-note { flex: none; margin-left: 12px; color: var(--muted); font-size: 13px; font-weight: 400; white-space: nowrap; }
 /* Something coming that needs preparing: its title in the warning colour, so it reads while folded. */
 .stakes-storm > summary .fold-title { color: var(--law); font-weight: 600; }
 .stakes-morale + .factor-summary { margin: 2px 0 6px; font-size: 12px; color: var(--muted); }
-.sandbox-sub > summary::after { content: '\203A'; color: var(--reply); font-size: 28px; line-height: 1; padding: 0 4px; transition: transform 0.15s; }
+.sandbox-sub > summary::after { content: '\203A'; flex: none; width: 22px; margin-left: 8px; text-align: center; color: var(--reply); font-size: 28px; line-height: 1; transition: transform 0.15s; }
 .sandbox-sub[open] > summary::after { transform: rotate(90deg); }
 @media (prefers-reduced-motion: reduce) { .sandbox-sub > summary::after { transition: none; } }
 @media (hover: hover) {
@@ -1715,6 +1730,14 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
   animation: shimmer 1.6s linear infinite;
 }
 @media (prefers-reduced-motion: reduce) { .loading-logo, .loading-line { animation: none; } .loading-line { color: var(--muted); background: none; } }
+/* When the game cannot start: what failed and a retry, in place of the phrase. Plain CSS that any browser the loading screen reaches can draw. */
+.loading-failed .loading-logo { animation: none; opacity: 0.6; }
+.loading-error { position: relative; z-index: 2; box-sizing: border-box; width: min(92vw, 440px); padding: 0 16px; text-align: center; color: var(--text); line-height: 1.4; }
+.loading-error p { margin: 0 0 8px; }
+.loading-error-title { font-weight: 700; font-size: 18px; }
+.loading-error code { display: block; margin: 4px 0 14px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.loading-retry { min-height: 44px; padding: 0 22px; border: 0; border-radius: 2px; background: var(--reply); color: #120f0d; font: inherit; font-weight: 700; cursor: pointer; }
+.loading-retry:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
 
 /* The Configure button sits over the scene: always the bright gold. */
 .sandbox-toggle { --reply: #edb300; --reply-hover: #f5c93a; }
@@ -2122,10 +2145,24 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
 .overheard-line.fading { opacity: 0; }
 @media (prefers-reduced-motion: reduce) { .overheard-line { transition: none; } }
 
-/* Sound settings: the volume slider fills its row, its value beside it. */
-.sound-volume { display: flex; gap: 8px; align-items: center; margin-top: 8px; font-size: 13px; }
-.sound-volume input { flex: 1; min-width: 0; accent-color: var(--accent, var(--reply)); }
-.sound-volume output { min-width: 3.5em; text-align: right; font-variant-numeric: tabular-nums; }
+/* Sound settings: each slider fills its row between its name and its value; a channel's mute sits at the end, its hint under it. */
+.sound-volume { display: grid; grid-template-columns: minmax(6.5em, 9em) 1fr 3.2em 36px; column-gap: 8px; align-items: center; margin-top: 8px; font-size: 13px; }
+.sound-volume.sound-master { grid-template-columns: minmax(6.5em, 9em) 1fr 3.2em; }
+.sound-volume input[type='range'] { min-width: 0; width: 100%; accent-color: var(--accent, var(--reply)); }
+.sound-volume output { text-align: right; font-variant-numeric: tabular-nums; }
+.sound-mute { width: 18px; height: 18px; margin: 0; justify-self: center; accent-color: var(--accent, var(--reply)); }
+.sound-hint { grid-column: 1 / -1; color: var(--muted); font-size: 11.5px; line-height: 1.25; margin-top: 1px; }
+.sound-volume.muted .sound-name, .sound-volume.muted output, .sound-volume.muted input[type='range'] { opacity: 0.5; }
+.sound-presets { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 4px; }
+.btn.sound-preset { min-height: 32px; padding: 0 10px; font-size: 12.5px; border: 1px solid color-mix(in srgb, currentColor 45%, transparent); border-radius: 4px; }
+.btn.sound-preset[aria-pressed='true'] { border-color: currentColor; background: color-mix(in srgb, currentColor 18%, transparent); font-weight: 700; }
+.sound-mixer-head { display: grid; grid-template-columns: 1fr 36px; font-size: 11px; color: var(--muted); margin-top: 8px; }
+.sound-mixer-head span:last-child { text-align: center; }
+.sound-mixer { margin-top: 4px; }
+/* Graphics (ui/graphicsSection.ts): one radio per row, a full-width touch target. */
+.graphics .flavour-pack { display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: 15px; cursor: pointer; }
+.graphics .flavour-pack input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent, var(--reply)); }
+@media (max-width: 760px), (max-height: 500px) { .graphics .flavour-pack { min-height: 40px; } }
 
 /* Goals, news and meter causes (audit pass): quiet text in the column, a small card under a meter. */
 .goals-strip, .notice-strip { margin: 6px 0 0; font-size: 13px; line-height: 1.3; }
@@ -2154,19 +2191,50 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
 .notice-deaths { margin: 0; color: var(--closing); font-weight: 600; }
 .stress[role='button'] { cursor: pointer; }
 .stress[role='button']:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.meter-causes { cursor: pointer;
-  position: fixed; z-index: 60; padding: 10px 12px; border-radius: 6px;
-  background: var(--panel, rgba(18, 15, 13, 0.96)); border: 1px solid var(--panel-border, #3a3128); color: var(--text);
-  font: 13px/1.35 var(--body); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+/* A meter's card (preview while pointed at) and panel (pressed): the windows' own colours, so it reads in
+   either theme, crisp edged like them. */
+.meter-causes {
+  position: fixed; z-index: 60; padding: 10px 12px; border-radius: 2px; cursor: pointer;
+  background: var(--grain), rgba(var(--fade), 0.97); color: var(--text);
+  border: 1px solid rgba(201, 162, 72, 0.55); border-top: 2px solid var(--reply);
+  font: 13px/1.35 var(--body); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
   overflow-y: auto; overscroll-behavior: contain;
 }
+.meter-causes[data-pinned='false'] { pointer-events: none; }
 .meter-causes[hidden] { display: none; }
-.meter-causes h3 { margin: 0 0 6px; font-size: 13px; }
+.meter-causes h3 { margin: 0 0 6px; font-size: 13px; color: var(--text); }
 .meter-causes ul { list-style: none; margin: 0 0 6px; padding: 0; }
-.meter-causes li { display: flex; gap: 8px; }
+.meter-causes li { display: flex; gap: 8px; color: var(--text); }
 .cause-share { min-width: 3ch; color: var(--reply); font-variant-numeric: tabular-nums; text-align: right; }
 .meter-causes .cause-help { margin: 0; color: var(--muted); font-size: 12px; }
-.night-report .night-stars { margin: 0 0 6px; font-size: 26px; color: var(--reply); letter-spacing: 0.1em; }
+.meter-causes .cause-hint { margin: 6px 0 0; color: var(--reply); font-size: 12px; }
+.meter-causes .cause-act-head { margin: 8px 0 2px; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+.meter-causes .cause-acts { margin: 0; }
+.meter-causes .cause-acts li { display: block; }
+.meter-causes .cause-act {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px; width: 100%; min-height: 40px;
+  padding: 6px 0; border: 0; border-top: 1px solid color-mix(in srgb, var(--muted) 22%, transparent);
+  background: none; color: var(--reply); font: 500 14px/1.3 var(--body); text-align: left; cursor: pointer;
+}
+.meter-causes .cause-act:disabled { color: var(--muted); cursor: default; }
+.meter-causes .cause-act-note { flex: none; color: var(--muted); font-size: 12px; font-weight: 400; white-space: nowrap; }
+@media (hover: hover) { .meter-causes .cause-act:not(:disabled):hover { color: var(--reply-hover); } }
+.meter-causes .cause-act:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.night-report .night-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.night-report .night-head h2 { margin: 0; }
+.night-report .night-stars { margin: 0; font-size: 26px; color: var(--reply); letter-spacing: 0.1em; white-space: nowrap; }
+/* The night in figures: a tile each, the number large, its label small under it. */
+.night-report .night-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 10px 0 8px; }
+.night-report .night-tile { display: flex; flex-direction: column; min-width: 0; padding: 6px 8px 7px; border: 1px solid color-mix(in srgb, var(--muted) 35%, transparent); border-radius: 2px; }
+.night-report .night-tile strong { font-size: 22px; line-height: 1.15; font-variant-numeric: tabular-nums; color: var(--text); }
+.night-report .night-tile span { font-size: 12px; line-height: 1.25; color: var(--muted); overflow-wrap: anywhere; }
+.night-report .night-tile[data-state='good'] strong { color: var(--open-text, var(--text)); }
+.night-report .night-tile[data-state='bad'] { border-color: color-mix(in srgb, var(--closing) 60%, transparent); }
+.night-report .night-tile[data-state='bad'] strong { color: var(--closing); }
+.night-report .night-fold > summary { min-height: 40px; }
+.night-report .night-fold .night-goals, .night-report .night-scenario { margin: 0 0 8px; font-size: 14px; }
+.night-report .night-fold:last-of-type { margin-bottom: 12px; }
+@media (max-width: 360px) { .night-report .night-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .night-report ul { margin: 0 0 8px; padding-left: 18px; }
 .night-report .night-goals { list-style: none; padding-left: 0; }
 .night-report .night-goals li[data-met='false'] { color: var(--muted); }

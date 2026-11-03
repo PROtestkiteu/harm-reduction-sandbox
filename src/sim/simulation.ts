@@ -52,7 +52,7 @@ const INTRO_NOTICE: Record<IntroId, string> = {
 };
 
 const SERVICE_LABEL: Record<ServiceId, string> = { dropIn: t('Drop-in centre'), outreach: t('Outreach camper'), clubHr: t('Club stand'), footPatrol: t('Foot patrol'), drugChecking: t('Drug checking'), shelter: t('Shelter'), clinic: t('Clinic') };
-import { Property, PROPERTY, SATELLITE_NAME, type SatelliteService } from './property';
+import { Property, PROPERTY, SATELLITE_NAME, UNIT_EXTRA, type SatelliteService } from './property';
 import { SEASON_PROFILES } from '../config/seasons';
 import type { Season } from './calendar';
 import { ILLUSTRATIVE, type ServiceParams } from '../config/illustrative';
@@ -807,6 +807,20 @@ export class Simulation {
     return true;
   }
 
+  /** Fits a rented unit out one level further: more places, a little more rent, and from level 2 its service's extra. */
+  upgradeUnit(unit: number): boolean {
+    const u = this.property.units[unit];
+    if (u?.kind !== 'rented' || u.level >= PROPERTY.unit.maxLevel || !this.services[u.service].switchedOn) return false;
+    if (!this.org.spend(PROPERTY.unit.upgrade, false)) {
+      this.org.notice(this.clockMinutes, t('Not enough money to fit out the unit further.'));
+      return false;
+    }
+    this.property.upgradeUnit(unit);
+    if (u.level === 2) this.org.notice(this.clockMinutes, t('The {name} unit now has: {extra}. {said}', { name: SATELLITE_NAME[u.service], extra: UNIT_EXTRA[u.service].name, said: UNIT_EXTRA[u.service].said }));
+    this.syncExtraPlaces();
+    return true;
+  }
+
   /** Gives a rented unit back. */
   releaseUnit(unit: number): void {
     this.property.release(unit, this.org.now);
@@ -1319,6 +1333,13 @@ export class Simulation {
     const paid = cost <= 0 || this.org.spend(cost);
     // People who need a roof: those sleeping out, and a squat already full.
     const housing = Math.min(1, this.camp.outdoors + 0.5 * this.camp.squat);
+    // What fitted-out units bring to the street (UNIT_EXTRA): less kit dropped, fewer in the camp, a better name.
+    const extras = this.property.extras;
+    const hours = dtMinutes / 60;
+    const street = this.neighbourhood.state;
+    if (extras.footPatrol) street.litter = Math.max(0, street.litter * (1 - UNIT_EXTRA.footPatrol.perHour * extras.footPatrol * hours));
+    if (extras.dropIn) this.camp.size = Math.max(0, this.camp.size - UNIT_EXTRA.dropIn.perHour * extras.dropIn * hours);
+    if (extras.drugChecking) street.reputation = Math.min(1, street.reputation + UNIT_EXTRA.drugChecking.perHour * extras.drugChecking * hours);
     for (const e of this.property.tick(dtMinutes, this.org.now, this.neighbourhood.state.shopTrade, paid, housing)) {
       if (e.kind === 'closed') this.org.notice(this.clockMinutes, t('A shop on the street has closed. The unit is to let.'));
       else if (e.kind === 'reopened') this.org.notice(this.clockMinutes, t('A new business has taken an empty shop.'));

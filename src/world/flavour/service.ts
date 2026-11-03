@@ -1,5 +1,7 @@
-import { Group, type Mesh, type MeshLambertMaterial } from 'three';
-import { BIN_ROUND, COURIERS, SWEEPER, UNSEEN_HURRY } from '../../config/flavour/service';
+import { Group, type Mesh } from 'three';
+import { BIN_ROUND, BIN_ROUNDS, COURIERS, SWEEPER, UNSEEN_HURRY } from '../../config/flavour/service';
+import { binLorry } from '../heavyVehicles';
+import { rollWheels } from '../vehicles';
 import { inView } from '../../render/viewEdge';
 import { Route, type RoutePoint } from '../routes';
 import { range } from '../../sim/random';
@@ -19,24 +21,6 @@ import { courierBike, wheelieBin } from './props';
  * the evening. Each vehicle joins the traffic register, so cars queue behind a
  * lorry at a stop instead of driving through it.
  */
-
-/** A bin lorry facing +z: cab, compactor body, an orange band and an amber beacon. */
-function lorry(beacon: MeshLambertMaterial): Group {
-  const g = new Group();
-  const white = mat(0xd8d8d0);
-  const dark = mat(0x1e2022);
-  const orange = mat(0xd86a1e);
-  add(g, box(2.3, 2.3, 2.0, white, 0, 0.45, 3.0));
-  add(g, box(2.32, 0.7, 1.0, glowMat(0x2a3440, 0x8aa0b0, 0.25), 0, 1.75, 3.55));
-  add(g, box(2.4, 2.7, 5.4, mat(0x5a6a52), 0, 0.55, -0.9));
-  add(g, box(2.42, 0.3, 5.42, orange, 0, 1.3, -0.9));
-  add(g, box(2.2, 0.6, 0.6, dark, 0, 0.5, -3.9));
-  for (const z of [2.9, -0.6, -2.0]) for (const x of [-1.05, 1.05]) add(g, cylinder(0.5, 0.35, dark, 10, x, 0.5, z)).rotation.z = Math.PI / 2;
-  mergeStatic(g);
-  add(g, box(0.3, 0.18, 0.3, beacon, 0, 2.75, 3.4));
-  g.traverse((o) => { o.castShadow = false; });
-  return g;
-}
 
 /** A compact street sweeper facing +z, with two brushes that spin. */
 function sweeper(): { g: Group; brushes: Mesh[] } {
@@ -60,39 +44,42 @@ export function buildService({ pool, board, random, scene, traffic }: PackDeps):
   let last = -1;
   const due = (t: number, now: number) => last >= 0 && last < t && now >= t;
 
-  // The bin round.
-  const beacon = glowMat(0x7a4a10, 0xffa020, 1.2);
-  const truck = lorry(beacon);
-  truck.visible = false;
-  truck.userData.mover = 'lorry';
-  root.add(truck);
-  const truckCar = traffic.add(3.4);
-  const bins = BIN_ROUND.bins.map((at) => {
-    const g = wheelieBin(root, 0x2a4a32);
-    g.position.set(at.x, 0.1, at.z);
-    return { g, at };
-  });
-  const crew = [0, 1].map((i) => {
-    const a = pool.add({ style: 'worker', vest: 0xe07a20, kit: { hiVis: true } });
-    a.voice = 'crew';
-    return { a, i };
-  });
-  const route = new Route(BIN_ROUND.route, 4);
-  // Where along the route each bin is: the nearest point of the lane to it.
+  // The bin rounds: each its own lorry, crew of two and bins.
   const here: RoutePoint = { x: 0, z: 0, dx: 0, dz: 1 };
-  const seg = { seg: 0 };
-  const binS = BIN_ROUND.bins.map((b) => {
-    let best = 0;
-    let bestD = Infinity;
-    for (let s = 0; s < route.length; s += 0.5) {
-      route.point(s, here, seg);
-      const d = Math.hypot(here.x - b.x, here.z - b.z);
-      if (d < bestD) { bestD = d; best = s; }
-    }
-    return best;
+  const rounds = BIN_ROUNDS.map((cfg) => {
+    const beacon = glowMat(0x7a4a10, 0xffa020, 1.2);
+    const truck = binLorry(beacon, cfg.livery);
+    truck.visible = false;
+    truck.userData.mover = 'lorry';
+    root.add(truck);
+    const car = traffic.add(3.9);
+    const bins = cfg.bins.map((at) => {
+      const g = wheelieBin(root, 0x2a4a32);
+      g.position.set(at.x, 0.1, at.z);
+      return { g, at };
+    });
+    const crew = [0, 1].map(() => {
+      const a = pool.add({ style: 'worker', vest: 0xe07a20, kit: { hiVis: true } });
+      a.voice = 'crew';
+      return a;
+    });
+    const route = new Route(cfg.route, 4);
+    const seg = { seg: 0 };
+    // Where along the route each bin is: the nearest point of the lane to it.
+    const binS = cfg.bins.map((b) => {
+      let best = 0;
+      let bestD = Infinity;
+      for (let s = 0; s < route.length; s += 0.5) {
+        route.point(s, here, seg);
+        const d = Math.hypot(here.x - b.x, here.z - b.z);
+        if (d < bestD) { bestD = d; best = s; }
+      }
+      return best;
+    });
+    seg.seg = 0;
+    return { cfg, beacon, truck, car, bins, crew, route, seg, binS, on: false, s: 0, v: 0, stop: -1, t: 0, done: new Set<number>() };
   });
-  seg.seg = 0;
-  const round = { on: false, s: 0, v: 0, stop: -1, t: 0, done: new Set<number>() };
+  type Round = (typeof rounds)[number];
 
   // The sweeper.
   const sw = sweeper();
@@ -130,15 +117,16 @@ export function buildService({ pool, board, random, scene, traffic }: PackDeps):
     return next;
   };
 
-  const tickRound = (dt: number) => {
+  const tickRound = (round: Round, dt: number) => {
+    const { truck, car, crew, bins, binS, route, seg, beacon } = round;
     if (!round.on) {
       truck.visible = false;
-      truckCar.active = false;
-      for (const c of crew) fade(c.a, false, dt);
+      car.active = false;
+      for (const c of crew) fade(c, false, dt);
       return;
     }
     // Sets out (out of sight, at the city's edge) only once its lane is clear there.
-    if (round.s === 0 && !clearToStart(truckCar, route.start.x, route.start.z, route.start.dx, route.start.dz)) { truck.visible = false; truckCar.active = false; return; }
+    if (round.s === 0 && !clearToStart(car, route.start.x, route.start.z, route.start.dx, route.start.dz)) { truck.visible = false; car.active = false; return; }
     truck.visible = true;
     beacon.emissiveIntensity = 0.5 + 0.9 * Math.max(0, Math.sin(round.t * 7));
     round.t += dt;
@@ -148,48 +136,54 @@ export function buildService({ pool, board, random, scene, traffic }: PackDeps):
     const stopping = round.stop >= 0 || (next >= 0 && stopAt - round.s < 3);
     route.point(round.s, here, seg);
     const seen = inView(here.x, here.z, here.dx, here.dz, 4, 3.2);
-    round.v = drive(truckCar, here.x, here.z, here.dx, here.dz, BIN_ROUND.speed * (seen ? 1 : UNSEEN_HURRY), round.v, dt, stopping);
+    round.v = drive(car, here.x, here.z, here.dx, here.dz, BIN_ROUND.speed * (seen ? 1 : UNSEEN_HURRY), round.v, dt, stopping);
     round.s += round.v * dt;
+    rollWheels(truck, round.v * dt);
     truck.position.set(here.x, 0.02, here.z);
     truck.rotation.y = Math.atan2(here.dx, here.dz);
     if (round.stop < 0 && next >= 0 && round.v < 0.05 && stopAt - round.s < 3) { round.stop = next; round.t = 0; }
-    // The crew's spots behind the lorry: on the ring's east road it faces south (+z), its rear to the north.
-    const rearX = here.x - here.dz * 1.5 - here.dx * 3.8;
-    const rearZ = here.z + here.dx * 1.5 - here.dz * 3.8;
+    // The crew's spot behind the lorry, on the side its bins stand (the inner kerb).
+    const b0 = bins[next >= 0 ? next : 0]?.at ?? here;
+    const side = Math.sign((b0.x - here.x) * -here.dz + (b0.z - here.z) * here.dx) || 1;
+    const rearX = here.x - here.dz * 1.5 * side - here.dx * 4.4;
+    const rearZ = here.z + here.dx * 1.5 * side - here.dz * 4.4;
     if (round.stop >= 0) {
       const b = bins[round.stop];
       const rear = { x: rearX, z: rearZ };
       // One fetches the bin to the lorry's rear, it is lifted and tipped, and they take it back.
-      const fetcher = crew[0].a;
+      const fetcher = crew[0];
       const t = round.t;
+      // Standing just beyond the bin, on the pavement.
+      const fx = b.at.x + Math.sign(b.at.x - here.x) * 0.6;
       fade(fetcher, true, dt, 3);
-      fade(crew[1].a, true, dt, 3);
+      fade(crew[1], true, dt, 3);
       if (t < BIN_ROUND.stop * 0.35) {
-        if (walkTo(fetcher, b.at.x - 0.6, b.at.z, 1.6, dt)) fetcher.pose = 'stand';
+        if (walkTo(fetcher, fx, b.at.z, 1.6, dt)) fetcher.pose = 'stand';
       } else if (t < BIN_ROUND.stop * 0.6) {
-        walkTo(fetcher, rear.x - 0.7, rear.z, 1.4, dt);
-        b.g.position.set(fetcher.x + 0.6, 0.1, fetcher.z);
+        walkTo(fetcher, rear.x + Math.sign(b.at.x - here.x) * 0.7, rear.z, 1.4, dt);
+        b.g.position.set(fetcher.x - Math.sign(b.at.x - here.x) * 0.6, 0.1, fetcher.z);
       } else if (t < BIN_ROUND.stop * 0.8) {
-        b.g.position.set(rear.x, 0.9, rear.z - 0.4);
+        // Up on the lifter at the hopper's mouth.
+        b.g.position.set(rear.x - Math.sign(b.at.x - here.x) * 1.5 - here.dx * 0.4, 0.9, rear.z - here.dz * 0.4);
         b.g.rotation.x = -1.6;
       } else {
         b.g.rotation.x = 0;
-        if (walkTo(fetcher, b.at.x - 0.6, b.at.z, 1.6, dt)) fetcher.pose = 'stand';
-        b.g.position.set(fetcher.x + 0.6, 0.1, fetcher.z);
+        if (walkTo(fetcher, fx, b.at.z, 1.6, dt)) fetcher.pose = 'stand';
+        b.g.position.set(fetcher.x - Math.sign(b.at.x - here.x) * 0.6, 0.1, fetcher.z);
       }
-      // The other waits at the back, then clears any dumped rubbish near the stop.
-      walkTo(crew[1].a, rear.x - 0.3, rear.z - 0.8, 1.6, dt);
-      crew[1].a.heading = Math.PI / 2;
+      // The other waits at the back, facing the bins, then clears any dumped rubbish near the stop.
+      walkTo(crew[1], rear.x - here.dx * 0.8, rear.z - here.dz * 0.8, 1.6, dt);
+      crew[1].heading = Math.atan2(b.at.x - crew[1].x, 0);
       if (t > BIN_ROUND.stop) {
         b.g.position.set(b.at.x, 0.1, b.at.z);
         for (const l of [...board.litter]) if (Math.abs(l.z - b.at.z) < 8 && Math.abs(l.x - b.at.x) < 4) l.clear();
         round.done.add(round.stop);
         round.stop = -1;
         // The crew hop back on.
-        for (const c of crew) { c.a.shown = 0; c.a.x = rear.x; c.a.z = rear.z; }
+        for (const c of crew) { c.shown = 0; c.x = rear.x; c.z = rear.z; }
       }
     } else {
-      for (const c of crew) { c.a.x = rearX; c.a.z = rearZ; fade(c.a, false, dt, 4); }
+      for (const c of crew) { c.x = rearX; c.z = rearZ; fade(c, false, dt, 4); }
     }
     if (round.s >= route.length) { round.on = false; }
   };
@@ -236,20 +230,24 @@ export function buildService({ pool, board, random, scene, traffic }: PackDeps):
       enabled = on;
       root.visible = on;
       if (!on) {
-        round.on = sweep.on = false;
-        truckCar.active = swCar.active = false;
+        sweep.on = false;
+        swCar.active = false;
+        for (const r of rounds) {
+          r.on = false;
+          r.car.active = false;
+          for (const c of r.crew) c.shown = 0;
+          for (const b of r.bins) { b.g.position.set(b.at.x, 0.1, b.at.z); b.g.rotation.x = 0; }
+        }
         for (const c of couriers) { c.on = false; c.car.active = false; c.a.shown = 0; }
-        for (const c of crew) c.a.shown = 0;
-        for (const b of bins) { b.g.position.set(b.at.x, 0.1, b.at.z); b.g.rotation.x = 0; }
       }
       last = -1;
     },
     update(dt, ctx) {
       if (!enabled) return;
-      for (const t of BIN_ROUND.times) if (due(t, ctx.clock) && !round.on) { Object.assign(round, { on: true, s: 0, v: BIN_ROUND.speed, stop: -1, t: 0, done: new Set<number>() }); seg.seg = 0; }
+      for (const r of rounds) for (const t of r.cfg.times) if (due(t, ctx.clock) && !r.on) { Object.assign(r, { on: true, s: 0, v: BIN_ROUND.speed, stop: -1, t: 0, done: new Set<number>() }); r.seg.seg = 0; }
       if (due(SWEEPER.time, ctx.clock) && !sweep.on) Object.assign(sweep, { on: true, x: SWEEPER.lane.from, v: SWEEPER.speed });
       last = ctx.clock;
-      tickRound(dt);
+      for (const r of rounds) tickRound(r, dt);
       tickSweep(dt);
       tickCouriers(dt, ctx.clock);
     },

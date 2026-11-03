@@ -13,6 +13,7 @@ import {
   PlaneGeometry,
   Scene,
   ShaderMaterial,
+  UnsignedByteType,
   UnsignedIntType,
   Vector2,
   Vector3,
@@ -22,6 +23,7 @@ import {
 import { PALETTE } from '../config/palette';
 import { chooseFrame, type RenderFrame } from './frame';
 import { HOVER_LAYER, SELECT_LAYER } from './highlight';
+import { GpuTimer, TIER_SETTINGS, type QualityTier } from './renderQuality';
 
 const srgb = (hex: number) => new Vector3(((hex >> 16) & 255) / 255, ((hex >> 8) & 255) / 255, (hex & 255) / 255);
 
@@ -32,6 +34,21 @@ const SKY = {
 };
 
 const FULLSCREEN = /* glsl */ `void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }`;
+
+/**
+ * The finishing pass per quality tier. High is the full look; Ultra adds to it; lower tiers take
+ * fewer taps for crease shading, wet reflections and glow, with gains that
+ * keep their overall strength (the sums of the dropped taps' weights).
+ */
+const COMPOSITE_DEFINES: Record<QualityTier, Record<string, string>> = {
+  // Twice the crease-shading directions (smoother, finer creases) and a light sharpening of the scene.
+  ultra: { AO_DIRS: '8', AO_STEPS: '2', REFL_STRIDE: '1', REFL_GAIN: '1.0', GLOW_STRIDE: '1', GLOW_RINGS: '2', GLOW_GAIN: '1.0', SHARPEN: '0.35' },
+  high: { AO_DIRS: '4', AO_STEPS: '2', REFL_STRIDE: '1', REFL_GAIN: '1.0', GLOW_STRIDE: '1', GLOW_RINGS: '2', GLOW_GAIN: '1.0' },
+  // 8 depth reads for creases (outer ring), 3 reflection and 8 glow taps.
+  medium: { AO_DIRS: '4', AO_STEPS: '1', REFL_STRIDE: '2', REFL_GAIN: '2.3333', GLOW_STRIDE: '2', GLOW_RINGS: '2', GLOW_GAIN: '2.0' },
+  // 8 depth reads, 2 reflection and 4 glow taps.
+  low: { AO_DIRS: '4', AO_STEPS: '1', REFL_STRIDE: '3', REFL_GAIN: '4.2', GLOW_STRIDE: '2', GLOW_RINGS: '1', GLOW_GAIN: '3.2' },
+};
 
 /**
  * Clean, crisp scene rendering with a light finishing pass:
@@ -61,9 +78,10 @@ export class ScenePipeline {
     depthBuffer: true,
   });
   /**
-   * The sun's shadow map is redrawn every other frame: people move a few
-   * centimetres a frame, which a frame-old shadow does not show, and the pass
-   * costs about as many draw calls again as the scene. It is redrawn at once
+   * The sun's shadow map is redrawn every other frame (every third or fourth
+   * on lower quality tiers): people move a few centimetres a frame, which a
+   * frame-old shadow does not show, and the pass costs about as many draw
+   * calls again as the scene. It is redrawn at once
    * when the view or the light changes, so a pan or a new hour never lags.
    */
   private shadowFrame = 0;
@@ -72,12 +90,22 @@ export class ScenePipeline {
   private readonly selectMaterial = new MeshBasicMaterial({ color: 0x00ff00, blending: AdditiveBlending, transparent: true });
   private readonly quadScene = new Scene();
   private readonly quadCamera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
-  private readonly composite: ShaderMaterial;
+  /** The finishing pass, one compiled variant per quality tier, sharing one set of uniforms. */
+  private readonly composites: Record<QualityTier, ShaderMaterial>;
+  private composite: ShaderMaterial;
+  private readonly quad: Mesh;
+  private tier: QualityTier = 'high';
+  private readonly gpuTimer: GpuTimer;
   frame: RenderFrame = chooseFrame(1, 1, 1);
 
   constructor(private readonly renderer: WebGLRenderer) {
     renderer.toneMapping = NoToneMapping;
     renderer.shadowMap.autoUpdate = false;
+    // Half floats need a colour-buffer extension (iOS 15.4+ exposes only the half-float one). Without
+    // either the target would be incomplete and the city black: 8 bits instead, clamped highlights.
+    if (!renderer.extensions.has('EXT_color_buffer_half_float') && !renderer.extensions.has('EXT_color_buffer_float')) {
+      this.colorTarget.texture.type = UnsignedByteType;
+    }
     const depth = new DepthTexture(1, 1);
     depth.type = UnsignedIntType;
     this.colorTarget.depthTexture = depth;
@@ -85,11 +113,7 @@ export class ScenePipeline {
     maskDepth.type = UnsignedIntType;
     this.maskTarget.depthTexture = maskDepth;
 
-    this.composite = new ShaderMaterial({
-      glslVersion: GLSL3,
-      depthTest: false,
-      depthWrite: false,
-      uniforms: {
+    const uniforms = {
         tColor: { value: this.colorTarget.texture },
         tDepth: { value: depth },
         tMask: { value: this.maskTarget.texture },
@@ -110,9 +134,8 @@ export class ScenePipeline {
         skyShift: { value: 0 },
         hoverColor: { value: srgb(0xfff2dc) },
         selectColor: { value: srgb(0xfff2dc) },
-      },
-      vertexShader: FULLSCREEN,
-      fragmentShader: /* glsl */ `
+    };
+    const fragmentShader = /* glsl */ `
         precision highp float;
         uniform sampler2D tColor;
         uniform sampler2D tDepth;
@@ -181,23 +204,32 @@ export class ScenePipeline {
           }
 
           vec3 c = sceneAt(uv);
+          #ifdef SHARPEN
+          // Unsharp mask on the scene before tone mapping, damped where the local contrast is
+          // already high so lamps and neon get no halo.
+          vec3 nb = sceneAt(uv + vec2(texel.x, 0.0)) + sceneAt(uv - vec2(texel.x, 0.0)) + sceneAt(uv + vec2(0.0, texel.y)) + sceneAt(uv - vec2(0.0, texel.y));
+          vec3 detail = c - 0.25 * nb;
+          c = max(c + detail * (SHARPEN / (1.0 + 4.0 * dot(abs(detail), vec3(0.333)))), vec3(0.0));
+          #endif
 
           // Crease shading: a pixel nearer than the average of opposite
           // neighbours sits in a concave corner (wall foot, under eaves).
           float d = depthAt(uv);
           float r = clamp(0.7 / worldPerPixel, 3.0 * dpr, 20.0 * dpr);
+          #if AO_STEPS > 0
           float occ = 0.0;
-          for (int k = 0; k < 4; k++) {
-            float a = float(k) * 0.785398 + 0.3;
+          for (int k = 0; k < AO_DIRS; k++) {
+            float a = float(k) * (3.14159265 / float(AO_DIRS)) + 0.3;
             vec2 o = vec2(cos(a), sin(a)) * r * texel;
-            for (int s = 1; s <= 2; s++) {
+            for (int s = 3 - AO_STEPS; s <= 2; s++) {
               vec2 oo = o * (float(s) * 0.5);
               float mid = 0.5 * (depthAt(uv + oo) + depthAt(uv - oo));
               float gap = mid - d;
               occ += clamp((gap - 0.04) / 0.6, 0.0, 1.0) * (1.0 - smoothstep(1.2, 3.0, gap));
             }
           }
-          c *= 1.0 - 0.32 * (occ / 8.0);
+          c *= 1.0 - 0.32 * (occ / float(AO_DIRS * AO_STEPS));
+          #endif
 
           // Wet street: flat ground (depth rising up the screen at the ground
           // plane's rate) catches smeared reflections of the bright things above
@@ -210,7 +242,7 @@ export class ScenePipeline {
           ground *= 1.0 - smoothstep(0.2, 0.45, world.y / world.w);
           if (ground > 0.0 && wetness > 0.0) {
             vec3 refl = vec3(0.0);
-            for (int k = 1; k <= 6; k++) {
+            for (int k = REFL_STRIDE; k <= 6; k += REFL_STRIDE) {
               float fk = float(k);
               // Per-pixel jitter along the streak, so samples blend into a smear instead of dashes.
               vec2 o = vec2(sin(p.y * 0.37 + fk) * 0.6, (fk + hash(p + fk)) * 7.0) * dpr * texel;
@@ -220,22 +252,22 @@ export class ScenePipeline {
               refl += s * (max(lum - 0.7, 0.0) / max(lum, 1e-3)) * (1.0 - fk / 7.0);
             }
             float puddle = 0.55 + 0.45 * hash(floor(p / (9.0 * dpr)));
-            c += refl * 0.16 * wetness * ground * puddle;
+            c += refl * (0.16 * REFL_GAIN) * wetness * ground * puddle;
           }
 
           // Glow: bright lamps, neon and lit windows bleed softly into the damp
           // air around them. Sixteen taps on two rings, bright parts only.
           vec3 glow = vec3(0.0);
-          for (int k = 0; k < 8; k++) {
+          for (int k = 0; k < 8; k += GLOW_STRIDE) {
             float a = float(k) * 0.785398 + 0.2;
-            for (int ring = 1; ring <= 2; ring++) {
+            for (int ring = 1; ring <= GLOW_RINGS; ring++) {
               vec2 o = vec2(cos(a), sin(a)) * float(ring) * 7.0 * dpr * texel;
               vec3 s = sceneAt(uv + o);
               float sl = dot(s, vec3(0.299, 0.587, 0.114));
               glow += s * (max(sl - 0.85, 0.0) / max(sl, 1e-3)) * (ring == 1 ? 1.0 : 0.6);
             }
           }
-          c += glow * 0.07;
+          c += glow * (0.07 * GLOW_GAIN);
 
           // Tone, then a muted grade: cool shadows, warm light.
           c = aces(c * exposure);
@@ -268,13 +300,56 @@ export class ScenePipeline {
 
           outColor = vec4(toSRGB(clamp(c * vignette, 0.0, 1.0)), 1.0);
         }
-      `,
-    });
-    this.quadScene.add(new Mesh(new PlaneGeometry(2, 2), this.composite));
+      `;
+    const variant = (tier: QualityTier) => new ShaderMaterial({ glslVersion: GLSL3, depthTest: false, depthWrite: false, uniforms, defines: COMPOSITE_DEFINES[tier], vertexShader: FULLSCREEN, fragmentShader });
+    this.composites = { ultra: variant('ultra'), high: variant('high'), medium: variant('medium'), low: variant('low') };
+    this.composite = this.composites.high;
+    this.quad = new Mesh(new PlaneGeometry(2, 2), this.composite);
+    this.quadScene.add(this.quad);
+    this.gpuTimer = new GpuTimer(renderer.getContext() as WebGL2RenderingContext);
+  }
+
+  /**
+   * Compiles every tier's finishing pass now, so a later tier change never
+   * stalls on a shader compile mid-play. Returns the time it took (ms).
+   */
+  precompile(): number {
+    const t0 = performance.now();
+    for (const tier of ['ultra', 'high', 'medium', 'low'] as const) {
+      this.quad.material = this.composites[tier];
+      this.renderer.compile(this.quadScene, this.quadCamera);
+    }
+    this.quad.material = this.composite;
+    return performance.now() - t0;
+  }
+
+  /** The current quality tier's finishing pass and multisampling (the caller resizes for its density). */
+  setTier(tier: QualityTier): void {
+    if (tier === this.tier) return;
+    this.tier = tier;
+    this.composite = this.quad.material = this.composites[tier];
+    const samples = TIER_SETTINGS[tier].samples;
+    if (this.colorTarget.samples !== samples) {
+      // Freed now and allocated at the new count on the next render (same size).
+      this.colorTarget.dispose();
+      this.colorTarget.samples = samples;
+    }
+    this.shadowsStale = true;
+  }
+
+  /** Whether GPU times are available (desktop Chrome, Edge; not Safari or most phones). */
+  get timesGpu(): boolean {
+    return this.gpuTimer.available;
+  }
+
+  /** Hands finished frames' GPU times (ms) to `out`. */
+  pollGpu(out: (ms: number) => void): void {
+    this.gpuTimer.poll(out);
   }
 
   resize(cssW: number, cssH: number, deviceDpr: number): RenderFrame {
-    const frame = chooseFrame(cssW, cssH, deviceDpr);
+    const tier = TIER_SETTINGS[this.tier];
+    const frame = chooseFrame(cssW, cssH, deviceDpr, tier.maxDpr, tier.scale);
     this.frame = frame;
     this.renderer.setPixelRatio(frame.dpr);
     this.renderer.setSize(cssW, cssH, false);
@@ -319,8 +394,9 @@ export class ScenePipeline {
   /** Renders the scene, the highlight mask (only when needed) and the composite. */
   render(scene: Scene, camera: OrthographicCamera, highlight: { hover: boolean; select: boolean } = { hover: false, select: false }): void {
     const r = this.renderer;
-    r.shadowMap.needsUpdate = this.shadowsStale || (this.shadowFrame++ & 1) === 0;
+    r.shadowMap.needsUpdate = this.shadowsStale || this.shadowFrame++ % TIER_SETTINGS[this.tier].shadowEvery === 0;
     this.shadowsStale = false;
+    this.gpuTimer.begin();
     r.setRenderTarget(this.colorTarget);
     r.render(scene, camera);
     (this.composite.uniforms.invViewProj.value as Matrix4).multiplyMatrices(camera.matrixWorld, camera.projectionMatrixInverse);
@@ -351,5 +427,6 @@ export class ScenePipeline {
 
     r.setRenderTarget(null);
     r.render(this.quadScene, this.quadCamera);
+    this.gpuTimer.end();
   }
 }

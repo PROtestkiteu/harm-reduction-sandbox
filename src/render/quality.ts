@@ -16,8 +16,6 @@ export interface Quality {
   shadowMap: number;
   /** Most detailed figures for the people out in the city. */
   figures: number;
-  /** Lowest render scale dynamic resolution may drop to. */
-  minScale: number;
   /** Fetch the scenery kits after start. */
   kits: boolean;
 }
@@ -42,7 +40,6 @@ function detect(): Quality {
     maxDpr: low ? 1.25 : coarse ? 1.75 : 2,
     shadowMap: low ? 1024 : 2048,
     figures: low ? 10 : 28,
-    minScale: low ? 0.5 : 0.6,
     kits: !low && !slowNet,
   };
 }

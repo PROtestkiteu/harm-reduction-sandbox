@@ -34,7 +34,7 @@ export function buildCycling({ pool, random, scene }: PackDeps): Pack {
     a.pose = 'sit';
     a.lift = 0.38;
     a.speed = 1;
-    return { a, s: random() * 8 * CYCLING.ring, dir: i % 2 ? -1 : 1, speed: range(random, CYCLING.speed), rest: random() * 20, riding: false };
+    return { a, s: random() * 8 * CYCLING.inner, dir: i % 2 ? -1 : 1, speed: range(random, CYCLING.speed), rest: random() * 20, riding: false };
   });
   for (const rack of RACKS) {
     const g = bikeRack(root, rack.bikes, CYCLING.frames, random);
@@ -57,9 +57,9 @@ export function buildCycling({ pool, random, scene }: PackDeps): Pack {
           if (out && (r.rest -= dt) <= 0) { r.riding = true; r.rest = range(random, CYCLING.rest) * 3; }
           return;
         }
-        // Clockwise keeps right on the outer side of the lane, anticlockwise on the inner.
+        // Keeping right: clockwise in the lane along the inner kerb, anticlockwise along the outer.
         r.s += r.dir * r.speed * dt;
-        onSquare(CYCLING.ring + r.dir * CYCLING.keepRight, r.s, p);
+        onSquare(r.dir > 0 ? CYCLING.inner : CYCLING.outer, r.s, p);
         r.a.x = p.x;
         r.a.z = p.z;
         r.a.heading = r.dir > 0 ? p.h : p.h + Math.PI;

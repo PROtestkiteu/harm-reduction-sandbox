@@ -1,3 +1,4 @@
+import { COIN } from '../ui/money';
 /**
  * Sandbox parameter schema: every slider the controls panel shows, with its
  * range, default and readout. Defaults come from `illustrative.ts`, so all
@@ -62,7 +63,7 @@ const serviceParams = (id: ServiceId, staffMax: number, waitingMax: number, pati
 export const PARAMS = [
   {
     id: 'orgBudget', group: 'org', label: t('Budget now'), min: 0, max: 10000, step: 50, default: ORG.startBudget,
-    format: (v: number) => `● ${Math.round(v).toLocaleString(LOCALE)}`,
+    format: (v: number) => `${COIN} ${Math.round(v).toLocaleString(LOCALE)}`,
     hint: t('Money in game units. Follows the night live; dragging sets it. Wages, kits, analyses and naloxone draw it down; funding refills it.'),
   },
   {

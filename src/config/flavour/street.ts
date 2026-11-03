@@ -42,8 +42,8 @@ const WALL = 45.4;
 export const DEAL_SPOTS: readonly DealSpot[] = [
   { at: { x: WALL, z: -6 }, face: Math.PI / 2, lookout: { x: WALL, z: -12.5 }, approach: [{ x: EAST, z: -44 }, { x: EAST, z: 13 }], uses: [0, 1], stubborn: true },
   { at: { x: WALL, z: 31 }, face: Math.PI / 2, lookout: { x: WALL, z: 38 }, approach: [{ x: EAST, z: 26 }, { x: EAST, z: 44 }], uses: [2] },
-  // The big park, west lawn.
-  { at: { x: -48, z: 88 }, face: Math.PI / 4, lookout: { x: -52, z: 80 }, approach: [{ x: -69, z: 96 }, { x: -40, z: 78 }], uses: [3, 4, 5] },
+  // The big park, west lawn south of the long path (the festival grounds fence the lawn north of it).
+  { at: { x: -48, z: 110 }, face: Math.PI / 4, lookout: { x: -52, z: 104.6 }, approach: [{ x: -69, z: 112 }, { x: -40, z: 104.4 }], uses: [3, 4, 5] },
 ];
 
 export const USE_SPOTS: readonly UseSpot[] = [
@@ -51,10 +51,10 @@ export const USE_SPOTS: readonly UseSpot[] = [
   { at: { x: 45.35, z: 3.5 }, face: Math.PI / 2, pose: 'sit', group: 'east' },
   { at: { x: 45.6, z: 4.6 }, face: Math.PI / 2, pose: 'crouch', group: 'east' },
   { at: { x: 45.35, z: 41.0 }, face: Math.PI / 2, pose: 'sit', group: 'east' },
-  // The big park, west lawn, a little in from the path.
-  { at: { x: -44, z: 86.5 }, face: Math.PI / 2, pose: 'sit', group: 'park' },
-  { at: { x: -42.8, z: 87.6 }, face: -Math.PI / 2, pose: 'crouch', group: 'park' },
-  { at: { x: -43.5, z: 84.6 }, face: 0.4, pose: 'sit', group: 'park' },
+  // The big park, west lawn south of the long path, a little in from it.
+  { at: { x: -44, z: 108.5 }, face: Math.PI / 2, pose: 'sit', group: 'park' },
+  { at: { x: -42.8, z: 109.6 }, face: -Math.PI / 2, pose: 'crouch', group: 'park' },
+  { at: { x: -43.5, z: 106.6 }, face: 0.4, pose: 'sit', group: 'park' },
 ];
 
 /** Extra spots that are always occupied while the scene runs: people who stay put, unconnected to the flow. */

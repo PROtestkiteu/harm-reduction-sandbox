@@ -128,7 +128,7 @@ function grow(o: Object3D, on: boolean, dt: number, still: boolean): void {
   o.visible = s > 0.01;
 }
 
-export function buildChaos({ scene, pool, board, random }: PackDeps): Pack {
+export function buildChaos({ scene, pool, board, random, dispatch }: PackDeps): Pack {
   const root = new Group();
   scene.add(root);
   const fronts = frontsOf(random, 10);
@@ -158,7 +158,8 @@ export function buildChaos({ scene, pool, board, random }: PackDeps): Pack {
       a.shown = 0;
       return a;
     });
-    return { ...b, warm, phase: random() * 10 };
+    // `lit`: burning now; `outFor`: seconds it stays out after the fire brigade has been (it may light again later).
+    return { ...b, warm, phase: random() * 10, at: p, lit: false, callIn: -1, outFor: 0 };
   });
 
   // People slumped against the wall, nodding.
@@ -218,9 +219,17 @@ export function buildChaos({ scene, pool, board, random }: PackDeps): Pack {
       const dark = ctx.night > 0.3;
       const nBarrels = dark ? Math.round(share('barrels', street) * barrels.length) : 0;
       barrels.forEach((b, i) => {
-        const on = i < nBarrels;
-        grow(b.g, on, dt, still);
-        if (b.g.visible) {
+        if (b.outFor > 0) b.outFor -= dt;
+        const there = i < nBarrels;
+        const on = there && b.outFor <= 0;
+        // Newly alight: now and then someone calls the fire brigade, who put it out a minute after they are called.
+        if (on && !b.lit && dispatch && random() < 0.35 && dispatch('fire', b.at.x, b.at.z, t('A drum fire on the pavement. Someone called the fire brigade.'))) b.callIn = 70;
+        b.lit = on;
+        if (b.callIn > 0 && (b.callIn -= dt) <= 0) { b.callIn = -1; b.outFor = 600; }
+        // A doused drum stays where it is, cold, its people gone.
+        grow(b.g, there, dt, still);
+        b.flame.visible = on;
+        if (b.g.visible && on) {
           const f = still ? 1 : 0.8 + 0.2 * Math.sin(time * 13 + b.phase) + 0.1 * Math.sin(time * 29 + b.phase * 2);
           b.flame.scale.set(1, f, 1);
           b.flameMat.opacity = 0.6 + 0.3 * f;

@@ -29,3 +29,12 @@ export function inView(x: number, z: number, dx = 0, dz = 0, half = 0, h = 4, y 
   }
   return false;
 }
+
+/** Where (x, y, z) falls on screen, in clip space (-1 to 1 across and up), into `out`; false without a camera. */
+export function onScreen(x: number, y: number, z: number, out: { x: number; y: number }): boolean {
+  if (!camera) return false;
+  v.set(x, y, z).project(camera);
+  out.x = v.x;
+  out.y = v.y;
+  return true;
+}

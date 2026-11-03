@@ -26,7 +26,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { gltfLoader } from '../world/gltfLoader';
 import { PALETTE } from '../config/palette';
-import type { Appearance, BodyState, Pose } from './character';
+import { bodyType, type Appearance, type BodyState, type BodyType, type Pose } from './character';
 
 /**
  * People built from sculpted CC0 base characters (Quaternius), dressed in
@@ -557,6 +557,46 @@ function trolley(scale: number): ThreeGroup {
   return g;
 }
 
+/**
+ * Body shapes as cross-sections at the hips, belly, waist, chest, arms and
+ * legs, each [width, depth] against the ordinary body (the bones run along
+ * their local y, so x and z are across them). Applied once as bone scales
+ * (the clips animate no scale), so every shape shares one skinned geometry.
+ */
+const SHAPES: Record<BodyType, { pelvis: [number, number]; belly: [number, number]; waist: [number, number]; chest: [number, number]; arms: number; legs: number }> = {
+  average: { pelvis: [1, 1], belly: [1, 1], waist: [1, 1], chest: [1, 1], arms: 1, legs: 1 },
+  slim: { pelvis: [0.86, 0.86], belly: [0.8, 0.78], waist: [0.82, 0.8], chest: [0.88, 0.86], arms: 0.8, legs: 0.84 },
+  lanky: { pelvis: [0.86, 0.84], belly: [0.78, 0.76], waist: [0.8, 0.78], chest: [0.86, 0.84], arms: 0.76, legs: 0.8 },
+  heavy: { pelvis: [1.26, 1.3], belly: [1.55, 1.8], waist: [1.42, 1.55], chest: [1.22, 1.26], arms: 1.3, legs: 1.26 },
+  pear: { pelvis: [1.36, 1.26], belly: [1.18, 1.2], waist: [1.02, 1.04], chest: [0.96, 0.98], arms: 1.02, legs: 1.3 },
+  broad: { pelvis: [1.04, 1.04], belly: [1.06, 1.08], waist: [1.16, 1.12], chest: [1.34, 1.18], arms: 1.26, legs: 1.1 },
+  stocky: { pelvis: [1.2, 1.16], belly: [1.3, 1.36], waist: [1.28, 1.28], chest: [1.24, 1.2], arms: 1.26, legs: 1.26 },
+};
+
+/**
+ * Gives a figure its body shape: each bone's local scale is its target
+ * cross-section over its parent's (scales multiply down the chain), the
+ * neck takes the chest's back off so the head keeps its size, and the arms
+ * and legs get their own thickness. The spine bends little, so the shear a
+ * child picks up from a scaled parent stays slight.
+ */
+function shapeBody(mesh: SkinnedMesh, type: BodyType): void {
+  if (type === 'average') return;
+  const s = SHAPES[type];
+  const bone = (n: string) => mesh.skeleton.bones.find((b) => b.name === n);
+  const set = (n: string, x: number, z: number) => { const b = bone(n); if (b) b.scale.set(x, 1, z); };
+  set('pelvis', s.pelvis[0], s.pelvis[1]);
+  set('spine_01', s.belly[0] / s.pelvis[0], s.belly[1] / s.pelvis[1]);
+  set('spine_02', s.waist[0] / s.belly[0], s.waist[1] / s.belly[1]);
+  set('spine_03', s.chest[0] / s.waist[0], s.chest[1] / s.waist[1]);
+  set('neck_01', 1 / s.chest[0], 1 / s.chest[1]);
+  // The clavicles run sideways from the chest: the arms' thickness is set across them against the chest's.
+  for (const side of ['l', 'r']) {
+    set(`clavicle_${side}`, s.arms / Math.sqrt(s.chest[0] * s.chest[1]), s.arms / Math.sqrt(s.chest[0] * s.chest[1]));
+    set(`thigh_${side}`, s.legs / s.pelvis[0], s.legs / s.pelvis[1]);
+  }
+}
+
 /** Muted, worn version of a colour: cloth is never showroom-clean. */
 function worn(hex: number, amount = 0.35): Color {
   const c = new Color(hex);
@@ -614,6 +654,7 @@ export class HumanFigure {
     this.mesh.material = this.material;
 
     this.root.scale.setScalar(look.height / lib.bodies[sex].height);
+    shapeBody(this.mesh, bodyType(look));
     this.mixer = new AnimationMixer(this.root);
     for (const name of new Set(Object.values(CLIP))) {
       const clip = lib.clips.get(name);

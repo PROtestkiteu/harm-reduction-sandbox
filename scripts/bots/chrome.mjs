@@ -99,7 +99,7 @@ function sweep() {
  * Opens `url`, runs `steps` in order and returns what each `eval` step gave
  * back. Page errors are printed to stderr. Screenshots and profiles go to `out`.
  */
-export async function drive(url, steps, { out = '.', size = '1280x800', seed = process.env.SEED, settle = 9000, log = console.log } = {}) {
+export async function drive(url, steps, { out = '.', size = '1280x800', dpr = 1, seed = process.env.SEED, settle = 9000, log = console.log, cpuThrottle = 1 } = {}) {
   const [w, h] = size.split('x').map(Number);
   const port = 9300 + Math.floor(Math.random() * 500);
   sweep();
@@ -131,7 +131,9 @@ export async function drive(url, steps, { out = '.', size = '1280x800', seed = p
     const send = (method, params = {}) => new Promise((r) => { const n = ++id; waiting.set(n, r); ws.send(JSON.stringify({ id: n, method, params })); });
     await send('Runtime.enable');
     await send('Page.enable');
-    await send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: w < 768 });
+    await send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: dpr, mobile: w < 768 });
+    // A weak phone's CPU: every task runs this many times slower (the GPU is not throttled).
+    if (cpuThrottle > 1) await send('Emulation.setCPUThrottlingRate', { rate: cpuThrottle });
     if (seed !== undefined) await send('Page.addScriptToEvaluateOnNewDocument', { source: seeded(seed) });
     await send('Page.navigate', { url });
     await sleep(settle);

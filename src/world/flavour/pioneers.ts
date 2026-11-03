@@ -26,8 +26,8 @@ export function buildPioneers({ pool, board, random, scene }: PackDeps): Pack {
   let wait = range(random, PIONEER_TIMING.gap) * 0.4;
   let leg = 0;
   let sayIn = 2;
-  // The rider's line along the ring road's north lane, eastbound, keeping right.
-  const lane = { z: -CYCLING.ring - CYCLING.keepRight, x0: -62, x1: 62 };
+  // The rider's line along the ring road's north side, eastbound, keeping right: the bike lane by the inner kerb.
+  const lane = { z: -CYCLING.inner, x0: -62, x1: 62 };
 
   const start = () => {
     let i = Math.floor(random() * people.length);

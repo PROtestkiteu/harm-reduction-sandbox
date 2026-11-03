@@ -30,7 +30,7 @@ async () => {
   vg.BUSKER.listeners.forEach((p, i) => add('listener' + i, p));
   vg.DELIVERY.wait.forEach((p, i) => add('riderBike' + i, p, 0.6));
   add('bench', vg.BENCH.at, 0.85); add('pigeons', { x: vg.BENCH.at.x, z: vg.BENCH.at.z + 1.6 }, 1.6);
-  sv.BIN_ROUND.bins.forEach((p, i) => add('bin' + i, p, 0.45));
+  sv.BIN_ROUNDS.flatMap((r) => r.bins).forEach((p, i) => add('bin' + i, p, 0.45));
   vg.HOTDOG.pitches.forEach((p, i) => { add('cartPitch' + i, p, 0.8); });
   vg.BUS_STOPS.stops.forEach((st, i) => {
     const fx = Math.sin(st.face), fz = Math.cos(st.face);

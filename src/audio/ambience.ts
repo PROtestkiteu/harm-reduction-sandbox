@@ -1,4 +1,5 @@
 import { loopNoise, type NoiseBank } from './noise';
+import type { Channel } from './settings';
 
 /** What the ambience should sound like now; every value 0 to 1. */
 export interface AmbienceMood {
@@ -10,6 +11,10 @@ export interface AmbienceMood {
   club: number;
   /** Rain on the streets. */
   rain: number;
+  /** Where the club is across the view, -1 left to 1 right. */
+  clubPan: number;
+  /** How close-up the view is (0 whole city, 1 a corner): footsteps and clinks carry only close up. */
+  close: number;
   /** Overall level: lower while the game is paused. */
   level: number;
 }
@@ -77,7 +82,10 @@ export class Ambience {
   private readonly wait = { far: 0, near: 4, steps: 6, clink: 40, siren: 90 };
   private readonly filter: (type: BiquadFilterType, hz: number, q?: number) => BiquadFilterNode;
 
-  constructor(private readonly ctx: AudioContext, private readonly out: AudioNode, private readonly noise: NoiseBank, private readonly random: () => number) {
+  private readonly clubPan: StereoPannerNode;
+
+  /** `bus` is the mixer's channels: each layer plays into its own (the street bed to city, cars to traffic, and so on). */
+  constructor(private readonly ctx: BaseAudioContext, private readonly bus: Record<Channel, AudioNode>, private readonly noise: NoiseBank, private readonly random: () => number, private readonly on: (c: Channel) => boolean) {
     this.filter = (type, hz, q = 0.7) => {
       const f = ctx.createBiquadFilter();
       f.type = type;
@@ -91,7 +99,7 @@ export class Ambience {
       g.gain.value = 0;
       return g;
     };
-    const voice = (q: number): Voice => {
+    const voice = (q: number, out: AudioNode): Voice => {
       const band = f('bandpass', 500, q);
       const gain = silent();
       const pan = ctx.createStereoPanner();
@@ -102,19 +110,19 @@ export class Ambience {
     // The air of a city at night: soft pink noise between 180 Hz and a couple of kHz, its level wandering.
     this.bed = silent();
     this.bedTone = f('lowpass', 2000);
-    loopNoise(ctx, noise.pink, random, 0.9).connect(f('highpass', 180)).connect(this.bedTone).connect(this.bed).connect(out);
+    loopNoise(ctx, noise.pink, random, 0.9).connect(f('highpass', 180)).connect(this.bedTone).connect(this.bed).connect(bus.city);
     this.bedWander = new Wander(random, 0.25, 1, [4, 12]);
 
     // Far cars: up to five overlapping, slow and dull; together a wash that comes and goes.
-    for (let i = 0; i < 5; i++) this.far.push(voice(0.5));
+    for (let i = 0; i < 5; i++) this.far.push(voice(0.5, bus.traffic));
     // Nearer cars: brighter, quicker, panned across.
-    for (let i = 0; i < 2; i++) this.near.push(voice(0.9));
+    for (let i = 0; i < 2; i++) this.near.push(voice(0.9, bus.traffic));
 
     // Rain: a hiss that gusts, and droplets on hard ground.
     this.rain = silent();
-    loopNoise(ctx, noise.white, random, 1).connect(f('highpass', 900)).connect(f('lowpass', 6500)).connect(this.rain).connect(out);
+    loopNoise(ctx, noise.white, random, 1).connect(f('highpass', 900)).connect(f('lowpass', 6500)).connect(this.rain).connect(bus.weather);
     this.drops = silent();
-    loopNoise(ctx, noise.drops, random, 1).connect(f('highpass', 1500)).connect(f('lowpass', 8000)).connect(this.drops).connect(out);
+    loopNoise(ctx, noise.drops, random, 1).connect(f('highpass', 1500)).connect(f('lowpass', 8000)).connect(this.drops).connect(bus.weather);
     this.rainGust = new Wander(random, 0.3, 1, [2, 7]);
 
     // People talking outside the club: a band of noise whose level flickers at the pace of speech.
@@ -124,12 +132,13 @@ export class Ambience {
     const syllables = ctx.createGain();
     syllables.gain.value = 9;
     loopNoise(ctx, noise.white, random, 0.07).connect(f('lowpass', 7, 0.5)).connect(syllables).connect(talk.gain);
-    loopNoise(ctx, noise.pink, random, 1).connect(f('bandpass', 700, 0.8)).connect(f('lowpass', 2400)).connect(talk).connect(this.murmur).connect(out);
+    loopNoise(ctx, noise.pink, random, 1).connect(f('bandpass', 700, 0.8)).connect(f('lowpass', 2400)).connect(talk).connect(this.murmur).connect(bus.people);
     this.murmurWander = new Wander(random, 0.5, 1, [4, 10]);
 
     // The club's sound through its walls: kicks and bass go to this bus, muffled.
     this.club = silent();
-    this.club.connect(f('lowpass', 520, 0.9)).connect(out);
+    this.clubPan = ctx.createStereoPanner();
+    this.club.connect(f('lowpass', 520, 0.9)).connect(this.clubPan).connect(bus.music);
   }
 
   /**
@@ -149,7 +158,7 @@ export class Ambience {
     const tone = this.filter('lowpass', 9000);
     const gain = ctx.createGain();
     gain.gain.value = 0;
-    src.connect(tone).connect(gain).connect(this.out);
+    src.connect(tone).connect(gain).connect(this.bus.city);
     src.start(ctx.currentTime, 0.06 + this.random() * (buffer.duration - 0.2));
     this.recorded = { gain, tone, wander: new Wander(this.random, 0.55, 1, [6, 16]) };
   }
@@ -176,7 +185,8 @@ export class Ambience {
     const crowd = Math.max(m.club, 0.25 * m.busy ** 2);
     this.murmur.gain.setTargetAtTime(LEVEL.murmur * m.level * crowd * this.murmurWander.step(dt), now, 1);
     this.club.gain.setTargetAtTime(m.level * m.club, now, 0.6);
-    if (m.club > 0.01) this.scheduleBeats(now);
+    this.clubPan.pan.setTargetAtTime(m.clubPan, now, 0.4);
+    if (m.club > 0.01 && this.on('music')) this.scheduleBeats(now);
     else this.nextBeat = 0;
     if (!events) return;
 
@@ -184,26 +194,27 @@ export class Ambience {
     const w = this.wait;
     const busy = m.busy;
     for (const k of Object.keys(w) as (keyof typeof w)[]) w[k] -= dt * rate;
-    if (w.far <= 0 && !rec) {
+    const on = this.on;
+    if (w.far <= 0 && !rec && on('traffic')) {
       w.far = (3 + 6 * this.random()) / (0.15 + busy * busy);
       this.pass(this.far, now, m.level * LEVEL.far * (0.4 + 0.6 * this.random()), 5 + this.random() * 7, 220, 1.5, 0.5, m.night);
     }
-    if (w.near <= 0) {
+    if (w.near <= 0 && on('traffic')) {
       w.near = (6 + 14 * this.random()) / (0.1 + busy) * (rec ? 2 : 1);
       const wet = m.rain > 0.3 ? 1.6 : 1;
       this.pass(this.near, now, m.level * LEVEL.near * (0.5 + 0.5 * this.random()), 2.2 + this.random() * 2, 380 * wet, 2.6, 0.9, m.night);
     }
     if (w.steps <= 0) {
       w.steps = (8 + 18 * this.random()) / (0.15 + busy) * (rec ? 1.4 : 1);
-      this.footsteps(now, m.level);
+      if (on('people')) this.footsteps(now, m.level * (0.3 + 0.7 * m.close));
     }
     if (w.clink <= 0) {
       w.clink = 40 + 80 * this.random();
-      if (m.night > 0.5) this.clink(now, m.level);
+      if (m.night > 0.5 && on('people')) this.clink(now, m.level * (0.3 + 0.7 * m.close));
     }
     if (w.siren <= 0) {
       w.siren = 120 + 240 * this.random();
-      if (m.night > 0.3) this.siren(now, m.level);
+      if (m.night > 0.3 && on('events')) this.siren(now, m.level);
     }
   }
 
@@ -245,7 +256,7 @@ export class Ambience {
     const peak = LEVEL.steps * level * (0.4 + 0.6 * this.random());
     const dir = this.random() < 0.5 ? -1 : 1;
     const pan = ctx.createStereoPanner();
-    pan.connect(this.out);
+    pan.connect(this.bus.people);
     for (let i = 0; i < steps; i++) {
       const t = now + 0.05 + i * gap * (0.95 + 0.1 * this.random());
       const x = i / (steps - 1);
@@ -271,7 +282,7 @@ export class Ambience {
     const base = 1900 + this.random() * 900;
     const pan = ctx.createStereoPanner();
     pan.pan.value = this.random() * 1.6 - 0.8;
-    pan.connect(this.out);
+    pan.connect(this.bus.people);
     for (const [ratio, amp, decay] of [[1, 1, 0.09], [2.76, 0.5, 0.05], [5.4, 0.25, 0.03]] as const) {
       const o = ctx.createOscillator();
       o.frequency.value = base * ratio;
@@ -319,7 +330,7 @@ export class Ambience {
     const dir = this.random() < 0.5 ? -1 : 1;
     pan.pan.setValueAtTime(-0.6 * dir, t);
     pan.pan.linearRampToValueAtTime(0.6 * dir, t + dur);
-    o.connect(this.filter('lowpass', 1400)).connect(g).connect(pan).connect(this.out);
+    o.connect(this.filter('lowpass', 1400)).connect(g).connect(pan).connect(this.bus.events);
     o.start(t);
     o.stop(t + dur + 0.1);
   }

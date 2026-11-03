@@ -22,9 +22,21 @@ export interface CityBuilding {
   readonly front?: Side;
   /** Its roof, when the builder knows it: flat (with a parapet), pitched (tiles, ridge along the longer side) or mansard. */
   readonly roof?: RoofKind;
+  /** The open part of a flat roof (world ground rect), clear of a higher end, a set-back floor or a shed; absent with none. */
+  readonly deck?: { x0: number; x1: number; z0: number; z1: number };
 }
 
-export type RoofKind = 'flat' | 'pitched' | 'mansard';
+/**
+ * A building's roof: 'flat' is one open deck (room for a dome, a terrace, a
+ * rooftop room); 'built' is flat but with something standing on it (a higher
+ * end, a set-back top floor, a shed or a rooftop feature), so nothing else fits.
+ */
+export type RoofKind = 'flat' | 'built' | 'pitched' | 'mansard';
+
+/** The top of a building's flat roof (its deck, inside the parapet), or null when it has another roof or none registered. */
+export function flatRoofTop(b: CityBuilding): number | null {
+  return b.roof === 'flat' ? b.height + 0.12 : null;
+}
 
 /**
  * Every ordinary building the district builds registers here, so it can be
@@ -36,19 +48,28 @@ const box = new Box3();
 const hit = new Vector3();
 
 /** Registers a building for picking; returns its id. */
-export function registerBuilding(x0: number, x1: number, z0: number, z1: number, height: number, ground = false, front?: Side, roof?: RoofKind): number {
+export function registerBuilding(x0: number, x1: number, z0: number, z1: number, height: number, ground = false, front?: Side, roof?: RoofKind, deck?: CityBuilding['deck']): number {
   const storeys = Math.max(1, Math.round(height / 3));
   const area = (x1 - x0) * (z1 - z0);
   const use: BuildingUse = storeys <= 1 ? 'shopfront' : storeys === 2 ? 'flats over shops' : storeys >= 4 ? 'tenement' : 'flats';
   const homesPerFloor = Math.max(1, Math.round(area / 70));
   const households = use === 'shopfront' ? 0 : homesPerFloor * (storeys - (use === 'flats over shops' ? 1 : 0));
-  buildings.push({ id: buildings.length, x0, x1, z0, z1, height, storeys, use, households: ground ? 0 : households, ground, front, roof });
+  buildings.push({ id: buildings.length, x0, x1, z0, z1, height, storeys, use, households: ground ? 0 : households, ground, front, roof, deck });
   return buildings.length - 1;
 }
 
 /** Every ordinary building (camps and fixed businesses left out). */
 export function allBuildings(): readonly CityBuilding[] {
   return buildings.filter((b) => !b.ground);
+}
+
+/** Buildings whose look is spoken for (shops, venues, places of worship, the squat, landmarks): flavour packs leave them be. */
+const claimed = new Set<number>();
+export function claimLook(ids: Iterable<number>): void {
+  for (const id of ids) claimed.add(id);
+}
+export function lookClaimed(id: number): boolean {
+  return claimed.has(id);
 }
 
 export function cityBuilding(id: number): CityBuilding | undefined {

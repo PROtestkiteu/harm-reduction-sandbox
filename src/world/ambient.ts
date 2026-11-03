@@ -7,6 +7,10 @@ import { bus, car, CAR_COLOURS, emergencyVehicle, rollWheels, type EmergencyVehi
 import { Route, type RoutePoint } from './routes';
 import { inView } from '../render/viewEdge';
 import { Helicopter } from './helicopter';
+import { Ufo } from './ufo';
+import { METRO, metroEntrance } from './metro';
+import { fireEngine } from './heavyVehicles';
+import { allBuildings, frontDoor } from './cityBuildings';
 import { add, box } from './kit';
 import { glowMat } from './materials';
 import type { Solids } from './solids';
@@ -48,25 +52,29 @@ export interface Ambient {
    * Sends an ambulance or a police car to (x, z) for `reason`: it drives in,
    * stops with lights flashing, then leaves. False when every one is out already.
    */
-  dispatch(kind: 'ambulance' | 'police', x: number, z: number, reason: string): boolean;
+  dispatch(kind: 'ambulance' | 'police' | 'fire', x: number, z: number, reason: string): boolean;
   /** Police cars and ambulances now on screen, for picking. */
   vehicles(): readonly { id: number; root: Object3D }[];
   /** What a vehicle is doing and why it came, while it is out. */
   vehicle(id: number): VehicleInfo | undefined;
   /** The fixed obstacles, once the world is built: delivery vans look for a free stretch of kerb in them. */
   setSolids(solids: Solids): void;
-  /** How dark it is (0 day, 1 night): the police helicopter's searchlight. */
+  /** How dark it is (0 day, 1 night): the police helicopter's searchlight, and the rare saucer that comes only deep in the night. */
   setNight(night: number): void;
+  /** The helicopter's ground position while it is up, else null; fills `out`. */
+  helicopter(out: { x: number; z: number }): { x: number; z: number } | null;
+  /** Brings the rare flying saucer now (an easter egg; the dev checks use this). False while it is already here. */
+  summonUfo(): boolean;
 }
 
 export interface VehicleInfo {
-  kind: 'ambulance' | 'police' | 'bus' | 'warmingBus';
+  kind: 'ambulance' | 'police' | 'fire' | 'bus' | 'warmingBus';
   /** Why it is out: the call it answers, or its patrol. */
   reason: string;
   state: 'On the way' | 'At the scene' | 'Leaving' | 'On patrol' | 'On its route' | 'Held up' | 'Parked';
 }
 
-export type AmbientKind = 'stroller' | 'seller' | 'buyer' | 'police' | 'drunk' | 'jogger';
+export type AmbientKind = 'stroller' | 'seller' | 'buyer' | 'police' | 'drunk' | 'jogger' | 'firefighter';
 
 /** Most sculpted figures at once; people in view past this are left out rather than drawn as sticks. */
 const POOL = QUALITY.figures;
@@ -100,7 +108,43 @@ interface Driver {
   /** A van's hazard lights, blinking while it stands. */
   hazards?: Object3D;
 }
-interface Walker { route: Route; s: number; seg: { seg: number }; speed: number; phase: number }
+interface Walker {
+  route: Route; s: number; seg: { seg: number }; speed: number; phase: number;
+  /** Its loop (index into the loops), for the metro entrances beside it. */
+  loop: number;
+  /** Walking its loop, going down into the metro, below ground, or coming up. */
+  metro: 'walk' | 'down' | 'under' | 'up';
+  /** Down or up the stairs: the way it walks (from, via, to, with heights), how far along, how long below. */
+  path: { x: number; y: number; z: number }[];
+  k: number;
+  wait: number;
+  /** The entrance it is using, and seconds before it may take another. */
+  entrance: number;
+  cool: number;
+}
+/**
+ * Metro entrances beside the strollers' loops (world/metro.ts): `loop`, how
+ * far along its outward side (metres from its start) and which way off it.
+ * Placed clear of the promenade's trees (every 10 m from z = -150) and the
+ * park's paths, pond and festival grounds.
+ */
+const ENTRANCES = [
+  { loop: 0, s: 115 }, // the promenade, by the north bridge
+  { loop: 0, s: 195 }, // the promenade, further south
+  { loop: 1, s: 55 }, // the park's long path
+  { loop: 1, s: 110 },
+  { loop: 2, s: 50 }, // the park's cross path
+] as const;
+/** Sideways from a loop's outward side to the middle of an entrance beside it. */
+const METRO_OFF = 1.65;
+/** Chance a stroller passing an entrance goes down, and seconds below before coming up (at an entrance on the same loop). */
+const METRO_TAKE = 0.35;
+const METRO_BELOW = [12, 45] as const;
+/** A fire engine's crew on foot at the scene, and how long it stands there. */
+const CREW = 3;
+const FIRE_HOLD = 45;
+/** Seconds between false fire alarms in the district's buildings (the engine comes, the crew check, it leaves). */
+const FALSE_ALARM = [420, 900] as const;
 
 /**
  * Where the through-traffic sets out and ends, in metres from the middle:
@@ -205,8 +249,11 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic, 
   // Walkers: where people stroll outside the district.
   // Each a loop, out on one side of the way and back on the other, so nobody appears or vanishes.
   const loops: Route[] = [];
-  const loop = (a: [number, number], b: [number, number], side: [number, number]) =>
+  const loopEnds: { a: [number, number]; b: [number, number]; side: [number, number] }[] = [];
+  const loop = (a: [number, number], b: [number, number], side: [number, number]) => {
     loops.push(new Route([a, b, [b[0] + side[0], b[1] + side[1]], [a[0] + side[0], a[1] + side[1]], a], 0.6));
+    loopEnds.push({ a, b, side });
+  };
   loop([52 + GROW, -150], [52 + GROW, 150], [1.5, 0]); // the promenade
   loop([PARK.x0 - 1, PARK.path], [PARK.x1, PARK.path], [0, 1.2]); // the park's long path
   loop([12, PARK.z0 - 2], [12, PARK.z1 + 1], [1.2, 0]); // and its cross path
@@ -214,6 +261,31 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic, 
   loop([-48, -68.6 - GROW], [-8, -68.6 - GROW], [0, -0.8]); // the station platform
   loop([-56 - GROW, -40], [-56 - GROW, 40], [1.2, 0]);
   loop([-130 - GROW, -20], [-60 - GROW, -20], [0, 1.2]);
+  // Metro entrances beside the loops: where each stands, the top and bottom of its stairs, and the spot on the loop beside it.
+  const entrances = ENTRANCES.map((e) => {
+    const { a, b, side } = loopEnds[e.loop];
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    const dx = (b[0] - a[0]) / len;
+    const dz = (b[1] - a[1]) / len;
+    const sl = Math.hypot(side[0], side[1]);
+    const ox = -side[0] / sl;
+    const oz = -side[1] / sl;
+    const lane = { x: a[0] + dx * e.s, z: a[1] + dz * e.s };
+    const cx = lane.x + ox * METRO_OFF;
+    const cz = lane.z + oz * METRO_OFF;
+    const half = METRO.length / 2;
+    const ent = metroEntrance();
+    ent.position.set(cx, -0.04, cz);
+    ent.rotation.y = Math.atan2(dx, dz);
+    scene.add(ent);
+    return {
+      loop: e.loop, s: e.s, lane,
+      // Just outside the open end, so nobody steps through a side wall on the way in or out.
+      front: { x: cx - dx * (half + 0.7), y: 0, z: cz - dz * (half + 0.7) },
+      top: { x: cx - dx * (half - 0.2), y: 0, z: cz - dz * (half - 0.2) },
+      bottom: { x: cx + dx * (half - 0.4), y: -METRO.depth, z: cz + dz * (half - 0.4) },
+    };
+  });
   const walkers: Walker[] = [];
   const strollers = 48;
   // The park's own life after the strollers: sellers, buyers and police.
@@ -223,12 +295,14 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic, 
   const ROUND = [new Vector3(PARK.x0 + 2, 0, PARK.z0 + 1), new Vector3(PARK.x1 - 2, 0, PARK.z0 + 1), new Vector3(PARK.x1 - 2, 0, PARK.z1 - 2), new Vector3(PARK.x0 + 2, 0, PARK.z1 - 2)];
   const DRUNKS = 8;
   const JOGGERS = 4;
-  const count = strollers + SELLERS.length + BUYERS + DRUNKS + JOGGERS + POLICE;
+  const count = strollers + SELLERS.length + BUYERS + DRUNKS + JOGGERS + POLICE + CREW;
+  const policeBase = count - CREW - POLICE;
+  const crewBase = count - CREW;
   const drunkBase = strollers + SELLERS.length + BUYERS;
   const joggerBase = drunkBase + DRUNKS;
   for (let i = 0; i < strollers; i++) {
     const route = loops[i % loops.length];
-    walkers.push({ route, s: random() * route.length, seg: { seg: 0 }, speed: 1.1 + random() * 0.5, phase: random() * 6.28 });
+    walkers.push({ route, s: random() * route.length, seg: { seg: 0 }, speed: 1.1 + random() * 0.5, phase: random() * 6.28, loop: i % loops.length, metro: 'walk', path: [], k: 0, wait: 0, entrance: -1, cool: random() * 10 });
   }
   const bodyMat = new MeshLambertMaterial({ color: 0xffffff });
   const headMat = new MeshLambertMaterial({ color: 0xffffff });
@@ -240,7 +314,13 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic, 
   const hoodies = [0x1e1e22, 0x2a2a30, 0x3a3a40];
   for (let i = 0; i < count; i++) {
     const seller = i >= strollers && i < strollers + SELLERS.length;
-    const police = i >= count - POLICE;
+    const police = i >= policeBase && i < crewBase;
+    // The fire crew: dark tunics, yellow helmets.
+    if (i >= crewBase) {
+      bodies.setColorAt(i, c.setHex(0x26282c));
+      heads.setColorAt(i, c.setHex(0xd8b830));
+      continue;
+    }
     bodies.setColorAt(i, c.setHex(police ? 0x1e2a4a : seller ? hoodies[i % hoodies.length] : clothes[Math.floor(random() * clothes.length)]));
     // Officers' caps read as a dark head from above; sellers keep their hoods up.
     heads.setColorAt(i, c.setHex(police ? 0x141c30 : seller ? 0x1a1a1e : skin[Math.floor(random() * skin.length)]));
@@ -265,15 +345,28 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic, 
   let market = 0;
   // Emergency vehicles: a small pool, sent where needed.
   // `kerb`: where it pulls over at the scene, out of the lane, so traffic flows past while it stands there.
-  const fleet: { v: EmergencyVehicle; kind: 'ambulance' | 'police'; path: Vector3[]; kerb: Vector3; leg: number; hold: number; busy: boolean; reason: string; car: TrafficCar; speed: number }[] = [];
-  // Enough police cars for a raid to swarm a place.
-  for (const kind of ['ambulance', 'ambulance', 'police', 'police', 'police', 'police'] as const) {
-    const v = emergencyVehicle(kind);
+  // `at`: the scene itself (a fire engine's crew walk to it).
+  const fleet: { v: EmergencyVehicle; kind: 'ambulance' | 'police' | 'fire'; path: Vector3[]; kerb: Vector3; at: Vector3; leg: number; hold: number; busy: boolean; reason: string; car: TrafficCar; speed: number }[] = [];
+  /** Half a fleet vehicle's length, for the traffic register. */
+  const HALF = { ambulance: 2.8, police: 2.3, fire: 4.3 } as const;
+  // Enough police cars for a raid to swarm a place; two fire engines.
+  for (const kind of ['ambulance', 'ambulance', 'police', 'police', 'police', 'police', 'fire', 'fire'] as const) {
+    const v = kind === 'fire' ? fireEngine() : emergencyVehicle(kind);
     v.group.visible = false;
     v.group.traverse((o) => { o.castShadow = false; });
     v.group.userData.mover = kind;
     g.add(v.group);
-    fleet.push({ v, kind, path: [], kerb: new Vector3(), leg: 0, hold: 0, busy: false, reason: '', car: traffic.add(kind === 'ambulance' ? 2.8 : 2.3), speed: 0 });
+    fleet.push({ v, kind, path: [], kerb: new Vector3(), at: new Vector3(), leg: 0, hold: 0, busy: false, reason: '', car: traffic.add(HALF[kind]), speed: 0 });
+  }
+  // The crew of a fire engine at a scene, on foot (people indices from crewBase).
+  const crew = Array.from({ length: CREW }, () => ({ pos: new Vector3(), shown: 0 }));
+  let alarmIn = FALSE_ALARM[0] + random() * (FALSE_ALARM[1] - FALSE_ALARM[0]);
+  /** A false alarm in one of the district's ordinary buildings: the engine comes to its door. */
+  const falseAlarm = () => {
+    const homes = allBuildings().filter((b) => !b.ground && Math.abs((b.x0 + b.x1) / 2) < 62 && Math.abs((b.z0 + b.z1) / 2) < 62);
+    if (!homes.length) return;
+    const { door } = frontDoor(homes[Math.floor(random() * homes.length)], 1.5);
+    dispatch('fire', door.x, door.z, t('A fire alarm went off in a building nearby. The crew check it: a false alarm, and nobody is hurt.'));
   }
   // Two police cars on routine patrol among the traffic.
   const patrols: Group[] = [];
@@ -285,6 +378,7 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic, 
     patrols.push(v.group);
   }
   const helicopter = new Helicopter(scene, random);
+  const ufo = new Ufo(scene, random);
   let night = 0;
   let solids: Solids | null = null;
   /**
@@ -310,6 +404,50 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic, 
     const stop = Math.max(-FAR, Math.min(FAR, x));
     return { path: [new Vector3(from, 0, nearest - 1.2), new Vector3(stop, 0, nearest - 1.2)], kerb: new Vector3(stop, 0, road.z1 + 1.0) };
   };
+  /** Down or up a metro stair, along `w.path` (heights included); below ground in between, unseen. */
+  const stairs = (i: number, w: Walker, dt: number) => {
+    const p = people[i];
+    if (w.metro === 'under') {
+      p.shown = 0;
+      if ((w.wait -= dt) > 0) return;
+      // Up at an entrance on the same loop, then on along the loop from beside it.
+      const options = entrances.map((en, e) => (en.loop === w.loop ? e : -1)).filter((e) => e >= 0);
+      const e = options[Math.floor(random() * options.length)];
+      const en = entrances[e];
+      w.entrance = e;
+      w.metro = 'up';
+      w.k = 0;
+      w.path = [en.bottom, en.top, en.front, { x: en.lane.x, y: 0, z: en.lane.z }];
+      return;
+    }
+    // Along the legs of its path at its pace.
+    w.k += dt * w.speed * 0.8;
+    let left = w.k;
+    let leg = 0;
+    for (; leg < w.path.length - 2; leg++) {
+      const len = Math.hypot(w.path[leg + 1].x - w.path[leg].x, w.path[leg + 1].z - w.path[leg].z);
+      if (left <= len) break;
+      left -= len;
+    }
+    const from = w.path[leg];
+    const to = w.path[leg + 1];
+    const len = Math.hypot(to.x - from.x, to.z - from.z);
+    const t = len ? Math.min(1, left / len) : 1;
+    place(i, at.set(from.x + (to.x - from.x) * t, 0, from.z + (to.z - from.z) * t), 1, Math.abs(Math.sin(w.phase)) * 0.03);
+    p.y = from.y + (to.y - from.y) * t;
+    if (leg < w.path.length - 2 || t < 1) return;
+    if (w.metro === 'down') {
+      w.metro = 'under';
+      w.wait = METRO_BELOW[0] + random() * (METRO_BELOW[1] - METRO_BELOW[0]);
+      p.shown = 0;
+    } else {
+      w.metro = 'walk';
+      w.s = entrances[w.entrance].s;
+      w.seg.seg = 0;
+      w.cool = 12;
+      p.y = 0;
+    }
+  };
   const step = (pos: Vector3, to: Vector3, speed: number, dt: number) => {
     const d = pos.distanceTo(to);
     if (d <= speed * dt) { pos.copy(to); return true; }
@@ -319,7 +457,9 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic, 
   // Where each person is this frame; drawn afterwards at the level of detail the camera needs.
   const people = Array.from({ length: count }, (_, i) => ({
     x: 0, z: 0, heading: 0, moving: false, shown: 0, bob: 0,
-    kind: (i < strollers ? 'stroller' : i < strollers + SELLERS.length ? 'seller' : i < drunkBase ? 'buyer' : i < joggerBase ? 'drunk' : i < count - POLICE ? 'jogger' : 'police') as AmbientKind,
+    /** Height off the ground: below it on a metro stair. */
+    y: 0,
+    kind: (i < strollers ? 'stroller' : i < strollers + SELLERS.length ? 'seller' : i < drunkBase ? 'buyer' : i < joggerBase ? 'drunk' : i < policeBase ? 'jogger' : i < crewBase ? 'police' : 'firefighter') as AmbientKind,
     lying: false,
   }));
   const place = (i: number, pos: Vector3, shown: number, bob: number) => {
@@ -356,13 +496,24 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic, 
    * a cheap instanced shape. Closer, the people in view nearest the middle get
    * sculpted figures from a small pool; nobody in view is drawn as a stick.
    */
-  function dispatch(kind: 'ambulance' | 'police', x: number, z: number, reason: string): boolean {
+  function dispatch(kind: 'ambulance' | 'police' | 'fire', x: number, z: number, reason: string): boolean {
     const f = fleet.find((v) => v.kind === kind && !v.busy);
     if (!f) return false;
     f.reason = reason;
     const route = routeTo(x, z);
+    // Others already sent to about the same spot (a raid sends several): this one pulls up behind them.
+    const ahead = fleet.filter((o) => o !== f && o.busy && o.kerb.distanceTo(route.kerb) < 6 * fleet.length).length;
+    if (ahead) {
+      const [a, b] = [route.path[0], route.path[route.path.length - 1]];
+      // A car length and a gap each, more where a fire engine is among them.
+      const step = kind === 'fire' || fleet.some((o) => o.busy && o.kind === 'fire') ? 10 : 6.5;
+      const back = new Vector3().subVectors(a, b).normalize().multiplyScalar(step * ahead);
+      b.add(back);
+      route.kerb.add(back);
+    }
     f.path = route.path;
     f.kerb.copy(route.kerb);
+    f.at.set(x, 0, z);
     f.leg = 0;
     f.busy = true;
     f.hold = 0;
@@ -370,7 +521,7 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic, 
     f.v.group.visible = true;
     f.v.group.position.copy(f.path[0]);
     // Now and then the helicopter comes too: the police one after dark, the air ambulance by day.
-    if (kind === 'police' ? night > 0.5 && random() < 0.2 : night < 0.5 && random() < 0.08) helicopter.call(kind === 'police' ? 'police' : 'medical', x, z);
+    if (kind === 'police' ? night > 0.5 && random() < 0.2 : kind === 'ambulance' && night < 0.5 && random() < 0.08) helicopter.call(kind === 'police' ? 'police' : 'medical', x, z);
     return true;
   }
 
@@ -423,9 +574,9 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic, 
       const p = people[i];
       // The cheap shape only when tiny; otherwise hidden (a figure or nothing at all).
       const k = tiny ? Math.max(0.001, p.shown) : 0.001;
-      m.compose(at.set(p.x, 0.55 + p.bob, p.z), q, s.set(k, k, k));
+      m.compose(at.set(p.x, 0.55 + p.bob + p.y, p.z), q, s.set(k, k, k));
       bodies.setMatrixAt(i, m);
-      m.compose(at.set(p.x, 1.25 + p.bob, p.z), q, s.set(k, k, k));
+      m.compose(at.set(p.x, 1.25 + p.bob + p.y, p.z), q, s.set(k, k, k));
       heads.setMatrixAt(i, m);
       let fig = figures.get(i);
       if (withFigure.has(i)) {
@@ -440,7 +591,7 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic, 
           if (idx >= 0) order.splice(idx, 1);
           order.push(i);
           fig.root.visible = true;
-          fig.root.position.set(p.x, p.lying ? 0.18 : -0.04, p.z);
+          fig.root.position.set(p.x, (p.lying ? 0.18 : -0.04) + p.y, p.z);
           fig.root.rotation.set(p.lying ? -Math.PI / 2 : 0, p.heading, 0, 'YXZ');
           fig.root.scale.setScalar(Math.max(0.001, p.shown) * fig.root.userData.baseScale);
           fig.update(dt, p.moving && !p.lying ? 'walk' : 'stand', p.kind === 'drunk' ? 0.7 : p.kind === 'jogger' ? 2.4 : 1.2);
@@ -473,6 +624,8 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic, 
             const st = d.route.start;
             Object.assign(d.car, { x: st.x, z: st.z, dx: st.dx, dz: st.dz });
             if (traffic.gapAhead(d.car) < 8 || !traffic.laneClear(d.car, d.car.half + 6, d.car.half + 4) || !traffic.clearAround(st.x, st.z, d.car.half + 2) || (d.kind === 'outer' && inView(st.x, st.z, st.dx, st.dz, d.car.half))) d.wait = 1;
+            // On the road from now, so another setting out in the same frame sees it there.
+            else d.car.active = true;
           }
           continue;
         }
@@ -554,11 +707,32 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic, 
       }
       for (let i = 0; i < walkers.length; i++) {
         const w = walkers[i];
+        w.phase += dt * 8 * w.speed;
+        if (w.metro !== 'walk') {
+          stairs(i, w, dt);
+          continue;
+        }
         w.s += dt * w.speed;
         if (w.s >= w.route.length) { w.s -= w.route.length; w.seg.seg = 0; }
-        w.phase += dt * 8 * w.speed;
         w.route.point(w.s, here, w.seg);
         place(i, at.set(here.x, 0, here.z), 1, Math.abs(Math.sin(w.phase)) * 0.04);
+        people[i].y = 0;
+        // Passing a metro entrance beside its loop, now and then someone goes down.
+        w.cool -= dt;
+        if (w.cool <= 0) {
+          for (let e = 0; e < entrances.length; e++) {
+            const en = entrances[e];
+            if (en.loop !== w.loop || Math.hypot(en.front.x - here.x, en.front.z - here.z) > 2.2) continue;
+            w.cool = 10;
+            if (random() < METRO_TAKE) {
+              w.metro = 'down';
+              w.entrance = e;
+              w.k = 0;
+              w.path = [{ x: here.x, y: 0, z: here.z }, en.front, en.top, en.bottom];
+            }
+            break;
+          }
+        }
       }
       // Police walk the park's round in pairs; the first pair always, the second with more policing.
       police.forEach((p, i) => {
@@ -567,7 +741,7 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic, 
         const next = ROUND[(p.leg + 1) % ROUND.length];
         const target = at.copy(next).add(s.set(i % 2 ? 1.1 : 0, 0, i % 2 ? 0.6 : 0));
         if (step(p.pos, target, 1.2, dt)) p.leg = (p.leg + 1) % ROUND.length;
-        place(count - POLICE + i, p.pos, p.shown, Math.abs(Math.sin(walkClock * 7 + i)) * 0.03);
+        place(policeBase + i, p.pos, p.shown, Math.abs(Math.sin(walkClock * 7 + i)) * 0.03);
       });
       walkClock += dt;
       // Sellers stand at their spots; they melt away while officers are near.
@@ -675,11 +849,36 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic, 
         rollWheels(f.v.group, f.speed * dt);
         if (step(pos, target, f.speed, dt)) {
           f.leg++;
-          if (f.leg === f.path.length - 1 && f.v.flashing) f.hold = 28;
+          if (f.leg === f.path.length - 1 && f.v.flashing) f.hold = f.kind === 'fire' ? FIRE_HOLD : 28;
         }
         pos.y = onBridgeLine(pos.z) ? bridgeY(pos.x) : 0.02;
       }
+      // The fire crew: out of the engine at the scene, to the door and about, and back in before it leaves.
+      const engine = fleet.find((f) => f.kind === 'fire' && f.busy && (f.hold > 0 || crew.some((c) => c.shown > 0)));
+      crew.forEach((c, i) => {
+        const i0 = crewBase + i;
+        if (!engine) { c.shown = 0; place(i0, c.pos, 0, 0); return; }
+        const pos = engine.v.group.position;
+        const h = engine.v.group.rotation.y;
+        const rear = at.set(pos.x - Math.sin(h) * 4.6, 0, pos.z - Math.cos(h) * 4.6);
+        if (c.shown <= 0) c.pos.copy(rear);
+        const out = engine.hold > 2;
+        // One at the door, one halfway, one by the engine's side lockers.
+        const goal = out
+          ? (i === 0 ? s.copy(engine.at) : i === 1 ? s.copy(engine.at).lerp(pos, 0.5) : s.set(pos.x + Math.cos(h) * 1.8, 0, pos.z - Math.sin(h) * 1.8))
+          : s.copy(rear);
+        const there = step(c.pos, goal, 1.4, dt);
+        c.shown = Math.min(1, Math.max(0, c.shown + (out || !there ? dt : -dt) * 2.5));
+        place(i0, c.pos, c.shown, there ? 0 : Math.abs(Math.sin(walkClock * 8 + i)) * 0.04);
+        if (there && out) people[i0].heading = Math.atan2(engine.at.x - c.pos.x, engine.at.z - c.pos.z);
+      });
+      alarmIn -= dt;
+      if (alarmIn <= 0) {
+        alarmIn = FALSE_ALARM[0] + random() * (FALSE_ALARM[1] - FALSE_ALARM[0]);
+        if (!fleet.some((f) => f.kind === 'fire' && f.busy)) falseAlarm();
+      }
       helicopter.update(dt);
+      ufo.update(dt);
       draw(dt);
     },
     setYield(ahead) {
@@ -693,11 +892,16 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic, 
     setNight(n) {
       night = n;
       helicopter.setNight(n);
+      ufo.setNight(n);
+    },
+    summonUfo() {
+      return ufo.summon();
     },
     setHangouts(points) {
       hangouts = points.map((p) => new Vector3(p.x, 0, p.z));
     },
     dispatch: (kind, x, z, reason) => dispatch(kind, x, z, reason),
+    helicopter: (out) => helicopter.airborne(out),
     vehicles() {
       const out: { id: number; root: Object3D }[] = [];
       fleet.forEach((f, i) => { if (f.busy && f.v.group.visible) out.push({ id: i, root: f.v.group }); });
@@ -729,6 +933,7 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic, 
     setView(x, z, radius, mpp) {
       view.x = x;
       view.z = z;
+      ufo.setView(x, z);
       view.radius = radius;
       view.mpp = mpp;
     },

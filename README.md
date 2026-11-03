@@ -37,6 +37,17 @@ npm run dev
 
 `npm run build` makes a static site in `dist/`. Set `--base` if it lives in a subfolder, for example `npx vite build --base=/thegame/`.
 
+## Browser support
+
+The game needs WebGL 2 and a browser from about 2021 on:
+- Safari and every iPhone or iPad browser from iOS and iPadOS 15.4 (15.8 included)
+- Chrome and Edge 111
+- Firefox 114
+
+The build target in `vite.config.ts` is set from this list. three.js 0.186 uses class static blocks, which Safari only has from 16.4, and Safari 15 has a bug with class fields, so the build rewrites both for Safari 15. That adds about 0.2% to the gzipped scripts, with no extra files or polyfills.
+
+On devices without half-float colour buffers the scene renders in 8 bits. If the game cannot start at all (no WebGL 2, a failed download, an older browser), the loading screen says what failed and offers a retry, where before it would wait forever.
+
 ## Leaderboard
 
 Saves are links: the game state is packed after `#g=` and never reaches a server. The public leaderboard is one PHP file, `server/board.php`, deployed as `api/board.php` next to the game. It needs PHP with SQLite, a secret of at least 32 characters in `/etc/thegame/secret` and a writable `/var/lib/thegame/` (both paths can be changed with `THEGAME_SECRET_FILE` and `THEGAME_DB`).

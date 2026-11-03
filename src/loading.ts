@@ -90,64 +90,49 @@ if (line) {
   const show = () => { line.textContent = `${phrases[i % phrases.length]}…`; i++; };
   show();
   const timer = window.setInterval(() => {
-    if (!document.getElementById('loading')) { clearInterval(timer); return; }
+    if (!line.isConnected) { clearInterval(timer); return; }
     show();
   }, 1400);
 }
 
 /**
- * The skyline's windows switching on and off, a few at a time at random moments, for as long as the
- * loading screen is up. The skyline itself is the screen's background (styled before any script
- * runs); this lays a layer of lit windows over the same tiles. A change only swaps a few attributes
- * now and then, so nothing is redrawn between changes and the download never waits on it. Under
- * reduced motion a window changes only every few seconds. Stops once the loading screen is gone.
+ * The skyline's windows switching on and off for as long as the loading screen is up, from its first
+ * frames. The skyline itself is the screen's background (styled before any script runs). Over it lie
+ * a few layers of lit windows, the windows dealt among them at random, each layer the skyline's own
+ * tile (same size, fit and tiling, so a lit window always sits on its drawn one), and each blinks on and off by a CSS
+ * animation of its opacity at its own pace and phase. Opacity animations of their own layers run in
+ * the compositor, so they keep going while the game's start-up holds the main thread; nothing here
+ * runs again after this. Under reduced motion they stand still, about half of them lit. They go with
+ * the loading screen.
  */
 function lightWindows(screen: HTMLElement): void {
   const TILE = 960;
   const HEIGHT = 240;
+  const LAYERS = 14;
   const windows = [...skylineSvg.matchAll(/<g class="w[^"]*">(.*?)<\/g>/gs)].flatMap((g) =>
     [...g[1].matchAll(/<rect x="([\d.]+)" y="([\d.]+)"/g)].map((m) => [Number(m[1]), Number(m[2])] as const));
   if (!windows.length) return;
-  const NS = 'http://www.w3.org/2000/svg';
-  const svg = document.createElementNS(NS, 'svg');
-  svg.setAttribute('class', 'loading-lights');
-  svg.setAttribute('aria-hidden', 'true');
-  svg.setAttribute('preserveAspectRatio', 'xMinYMax meet');
-  screen.append(svg);
-  let lit: SVGRectElement[] = [];
-  // As many tiles as the background repeats across the screen's width, each with its own windows.
-  const layout = () => {
-    const h = svg.clientHeight;
-    if (!h) return;
-    const width = (screen.clientWidth / h) * HEIGHT;
-    const tiles = Math.ceil(width / TILE);
-    svg.setAttribute('viewBox', `0 0 ${width} ${HEIGHT}`);
-    if (lit.length === tiles * windows.length) return;
-    lit = [];
-    const frag = document.createDocumentFragment();
-    for (let t = 0; t < tiles; t++) for (const [x, y] of windows) {
-      const r = document.createElementNS(NS, 'rect');
-      r.setAttribute('x', String(x + t * TILE));
-      r.setAttribute('y', String(y));
-      r.setAttribute('width', '5');
-      r.setAttribute('height', '7');
-      if (Math.random() < 0.4) r.setAttribute('class', 'on');
-      lit.push(r);
-      frag.append(r);
-    }
-    svg.replaceChildren(frag);
-  };
-  layout();
-  const resized = new ResizeObserver(layout);
-  resized.observe(screen);
-  const still = matchMedia('(prefers-reduced-motion: reduce)');
-  const tick = () => {
-    if (!screen.isConnected) { resized.disconnect(); return; }
-    // One to three windows each time, anywhere along the skyline; about as many go out as come on.
-    for (let n = 1 + Math.floor(Math.random() * (still.matches ? 1 : 3)); n > 0 && lit.length; n--) lit[Math.floor(Math.random() * lit.length)].classList.toggle('on');
-    window.setTimeout(tick, still.matches ? 3000 : 70 + Math.random() * 180);
-  };
-  window.setTimeout(tick, 200);
+  const rects: string[][] = Array.from({ length: LAYERS }, () => []);
+  for (const [x, y] of windows) {
+    // About two in five windows take part; the rest stay dim, as in a real block at night.
+    if (Math.random() > 0.4) continue;
+    rects[Math.floor(Math.random() * LAYERS)].push(`<rect x="${x}" y="${y}" width="5" height="7"/>`);
+  }
+  const frag = document.createDocumentFragment();
+  rects.forEach((list, i) => {
+    if (!list.length) return;
+    // The skyline's own tile: the same box, size and fit, so the browser lays both out and rounds them alike.
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${TILE} ${HEIGHT}" width="${TILE}" height="${HEIGHT}" preserveAspectRatio="xMidYMax slice"><g fill="#edb300" fill-opacity="0.85">${list.join('')}</g></svg>`;
+    const layer = document.createElement('div');
+    layer.className = 'loading-lit';
+    layer.style.backgroundImage = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+    // Each its own pace (2.5 to 8 s) and phase, so windows come and go all along the skyline.
+    layer.style.animationDuration = `${(2.5 + Math.random() * 5.5).toFixed(2)}s`;
+    layer.style.animationDelay = `${(-Math.random() * 8).toFixed(2)}s`;
+    if (i % 2) layer.dataset.still = 'on';
+    frag.append(layer);
+  });
+  screen.append(frag);
 }
 const screen = document.getElementById('loading');
 if (screen) lightWindows(screen);
@@ -167,5 +152,46 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   });
 }
 
+/**
+ * What the loading screen says when the game cannot start: the game's chunk failed to download, to
+ * parse (a browser older than the build supports) or to run (no WebGL 2). Written here, not in the
+ * catalogue, because the catalogue may be what failed. The screen never hangs on its phrases.
+ */
+const FAILED = {
+  en: { title: 'The game could not start.', webgl: 'This browser has no WebGL 2, which the game needs to draw the city.', hint: 'Check the connection and try again. If it keeps happening, updating the browser or the system may help.', retry: 'Try again' },
+  pl: { title: 'Nie udało się uruchomić gry.', webgl: 'Ta przeglądarka nie ma WebGL 2, którego gra potrzebuje do rysowania miasta.', hint: 'Sprawdź połączenie i spróbuj ponownie. Jeśli to się powtarza, pomóc może aktualizacja przeglądarki lub systemu.', retry: 'Spróbuj ponownie' },
+  es: { title: 'No se pudo iniciar el juego.', webgl: 'Este navegador no tiene WebGL 2, que el juego necesita para dibujar la ciudad.', hint: 'Comprueba la conexión y vuelve a intentarlo. Si sigue pasando, actualizar el navegador o el sistema puede ayudar.', retry: 'Reintentar' },
+  pt: { title: 'Não foi possível iniciar o jogo.', webgl: 'Este navegador não tem WebGL 2, de que o jogo precisa para desenhar a cidade.', hint: 'Verifique a ligação e tente de novo. Se continuar a acontecer, atualizar o navegador ou o sistema pode ajudar.', retry: 'Tentar de novo' },
+}[LANG];
+
+function showStartFailure(error: unknown): void {
+  const box = document.getElementById('loading');
+  if (!box) return;
+  // The phrases stop (their line is replaced) and the screen becomes an alert.
+  box.classList.add('loading-failed');
+  box.setAttribute('role', 'alert');
+  const noWebgl = typeof WebGL2RenderingContext === 'undefined';
+  const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+  const msg = document.createElement('div');
+  msg.className = 'loading-error';
+  const title = document.createElement('p');
+  title.className = 'loading-error-title';
+  title.textContent = FAILED.title;
+  const why = document.createElement('p');
+  why.textContent = noWebgl ? FAILED.webgl : FAILED.hint;
+  const code = document.createElement('code');
+  code.textContent = detail.slice(0, 240);
+  const retry = document.createElement('button');
+  retry.type = 'button';
+  retry.className = 'loading-retry';
+  retry.textContent = FAILED.retry;
+  retry.addEventListener('click', () => location.reload());
+  msg.append(title, why, code, retry);
+  box.querySelector('.loading-line')?.replaceWith(msg);
+  retry.focus();
+  console.error('Game start failed', error);
+}
+
 // The game: its own chunk, fetched once the language's text is in (t() reads it as modules load).
-void loadCatalogue().catch(() => { /* offline mid-load: English */ }).then(() => import('./main'));
+// A chunk that cannot load, parse or run rejects here; the loading screen then explains instead of hanging.
+void loadCatalogue().catch(() => { /* offline mid-load: English */ }).then(() => import('./main')).catch(showStartFailure);

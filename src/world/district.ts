@@ -48,8 +48,8 @@ function zebra(g: Group, across: 'x' | 'z', from: number, to: number, at: number
   }
 }
 
-/** The ring road's bike lane, metres wide: the gap between the cars parked at its two kerbs. */
-export const BIKE_LANE = 1.2;
+/** Each of the ring road's two bike lanes, metres wide: one along each kerb, between the road and the pavement. */
+export const BIKE_LANE = 1.25;
 
 /** A bicycle painted on the lane, along local z: two wheels (rings) and a frame. */
 function bikeGlyph(g: Group, paint: ReturnType<typeof mat>, x: number, z: number, rot: number): void {
@@ -106,26 +106,27 @@ export function buildStreets(scene: Object3D, random: Random): void {
   laneLine({ x0: STREETS.east.road.x1 - 2.15, x1: STREETS.east.road.x1 - 2.07, z0: STREETS.east.road.z0, z1: STREETS.east.road.z1 }, 'z');
   laneLine({ x0: ROAD.parkX - 1.15, x1: ROAD.parkX - 1.07, z0: STREETS.main.road.z0, z1: STREETS.main.road.z1 }, 'z');
 
-  // Cycling: the ring road carries no through-traffic, so its middle, between
-  // the cars parked at both kerbs, is a two-way bike lane: red surface, dashed
-  // white edges, a bicycle painted on it every so often (the flavour packs'
-  // cyclists ride it).
+  // Cycling: the ring road carries no through-traffic and no parking. A bike
+  // lane runs along each kerb, between the road and the pavement, one way each,
+  // keeping right: red surface, a dashed white line on the road side, a bicycle
+  // painted on it every so often (the flavour packs' cyclists ride them). The
+  // middle is left for service vehicles (the bin lorries).
   const white = mat(0xe8e4da);
   for (const s of [STREETS.ringNorth, STREETS.ringSouth, STREETS.ringWest, STREETS.ringEast]) {
     const holes = crossers(s.along);
-    const mid = s.along === 'z' ? (s.road.x0 + s.road.x1) / 2 : (s.road.z0 + s.road.z1) / 2;
-    const half = BIKE_LANE / 2;
-    const lane: Rect = s.along === 'z' ? { x0: mid - half, x1: mid + half, z0: s.road.z0, z1: s.road.z1 } : { x0: s.road.x0, x1: s.road.x1, z0: mid - half, z1: mid + half };
-    for (const part of cutStrip(lane, s.along, holes)) {
-      add(g, rectBox(part, 0.01, PALETTE.bikeLane, 0.02));
-      const [a0, a1] = s.along === 'z' ? [part.z0, part.z1] : [part.x0, part.x1];
-      for (let v = a0 + 0.4; v < a1 - 0.8; v += 1.6) {
-        for (const side of [-half, half]) {
-          if (s.along === 'z') add(g, box(0.06, 0.01, 0.8, white, mid + side, 0.023, v + 0.4));
-          else add(g, box(0.8, 0.01, 0.06, white, v + 0.4, 0.023, mid + side));
+    const [lo, hi] = s.along === 'z' ? [s.road.x0, s.road.x1] : [s.road.z0, s.road.z1];
+    for (const [mid, line] of [[lo + BIKE_LANE / 2, lo + BIKE_LANE], [hi - BIKE_LANE / 2, hi - BIKE_LANE]] as const) {
+      const half = BIKE_LANE / 2;
+      const lane: Rect = s.along === 'z' ? { x0: mid - half, x1: mid + half, z0: s.road.z0, z1: s.road.z1 } : { x0: s.road.x0, x1: s.road.x1, z0: mid - half, z1: mid + half };
+      for (const part of cutStrip(lane, s.along, holes)) {
+        add(g, rectBox(part, 0.01, PALETTE.bikeLane, 0.02));
+        const [a0, a1] = s.along === 'z' ? [part.z0, part.z1] : [part.x0, part.x1];
+        for (let v = a0 + 0.4; v < a1 - 0.8; v += 1.6) {
+          if (s.along === 'z') add(g, box(0.06, 0.01, 0.8, white, line, 0.023, v + 0.4));
+          else add(g, box(0.8, 0.01, 0.06, white, v + 0.4, 0.023, line));
         }
+        for (let v = a0 + 6; v < a1 - 3; v += 18) bikeGlyph(g, white, s.along === 'z' ? mid : v, s.along === 'z' ? v : mid, s.along === 'z' ? 0 : Math.PI / 2);
       }
-      for (let v = a0 + 6; v < a1 - 3; v += 18) bikeGlyph(g, white, s.along === 'z' ? mid : v, s.along === 'z' ? v : mid, s.along === 'z' ? 0 : Math.PI / 2);
     }
   }
 

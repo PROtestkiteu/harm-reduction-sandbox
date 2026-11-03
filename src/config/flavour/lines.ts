@@ -58,6 +58,13 @@ export const LINES: Record<string, readonly string[]> = {
   angler: [t("Nothing biting tonight."), t("Shh, you'll scare them off.")],
   parent: [t("Hold my hand at the crossing."), t("Nearly home, then bath and bed.")],
   child: [t("Can we get chips?"), t("Look, a cat!"), t("Race you to the corner!")],
+  skater: [t("Did you see that kickflip?"), t("One more go."), t("Mind the kerb!"), t("Land it this time.")],
+  cabbie: [t("Where to?"), t("Hop in, it's open."), t("Quiet tonight."), t("It's dearer after midnight.")],
+  pub: [t("Whose round is it?"), t("Same again?"), t("One more and I'm off, honest."), t("Cheers!"), t("Last orders soon.")],
+  diner: [t("Could we see the dessert menu?"), t("This wine is lovely."), t("Shall we get the bill?"), t("A table outside, please.")],
+  waiter: [t("Your mains are on their way."), t("Anything else for you?"), t("Careful, the plate's hot.")],
+  drunk: [t("I love you, mate. I really do."), t("Which way is home?"), t("I'm not drunk, you're drunk."), t("Just sitting down a minute.")],
+  kebab: [t("Extra garlic sauce, please."), t("Chips and a kebab, mixed."), t("Best kebab in town, this.")],
   student: [t("Deadline is Friday."), t("Are you coming out tonight?"), t("The library shuts at ten."), t("My rent went up again."), t("Does anyone know if the club does testing?")],
 };
 

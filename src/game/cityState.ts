@@ -1,6 +1,6 @@
 import type { Crowd, Satellite } from '../agents/crowd';
 import type { Simulation } from '../sim/simulation';
-import { PROPERTY, SATELLITE_SERVICES, type SatelliteService } from '../sim/property';
+import { PROPERTY, SATELLITE_SERVICES, UNIT_EXTRA, type SatelliteService } from '../sim/property';
 import { plural, t } from '../i18n';
 import { QUESTS, type InstitutionId } from '../config/institutionQuests';
 import { PARTNER_NEEDS, QUEST_NEEDS, serviceNeeds } from '../config/needs';
@@ -84,7 +84,7 @@ const VEHICLE_STATE: Record<string, string> = {
   'Held up': t('Held up in traffic'),
   Parked: t('Parked'),
 };
-const VEHICLE_TITLE = { police: t('Police car'), ambulance: t('Ambulance'), bus: t('City bus'), warmingBus: t('Warming bus') } as const;
+const VEHICLE_TITLE = { police: t('Police car'), ambulance: t('Ambulance'), fire: t('Fire engine'), bus: t('City bus'), warmingBus: t('Warming bus') } as const;
 const placesPlus = (n: number) => plural(n, ['+{n} place', '+{n} places'], ['+{n} miejsce', '+{n} miejsca', '+{n} miejsc']);
 
 /** Signs a rented shop shows, per satellite service. */
@@ -433,10 +433,29 @@ export class CityCards {
         })),
       };
     }
+    const f = PROPERTY.unit;
+    const extra = UNIT_EXTRA[u.service];
+    const rent = PROPERTY.rentPerHour + u.level * f.rentPerLevel;
+    const next = u.level + 1;
+    // What the next level brings: places, and at level 2 the service's extra (stronger at 3).
+    const brings = next === 2 ? t('{places}, and {extra}: {said}', { places: placesPlus(f.placesPerLevel), extra: extra.name.toLowerCase(), said: extra.said.toLowerCase() })
+      : next === 3 ? t('{places}, and twice the effect of the {extra}', { places: placesPlus(f.placesPerLevel), extra: extra.name.toLowerCase() })
+        : placesPlus(f.placesPerLevel);
     return {
-      said: t('Yours: a {unit}, {rent} an hour.', { unit: UNIT_NAME[u.service], rent: price(PROPERTY.rentPerHour) }),
-      fact: [t('Shop'), t('Rented: {unit}', { unit: UNIT_NAME[u.service] })],
-      actions: [{ id: 'release', label: t('Give the unit back.'), short: t('Give the unit back.'), enabled: true }],
+      said: t('Yours: a {unit}, {rent} an hour.', { unit: UNIT_NAME[u.service], rent: price(rent) }) + (u.level >= 2 ? ` ${extra.name}: ${extra.said}` : ''),
+      fact: [t('Shop'), t('Rented: {unit}, fitted out to level {level} of {max}', { unit: UNIT_NAME[u.service], level: u.level, max: f.maxLevel })],
+      actions: [
+        ...(u.level < f.maxLevel ? [{
+          id: 'unitUp',
+          label: t('Fit it out to level {level} ({price}; {brings})', { level: next, price: price(f.upgrade), brings }),
+          short: t('Fit the unit out further.'),
+          cost: f.upgrade,
+          detail: t('{brings}. Rent goes up by {rent} an hour.', { brings, rent: price(f.rentPerLevel) }),
+          enabled: sim.org.budget >= f.upgrade && sim.services[u.service].switchedOn,
+          helps: serviceNeeds(u.service),
+        }] : []),
+        { id: 'release', label: t('Give the unit back.'), short: t('Give the unit back.'), enabled: true },
+      ],
     };
   }
 }
@@ -450,6 +469,8 @@ export class PropertyView {
   private readonly unitShown: string[] = [];
   private campersShown = '';
   private pointsShown = new Map<number, string>();
+  /** Each taken-over building's fit-out as last shown ("service:level"). */
+  private fitsShown = new Map<number, string>();
   private satelliteKey = '';
   private squatsShown = '';
 
@@ -472,6 +493,17 @@ export class PropertyView {
       this.squatsShown = squatKey;
       this.crowd.setSquats(squats);
     }
+    // Fronts: each rented unit and each point shows how far it is fitted out.
+    const fits = new Map<number, string>();
+    sim.property.units.forEach((u, i) => { if (u.kind === 'rented') fits.set(world.shopUnits[i], `${u.service}:${u.level}`); });
+    for (const q of sim.property.points) fits.set(q.building, `${q.service}:${q.level}`);
+    for (const [b, key] of fits) {
+      if (this.fitsShown.get(b) === key) continue;
+      const [service, level] = key.split(':');
+      world.setFitOut(b, { service: service as SatelliteService, level: Number(level) });
+    }
+    for (const b of this.fitsShown.keys()) if (!fits.has(b)) world.setFitOut(b, null);
+    this.fitsShown = fits;
     // Points' signs: new ones go up, closed ones come down.
     const now = new Map(sim.property.points.map((q) => [q.building, `${q.service}:${q.level}`]));
     for (const [b, key] of now) if (this.pointsShown.get(b) !== key) world.setPoint(b, SATELLITE_SIGN[sim.property.pointAt(b)!.service]);

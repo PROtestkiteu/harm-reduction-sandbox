@@ -280,6 +280,8 @@ export interface Appearance {
   hairStyle: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
   /** 0 slight to 1 heavy-set: widens and deepens the body. */
   girth?: number;
+  /** A body shape to use instead of the one read from girth, build and height (see bodyType). */
+  body?: BodyType;
   skirt?: boolean;
   beard?: boolean;
   /** Stands with hands in pockets when waiting. */
@@ -300,6 +302,29 @@ export interface Appearance {
   style?: Archetype;
   /** Accessories chosen for the style. */
   kit?: Kit;
+}
+
+/** Body shapes the sculpted figures take (agents/humanFigure.ts), beyond height. */
+export type BodyType = 'average' | 'slim' | 'lanky' | 'heavy' | 'pear' | 'broad' | 'stocky';
+
+/**
+ * A person's body shape, read from what their look already holds (no new
+ * random draws, so seeded crowds stay as they were): heavy-set from girth,
+ * broad or slim from build, lanky when tall and slight, stocky when short and
+ * solid, pear-shaped in between. Older people are a little more often heavy,
+ * young clubbers and students less.
+ */
+export function bodyType(look: Pick<Appearance, 'girth' | 'build' | 'height' | 'style' | 'body'>): BodyType {
+  if (look.body) return look.body;
+  const g = look.girth ?? 0;
+  const heavyFrom = look.style === 'older' || look.style === 'office' ? 0.62 : look.style === 'raver' || look.style === 'student' || look.style === 'queerRave' ? 0.82 : 0.72;
+  if (g > heavyFrom) return 'heavy';
+  if (look.height > 1.8 && look.build < 1.0) return 'lanky';
+  if (look.height < 1.64 && look.build > 1.06) return 'stocky';
+  if (look.build > 1.1) return 'broad';
+  if (g > 0.42 && look.build < 1.03) return 'pear';
+  if (look.build < 0.95) return 'slim';
+  return 'average';
 }
 
 /**

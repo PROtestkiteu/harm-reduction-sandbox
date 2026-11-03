@@ -530,7 +530,8 @@ export function parseSave(raw: unknown): SaveData | null {
       const k = (u ?? {}) as Record<string, unknown>;
       if (k.kind === 'vacant') return { kind: 'vacant', since: num(k.since, -1e9, 1e9, 0) };
       if (k.kind === 'squatted') return { kind: 'squatted', since: num(k.since, -1e9, 1e9, 0) };
-      if (k.kind === 'rented' && typeof k.service === 'string' && (SATELLITE_SERVICES as readonly string[]).includes(k.service)) return { kind: 'rented', service: k.service as SatelliteService };
+      // Older saves have no level: a plain fit-out, level 0.
+      if (k.kind === 'rented' && typeof k.service === 'string' && (SATELLITE_SERVICES as readonly string[]).includes(k.service)) return { kind: 'rented', service: k.service as SatelliteService, level: int(k.level, 0, PROPERTY.unit.maxLevel, 0) };
       return { kind: 'trading' };
     }),
     campers: [...new Set((Array.isArray(r.campers) ? r.campers : []).map((c) => int(c, 0, 9, -1)).filter((c) => c >= 0))].slice(0, 5),

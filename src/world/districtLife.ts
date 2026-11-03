@@ -1,7 +1,7 @@
 import { ConeGeometry, Group, Mesh, type MeshLambertMaterial, type Object3D } from 'three';
 import { DEAL_SPOTS, USE_SPOTS } from '../config/flavour/street';
 import { createRandom, type Random } from '../sim/random';
-import { frontFrame, type CityBuilding } from './cityBuildings';
+import { flatRoofTop, frontFrame, type CityBuilding } from './cityBuildings';
 import { awning } from './dressing';
 import { scaffolding } from './grit';
 import { add, box, cylinder, planter } from './kit';
@@ -57,8 +57,8 @@ interface Site {
   state: FrontState;
   /** Game minute the scaffolding comes down. */
   worksUntil: number;
-  /** The measured top of its roof, taken once. */
-  roof: number;
+  /** The top of its flat roof, or null for a pitched or mansard one. */
+  roof: number | null;
   /** Its looks, built as first needed. */
   looks: Map<FrontState, Group>;
 }
@@ -75,8 +75,8 @@ export class DistrictLife {
    * and landmarks with looks of their own). `lifts`: the services and venues.
    * `changed` hears each building that changes look, with its roof's top (for a puff of dust or balloons).
    */
-  /** `roof`: the measured top of a building's roof (flat roofs take a terrace or a tarp, seen from any side). */
-  constructor(parent: Object3D, buildings: readonly CityBuilding[], lifts: readonly P2[], warm: MeshLambertMaterial, private readonly random: Random, roof: (b: CityBuilding) => number, private readonly changed: (b: CityBuilding, to: FrontState, from: FrontState, roof: number) => void) {
+  /** Flat roofs take a terrace or a tarp, seen from any side. */
+  constructor(parent: Object3D, buildings: readonly CityBuilding[], lifts: readonly P2[], warm: MeshLambertMaterial, private readonly random: Random, private readonly changed: (b: CityBuilding, to: FrontState, from: FrontState, roof: number) => void) {
     // Named for the dev page's checks (scripts/bots): which fronts have changed and how.
     this.root.name = 'districtLife';
     parent.add(this.root);
@@ -85,7 +85,7 @@ export class DistrictLife {
       const cx = (b.x0 + b.x1) / 2;
       const cz = (b.z0 + b.z1) / 2;
       const uplift = Math.max(0, ...lifts.map((p) => near(Math.hypot(p.x - cx, p.z - cz), 28)));
-      const site: Site = { b, uplift, lean: (random() - 0.5) * 0.12, condition: 0.5, state: 'ordinary', worksUntil: 0, roof: roof(b), looks: new Map() };
+      const site: Site = { b, uplift, lean: (random() - 0.5) * 0.12, condition: 0.5, state: 'ordinary', worksUntil: 0, roof: flatRoofTop(b), looks: new Map() };
       this.byId.set(b.id, site);
       return site;
     });
@@ -132,7 +132,7 @@ export class DistrictLife {
         const from = s.state;
         s.state = next;
         this.show(s);
-        if (hours !== null) this.changed(s.b, next, from, s.roof);
+        if (hours !== null) this.changed(s.b, next, from, s.roof ?? s.b.height + 2);
       }
     }
   }
@@ -174,8 +174,8 @@ export class DistrictLife {
     const clear = (x: number, z: number, w: number, d: number) => clearOfWalks(f.x + x * c + z * sn, f.z - x * sn + z * c, f.rot, w, d);
     // Its own random, from its id: the same scaffolding and awning whenever it is built.
     this.dress(front, s.state, f.width, s.b.height, s.b.id, createRandom(s.b.id * 7919 + 13), clear);
-    // On a flat roof (the measured top within a parapet of the walls), something seen from every side.
-    if (s.roof - s.b.height < 1.0) {
+    // On a flat roof, something seen from every side.
+    if (s.roof !== null) {
       const depth = Math.abs(Math.sin(f.rot)) > 0.5 ? s.b.x1 - s.b.x0 : s.b.z1 - s.b.z0;
       const onRoof = add(front, new Group());
       onRoof.position.set(0, s.roof - 0.12, -depth / 2);

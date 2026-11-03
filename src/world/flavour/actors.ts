@@ -188,6 +188,18 @@ export class ActorPool {
     this.solids = solids;
   }
 
+  /** Adds a `w` by `d` box turned by `rot` at (x, z) to what is solid (a pack's parked vehicle), so traffic and people keep clear. */
+  addSolid(x: number, z: number, rot: number, w: number, d: number): void {
+    this.solids?.add(x, z, rot, w, d);
+  }
+
+  /** True when a circle of `r` at (x, z) would overlap something solid (a bench, a lamp, a tree, a parked car). */
+  blocked(x: number, z: number, r: number): boolean {
+    if (!this.solids) return false;
+    const out = { x: 0, z: 0 };
+    return this.solids.push(x, z, r, out);
+  }
+
   /** Draws every actor at the detail the camera needs. */
   update(dt: number): void {
     this.clock += dt;

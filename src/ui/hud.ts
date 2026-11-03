@@ -913,7 +913,8 @@ export class Hud {
   setSpeed(speed: number): void {
     this.speed = speed;
     const p = this.paused;
-    setText(this.speedBtn, p ? '\u2016' : `${speed}x`);
+    // Paused, the button draws two bars itself (style.css), centred in it whatever the font; the label says it.
+    setText(this.speedBtn, p ? '' : `${speed}x`);
     const last = speed === SPEEDS[SPEEDS.length - 1];
     setAttr(this.speedBtn, 'aria-label', p
       ? t('Paused. Press to play at 1x (Space)')
