@@ -2381,8 +2381,11 @@ button.event-card:focus-visible { outline: 2px solid var(--focus); outline-offse
 .layers-toggle[data-on='true'] { background: #edb300; border-color: #edb300; color: #1a1408; }
 .layers-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
 @media (hover: hover) { .layers-toggle:hover { border-color: #edb300; } }
-/* Settings is open over the map: the button steps aside, like the portrait. */
-body:has(.sandbox-body:not([hidden])) .layers-toggle { display: none; }
+/* Settings is open over the map: the button and the legend step aside, like the portrait. The legend
+   also steps aside while a menu is open (the overlays' own or any other), so it never sits over one. */
+body:has(.sandbox-body:not([hidden])) .layers-toggle,
+body:has(.sandbox-body:not([hidden])) .map-legend,
+body:has(.action-menu:not([hidden])) .map-legend { display: none; }
 .map-legend {
   position: absolute; z-index: 2; left: max(16px, env(safe-area-inset-left)); top: calc(max(12px, var(--safe-top)) + 176px);
   width: min(300px, calc(100vw - 32px)); padding: 6px 10px 8px;
@@ -2401,8 +2404,9 @@ body:has(.sandbox-body:not([hidden])) .layers-toggle { display: none; }
 .map-legend .swatch.ring { background: none; box-shadow: inset 0 0 0 2px var(--c); }
 /* Phones: under the top bar on the right, clear of the title and your portrait. */
 @media (max-width: 760px) {
-  .layers-toggle { left: auto; right: 8px; top: calc(max(12px, var(--safe-top)) + 104px); }
-  .map-legend { left: auto; right: 8px; top: calc(max(12px, var(--safe-top)) + 156px); width: min(230px, 62vw); font-size: 12px; }
+  /* Under the sheet (z-index 1 here): pulled up, it covers the button and the legend rather than the other way round. */
+  .layers-toggle { z-index: 0; left: auto; right: 8px; top: calc(max(12px, var(--safe-top)) + 104px); }
+  .map-legend { z-index: 0; left: auto; right: 8px; top: calc(max(12px, var(--safe-top)) + 156px); width: min(230px, 62vw); font-size: 12px; }
 }
 @media (max-width: 760px) {
   .map-legend li.minor { display: none; }
