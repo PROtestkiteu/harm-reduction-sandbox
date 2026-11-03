@@ -604,6 +604,20 @@ async function pipe(bytes: Uint8Array<ArrayBuffer>, stream: CompressionStream | 
 }
 
 /**
+ * Raw deflate both ways: the browser's own streams, or on browsers without them (Safari before
+ * 16.4, iPadOS 15) fflate, fetched only there and only when a link is packed or opened.
+ */
+async function deflateRaw(bytes: Uint8Array<ArrayBuffer>): Promise<Uint8Array<ArrayBuffer>> {
+  if (typeof CompressionStream !== 'undefined') return pipe(bytes, new CompressionStream('deflate-raw'));
+  return (await import('fflate')).deflateSync(bytes) as Uint8Array<ArrayBuffer>;
+}
+
+async function inflateRaw(bytes: Uint8Array<ArrayBuffer>): Promise<Uint8Array<ArrayBuffer>> {
+  if (typeof DecompressionStream !== 'undefined') return pipe(bytes, new DecompressionStream('deflate-raw'));
+  return (await import('fflate')).inflateSync(bytes) as Uint8Array<ArrayBuffer>;
+}
+
+/**
  * A save as plain base64url JSON, at once (no compression): for the live game,
  * whose last save must go out while the page is closing, with no time to wait.
  */
@@ -626,14 +640,14 @@ export function decodeSave(code: string): SaveData | null {
 
 /** Packs a save into the text after '#g=' in a link. */
 export async function packSave(s: SaveData): Promise<string> {
-  return b64url(await pipe(new TextEncoder().encode(JSON.stringify(s)), new CompressionStream('deflate-raw')));
+  return b64url(await deflateRaw(new TextEncoder().encode(JSON.stringify(s))));
 }
 
 /** Unpacks a link's save; null for anything that is not a valid save (or too big to be one). */
 export async function unpackSave(code: string): Promise<SaveData | null> {
   if (!code || code.length > 12000 || !/^[A-Za-z0-9_-]+$/.test(code)) return null;
   try {
-    const bytes = await pipe(fromB64url(code), new DecompressionStream('deflate-raw'));
+    const bytes = await inflateRaw(fromB64url(code));
     if (bytes.length > 60000) return null;
     return parseSave(JSON.parse(new TextDecoder().decode(bytes)));
   } catch {

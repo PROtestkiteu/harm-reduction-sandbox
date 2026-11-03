@@ -7,6 +7,7 @@
 // The stylesheet comes with this first, tiny script, so the loading screen is styled (and themed) at once.
 import './style.css';
 import { LANG, loadCatalogue } from './i18n';
+import { loadCompat } from './compat';
 import skylineSvg from './assets/loading-skyline.svg?raw';
 
 const EN = [
@@ -192,6 +193,8 @@ function showStartFailure(error: unknown): void {
   console.error('Game start failed', error);
 }
 
-// The game: its own chunk, fetched once the language's text is in (t() reads it as modules load).
-// A chunk that cannot load, parse or run rejects here; the loading screen then explains instead of hanging.
-void loadCatalogue().catch(() => { /* offline mid-load: English */ }).then(() => import('./main')).catch(showStartFailure);
+// The game: its own chunk, fetched once the language's text is in (t() reads it as modules load) and
+// any stand-ins this browser needs are installed (compat/: none on current browsers). A chunk that
+// cannot load, parse or run rejects here; the loading screen then explains instead of hanging.
+const text = loadCatalogue().catch(() => { /* offline mid-load: English */ });
+void Promise.all([text, loadCompat()]).then(() => import('./main')).catch(showStartFailure);
