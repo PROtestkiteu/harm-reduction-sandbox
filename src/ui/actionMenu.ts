@@ -3,6 +3,10 @@ export interface MenuItem {
   label: string;
   disabled: boolean;
   run(): void;
+  /** A small line icon before the label: the inside of a 24 by 24 SVG (paths and circles), drawn in the text colour. */
+  icon?: string;
+  /** The one chosen now, of a set of choices: marked, and announced as checked. */
+  current?: boolean;
 }
 
 /**
@@ -55,8 +59,17 @@ export class ActionMenu {
       li.setAttribute('role', 'none');
       const b = document.createElement('button');
       b.type = 'button';
-      b.setAttribute('role', 'menuitem');
-      b.textContent = item.label;
+      b.setAttribute('role', item.current === undefined ? 'menuitem' : 'menuitemradio');
+      if (item.current !== undefined) b.setAttribute('aria-checked', String(item.current));
+      if (item.icon) {
+        b.classList.add('has-icon');
+        const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        icon.setAttribute('viewBox', '0 0 24 24');
+        icon.setAttribute('aria-hidden', 'true');
+        icon.setAttribute('class', 'menu-icon');
+        icon.innerHTML = item.icon;
+        b.append(icon, item.label);
+      } else b.textContent = item.label;
       b.disabled = item.disabled;
       b.addEventListener('click', () => {
         this.close();
