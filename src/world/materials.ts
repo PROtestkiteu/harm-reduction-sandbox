@@ -279,6 +279,23 @@ export function mat(color: number): MeshLambertMaterial {
   return m;
 }
 
+const instancedShared = new Map<number, MeshLambertMaterial>();
+
+/**
+ * `mat` for an InstancedMesh: the same look as its own material. A material
+ * shared by plain and instanced meshes needs a different program for each, and
+ * three switches (and looks the program up again) at every draw that changes
+ * between them. Never mutate the result.
+ */
+export function instancedMat(color: number): MeshLambertMaterial {
+  let m = instancedShared.get(color);
+  if (!m) {
+    m = painted(new MeshLambertMaterial({ color, flatShading: true }));
+    instancedShared.set(color, m);
+  }
+  return m;
+}
+
 /** True for the plain palette materials from `mat` and `clothMat`: same shader, only the colour differs. */
 export function isPlain(m: Material): m is MeshLambertMaterial {
   return plain.has(m) || plainCloth.has(m);

@@ -3,7 +3,7 @@ import { SKY } from '../../config/flavour/sky';
 import { inView } from '../../render/viewEdge';
 import { range } from '../../sim/random';
 import { add, box } from '../kit';
-import { glowMat, mat, vehicleMat } from '../materials';
+import { glowMat, instancedMat, vehicleMat } from '../materials';
 import { dynamic } from '../mergeStatic';
 import type { Pack, PackDeps } from './index';
 
@@ -70,7 +70,7 @@ export function buildSky({ pool, random, scene }: PackDeps): Pack {
   scene.add(root);
   // Birds: two wings each, as one instanced mesh; up to two flocks of eight.
   const WINGS = 32;
-  const wing = new InstancedMesh(new BoxGeometry(0.42, 0.03, 0.16).translate(0.21, 0, 0), mat(0x2a2826), WINGS);
+  const wing = new InstancedMesh(new BoxGeometry(0.42, 0.03, 0.16).translate(0.21, 0, 0), instancedMat(0x2a2826), WINGS);
   wing.castShadow = false;
   wing.count = 0;
   root.add(wing);

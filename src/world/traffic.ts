@@ -90,9 +90,15 @@ export class Traffic {
       const alongX = Math.abs(c.dx) > 0.7;
       const light = alongX ? s.x : s.z;
       if (light === 'green') continue;
-      const [pos, side, lo, hi, sideLo, sideHi, dir] = alongX
-        ? [c.x, c.z, s.x0, s.x1, s.z0, s.z1, c.dx]
-        : [c.z, c.x, s.z0, s.z1, s.x0, s.x1, c.dz];
+      // Plain locals, not a destructured array: this runs for every car and signal each step, and an array
+      // here was one of the largest sources of garbage per frame.
+      const pos = alongX ? c.x : c.z;
+      const side = alongX ? c.z : c.x;
+      const lo = alongX ? s.x0 : s.z0;
+      const hi = alongX ? s.x1 : s.z1;
+      const sideLo = alongX ? s.z0 : s.x0;
+      const sideHi = alongX ? s.z1 : s.x1;
+      const dir = alongX ? c.dx : c.dz;
       if (side < sideLo || side > sideHi) continue;
       const toLine = (dir > 0 ? lo - pos : pos - hi) - c.half;
       if (toLine < -0.3 || toLine > LOOK) continue;

@@ -43,7 +43,7 @@ import { HumanFigure, peopleLibrary } from './humanFigure';
 import { Dog } from './dog';
 import type { PatrolStyle } from '../config/contextFactors';
 import { nearestNode, routeTo } from './nav';
-import { movingBox, pushFromBox } from '../world/solids';
+import { pushFromBox, setMovingBox, type Box } from '../world/solids';
 import type { Tailpipe } from '../world/puffs';
 import { PoliceRings, deterrenceRadius } from './policeRings';
 import { cityBuilding, doorApproach, type DoorApproach } from '../world/cityBuildings';
@@ -233,6 +233,7 @@ export class Crowd {
   private readonly byVisitor = new Map<VisitorId, Agent>();
   private readonly cars: Car[] = [];
   private readonly giveWayList: Agent[] = [];
+  private readonly carBoxes: Box[] = [];
   private readonly pushScratch = { x: 0, z: 0 };
   private readonly random: Random;
   private nextId = 1;
@@ -1871,7 +1872,14 @@ export class Crowd {
     // Resolve overlaps over a few frames; never more than fully in one step.
     const gain = Math.min(1, dt * 30);
     const relax = Math.max(0, 1 - dt * 1.6);
-    const cars = this.cars.map((c) => movingBox(c.group.position.x, c.group.position.z, c.group.rotation.y, 2.0, 4.8));
+    // The cars' boxes, written into kept objects: this runs every step, so it allocates nothing.
+    const cars = this.carBoxes;
+    while (cars.length < this.cars.length) cars.push({ x: 0, z: 0, c: 1, s: 0, hw: 0, hd: 0 });
+    cars.length = this.cars.length;
+    for (let i = 0; i < this.cars.length; i++) {
+      const g = this.cars[i].group;
+      setMovingBox(cars[i], g.position.x, g.position.z, g.rotation.y, 2.0, 4.8);
+    }
     for (const a of list) {
       const anchored = this.anchored(a);
       if (anchored) {

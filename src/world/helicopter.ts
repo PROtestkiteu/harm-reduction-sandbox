@@ -140,7 +140,7 @@ export class Helicopter {
     }
     // The searchlight: a faint cone from the nose to the street, only after dark.
     const geo = new ConeGeometry(4, HEIGHT, 16, 1, true).translate(0, -HEIGHT / 2, 0);
-    this.beam = new Mesh(geo, new MeshBasicMaterial({ color: 0xfff2d0, transparent: true, opacity: 0.09, blending: AdditiveBlending, depthWrite: false, side: DoubleSide }));
+    this.beam = new Mesh(geo, new MeshBasicMaterial({ color: 0xfff2d0, transparent: true, opacity: 0.09, blending: AdditiveBlending, depthWrite: false, side: DoubleSide, forceSinglePass: true }));
     this.beam.visible = false;
     this.root.add(this.beam);
     this.ferryIn = FERRY[0] * (0.3 + random() * 0.7);

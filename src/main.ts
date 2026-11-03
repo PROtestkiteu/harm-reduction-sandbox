@@ -4,7 +4,7 @@ import { clientToNdc } from './render/camera';
 import { TIRED } from './sim/team';
 import { locationOf, nextStep, type GuideView } from './game/guide';
 import { QUALITY } from './render/quality';
-import { DirectionalLight, Plane, Raycaster, Vector3, WebGLRenderer, type Object3D, type PointLight } from 'three';
+import { DirectionalLight, Plane, Raycaster, Vector3, WebGLRenderer, type Object3D } from 'three';
 import { DaemonFigure } from './agents/daemonFigure';
 import { FAVOUR } from './config/favours';
 import { QUESTS } from './config/institutionQuests';
@@ -95,6 +95,7 @@ import { ContextProps } from './world/contextProps';
 import { DISTRICT } from './world/layout';
 import { buildWorld, configureRenderer } from './world/scene';
 import { setSurfaceBend } from './world/materials';
+import { LiteMode } from './render/liteMode';
 import { setPuddleView } from './world/puddles';
 import { NeighbourhoodProps } from './world/neighbourhoodProps';
 import { CityProps } from './world/cityProps';
@@ -167,17 +168,16 @@ const quality = new QualityController(startTier(renderer.getContext() as WebGL2R
 });
 pipeline.setTier(quality.tier);
 const world = buildWorld(createRandom(ILLUSTRATIVE.seed));
-// The oldest Apple GPUs (renderQuality.legacyGpu) draw without point lights, the sun's shadows and the
-// surfaces' vertex bend, set once here before anything is compiled; the lamps keep their glowing bulbs
-// and light cones, and the surfaces their painted wear.
-const legacyGpu = isLegacyGpu(renderer.getContext() as WebGL2RenderingContext);
-const dropPointLights = (root: Object3D) => root.traverse((o) => { if ((o as PointLight).isPointLight) o.visible = false; });
-if (legacyGpu) {
-  renderer.shadowMap.enabled = false;
-  setSurfaceBend(false);
-  dropPointLights(world.scene);
-}
 const camera = createIsoCamera();
+/**
+ * Lite lighting (render/liteMode.ts): no point lights, sun shadows or surface bend. Decided here before
+ * anything is compiled for the oldest GPUs and for a device that needed it before; any other device
+ * gets it once Auto is at its lowest tier and frames are still too few.
+ */
+const lite = new LiteMode(renderer, world.scene, camera, setSurfaceBend, isLegacyGpu(renderer.getContext() as WebGL2RenderingContext), () => {
+  dirty = true;
+  syncGraphics();
+});
 watchCamera(camera);
 camera.layers.enable(OVERLAY_LAYER);
 const sim = new Simulation(ILLUSTRATIVE.seed);
@@ -1166,7 +1166,7 @@ const sound = new Sound();
 }
 sandbox.mount(soundSection(sound));
 // Graphics: Auto (render/renderQuality.ts) or a fixed tier; kept on this device.
-const graphics = graphicsSection(quality.mode, { onMode: (m) => quality.setMode(m), tier: () => quality.tier });
+const graphics = graphicsSection(quality.mode, { onMode: (m) => quality.setMode(m), tier: () => quality.tier, lite: () => lite.reason, fullLighting: () => lite.reset() });
 sandbox.mount(graphics.section);
 syncGraphics = graphics.sync;
 const TAP_TARGETS = 'button, a[href], summary, select, input, [role="button"], [role="option"], [role="menuitem"], [role="tab"]';
@@ -1883,6 +1883,13 @@ function writeUrl(): void {
   }
 }
 
+/** How long `fn` took, in ms. */
+function timed(fn: () => void): number {
+  const t0 = performance.now();
+  fn();
+  return performance.now() - t0;
+}
+
 /** The sun's shadow map at the quality tier's size (the sun is the scene's one shadow-casting directional light). */
 function syncShadowMap(): void {
   const sun = world.scene.children.find((o): o is DirectionalLight => o instanceof DirectionalLight && o.castShadow);
@@ -2001,14 +2008,17 @@ let sceneTime = 0;
 let hudTimer = 0;
 /** Whether the last frame was drawn: only intervals between two drawn frames say what drawing costs. */
 let drewLast = false;
+/** While the scenery kits' shaders compile (after they load), drawing waits; see `loadKits` below. */
+let kitsCompiling = false;
 const gpuSample = (ms: number) => quality.sampleGpu(ms);
 
 function frame(now: number): void {
   // Animation level of detail (render/animationLod.ts): a frame count and the zoom, before anything animates.
   beginAnimationFrame(pipeline.worldPerPixel);
-  // Only steady frames count: a hidden tab, a stall or an idle (undrawn) frame says nothing about render cost.
+  // Only drawn frames count, and none over half a second (a hidden tab or a stall says nothing about
+  // render cost); a slow device at 2 to 10 frames a second still counts, so Auto can step down there.
   pipeline.pollGpu(gpuSample);
-  if (drewLast && now - last < 100) quality.sampleFrame(now - last);
+  if (drewLast && now - last < 500) quality.sampleFrame(now - last);
   const realDt = Math.min(0.1, (now - last) / 1000);
   last = now;
   checkSize(now);
@@ -2056,10 +2066,13 @@ function frame(now: number): void {
   if (coins.update(realDt)) dirty = true;
   syncPortrait();
   updateSound();
-  drewLast = dirty;
-  if (dirty) {
+  // While lite lighting's or the scenery kits' shaders compile (one-offs) the last frame stays on screen.
+  const draw = dirty && !lite.busy && !kitsCompiling;
+  drewLast = draw;
+  if (draw) {
     pipeline.render(world.scene, camera, interaction.highlightFlags);
     dirty = false;
+    lite.drawn(now, quality.mode === 'auto', quality.tier === 'low');
   }
   requestAnimationFrame(frame);
 }
@@ -2116,7 +2129,9 @@ applyAnisotropy(world.scene, renderer.capabilities.getMaxAnisotropy(), quality.t
 syncShadowMap();
 pipeline.render(world.scene, camera);
 // Every tier's finishing pass is compiled now, behind the loading screen, so switching never hitches.
-const precompileMs = pipeline.precompile();
+// So is every material already in the world, hidden ones included (night-only signs, event lights,
+// the parked fleet): the first frame compiled only what it drew, and the rest would compile mid-play.
+const precompileMs = pipeline.precompile() + timed(() => renderer.compile(world.scene, camera));
 // Installed on an iPhone the page gets its full height just after launch: the loading screen stays
 // up until then, so the first frame shown is already framed for the whole screen. One more re-aim
 // for whatever the HUD settled into meanwhile, drawn by the main loop before the screen lifts.
@@ -2132,7 +2147,21 @@ void whenViewportSettled(canvas).then(() => {
 void startGame();
 // The Quaternius kits load after the first frame, so a phone is never kept waiting for them.
 // The scenery kits are 2 MB: skipped on weak phones and slow or data-saving connections.
-if (QUALITY.kits) void loadKits().then((kits) => { if (kits) { world.applyKits(kits); if (legacyGpu) dropPointLights(world.scene); } });
+if (QUALITY.kits) void loadKits().then(async (kits) => {
+  if (!kits) return;
+  world.applyKits(kits);
+  lite.refresh(world.scene);
+  // The kits bring new materials: they compile in parallel (KHR_parallel_shader_compile) before they are
+  // drawn, the picture holding a moment with the game and input running, instead of a frozen frame
+  // mid-play. Never longer than 1.5 s; whatever is not ready by then compiles on first draw as before.
+  kitsCompiling = true;
+  await Promise.race([
+    renderer.compileAsync(world.scene, camera).catch(() => { /* compiled on first draw instead */ }),
+    new Promise((resolve) => setTimeout(resolve, 1500)),
+  ]);
+  kitsCompiling = false;
+  dirty = true;
+});
 
 // The player gate: queue when the server is short of memory, a time limit while busy.
 let pausedBeforeQueue = false;
@@ -2148,5 +2177,5 @@ requestAnimationFrame(frame);
 
 if (import.meta.env.DEV) {
   // Diagnostics for local profiling only; stripped from production builds.
-  Object.assign(window, { __sandbox: { renderer, pipeline, quality, precompileMs, world, camera, sim, crowd, rig, interaction, actionMenu, props, street, cityProps, flavour, hud, nightBox, eventPopup, fx, syncEvents: () => { eventsDirty = true; syncEvents(); refreshOrg(); syncStreet(); } } });
+  Object.assign(window, { __sandbox: { renderer, pipeline, quality, lite, precompileMs, world, camera, sim, crowd, rig, interaction, actionMenu, props, street, cityProps, flavour, hud, nightBox, eventPopup, fx, syncEvents: () => { eventsDirty = true; syncEvents(); refreshOrg(); syncStreet(); } } });
 }

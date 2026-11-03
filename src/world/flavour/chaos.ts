@@ -82,7 +82,7 @@ function boardedFront(parent: Object3D, front: SquatDoor, tag: CanvasTexture): G
   add(g, box(2.1, 0.12, 0.06, batten, 0, 0.75, 0.03)).rotation.z = 0.7;
   add(g, box(2.1, 0.12, 0.06, batten, 0, 0.75, 0.03)).rotation.z = -0.7;
   // The tag above the board, on the wall over the shop window.
-  const spray = new Mesh(new PlaneGeometry(2.2, 0.92), new MeshBasicMaterial({ map: tag, transparent: true, side: DoubleSide, depthWrite: false }));
+  const spray = new Mesh(new PlaneGeometry(2.2, 0.92), new MeshBasicMaterial({ map: tag, transparent: true, side: DoubleSide, forceSinglePass: true, depthWrite: false }));
   spray.position.set(0, 2.75, 0.04);
   g.add(spray);
   // On the wall: the door spot is 0.6 m out from it.

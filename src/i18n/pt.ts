@@ -1471,6 +1471,9 @@ export const PT: Record<string, string> = {
   "Lower settings draw fewer light and shadow details, so slower phones stay smooth.": "As definições mais baixas desenham menos detalhes de luz e sombra, para que os telemóveis mais lentos fiquem fluidos.",
   "Ultra": "Ultra",
   "Ultra draws finer detail than High, for fast computers and phones.": "Ultra desenha detalhes mais finos do que Alta, para computadores e telemóveis rápidos.",
+  "Use full lighting": "Usar iluminação completa",
+  "Simple lighting: this device's graphics chip is too old for lamp light and shadows.": "Iluminação simples: o chip gráfico deste dispositivo é demasiado antigo para a luz dos candeeiros e as sombras.",
+  "Simple lighting: this device was drawing too few frames, so lamps no longer light their surroundings and there are no shadows.": "Iluminação simples: este dispositivo desenhava poucas imagens por segundo, por isso os candeeiros já não iluminam o que os rodeia e não há sombras.",
   // ===== Sound (src/audio, src/ui/soundSection.ts) =====
   "Sound": "Som",
   "A recorded night street under sounds made in the browser, which follow the hour, the weather and where you look. They start with your first click or key press.": "Uma rua noturna gravada sob sons criados no navegador, que seguem a hora, o tempo e para onde olha. Começam com o seu primeiro clique ou toque numa tecla.",
@@ -2235,4 +2238,5 @@ export const PT: Record<string, string> = {
   "Mango, papaya, pineapple!": "Manga, papaia, ananás!",
   "Fresh fruit, cheap.": "Fruta fresca, barata.",
   "With salt and lime?": "Com sal e lima?",
+  "Safe space": "espaço seguro",
 };

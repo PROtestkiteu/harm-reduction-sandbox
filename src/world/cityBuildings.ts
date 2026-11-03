@@ -33,9 +33,14 @@ export interface CityBuilding {
  */
 export type RoofKind = 'flat' | 'built' | 'pitched' | 'mansard';
 
-/** The top of a building's flat roof (its deck, inside the parapet), or null when it has another roof or none registered. */
+/**
+ * The surface of a building's open flat roof, where things stand on it, or
+ * null when it has another roof (or none registered). The parapet course
+ * (world/infill.ts building) is solid over the whole roof, so the surface is
+ * its top: 0.99 m above the walls' height, measured with a ray down onto it.
+ */
 export function flatRoofTop(b: CityBuilding): number | null {
-  return b.roof === 'flat' ? b.height + 0.12 : null;
+  return b.roof === 'flat' ? b.height + 0.99 : null;
 }
 
 /**

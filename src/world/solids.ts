@@ -17,7 +17,7 @@ export function solid<T extends Object3D>(obj: T, w: number, d = w): T {
 }
 
 /** One oriented box on the ground. */
-interface Box { x: number; z: number; c: number; s: number; hw: number; hd: number }
+export interface Box { x: number; z: number; c: number; s: number; hw: number; hd: number }
 
 const CELL = 4;
 const key = (ix: number, iz: number) => ix * 8192 + iz;
@@ -85,6 +85,17 @@ export function pushFromBox(b: Box, x: number, z: number, radius: number, out: {
 /** A moving box (a car), for collisions outside the static grid. */
 export function movingBox(x: number, z: number, angle: number, w: number, d: number): Box {
   return { x, z, c: Math.cos(angle), s: Math.sin(angle), hw: w / 2, hd: d / 2 };
+}
+
+/** `movingBox` written into `out` (reused every frame, so nothing is allocated). */
+export function setMovingBox(out: Box, x: number, z: number, angle: number, w: number, d: number): Box {
+  out.x = x;
+  out.z = z;
+  out.c = Math.cos(angle);
+  out.s = Math.sin(angle);
+  out.hw = w / 2;
+  out.hd = d / 2;
+  return out;
 }
 
 /** Gathers every tagged footprint under `root` into a grid, using world positions and headings. */

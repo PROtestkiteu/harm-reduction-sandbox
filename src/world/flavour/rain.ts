@@ -124,7 +124,7 @@ export function buildWeather({ scene, random, camera, setWetness, pool }: PackDe
     uWidth: { value: 0.04 },
     uColour: { value: new Color(0xb8c4d0) },
   };
-  const rain = new Mesh(geo, new ShaderMaterial({ uniforms: u, vertexShader: RAIN_VERTEX, fragmentShader: RAIN_FRAGMENT, transparent: true, depthWrite: false, side: DoubleSide }));
+  const rain = new Mesh(geo, new ShaderMaterial({ uniforms: u, vertexShader: RAIN_VERTEX, fragmentShader: RAIN_FRAGMENT, transparent: true, depthWrite: false, side: DoubleSide, forceSinglePass: true }));
   rain.frustumCulled = false;
   rain.renderOrder = 3;
   rain.raycast = () => {};

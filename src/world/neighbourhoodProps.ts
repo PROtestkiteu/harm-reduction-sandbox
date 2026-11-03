@@ -1,7 +1,7 @@
 import { BoxGeometry, Group, InstancedMesh, Matrix4, type Scene } from 'three';
 import { PALETTE } from '../config/palette';
 import { add, box, signBoard } from './kit';
-import { mat } from './materials';
+import { instancedMat, mat } from './materials';
 
 /** What the neighbourhood makes visible. Derived from the simulation's neighbourhood state. */
 export interface StreetView {
@@ -57,7 +57,7 @@ export class NeighbourhoodProps {
     }
 
     const geo = new BoxGeometry(0.22, 0.05, 0.08);
-    this.litter = new InstancedMesh(geo, mat(PALETTE.canvasCream), LITTER_SPOTS.length);
+    this.litter = new InstancedMesh(geo, instancedMat(PALETTE.canvasCream), LITTER_SPOTS.length);
     const m = new Matrix4();
     LITTER_SPOTS.forEach(([x, z], i) => {
       m.makeRotationY(i * 1.7);

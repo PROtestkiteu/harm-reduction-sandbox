@@ -146,6 +146,8 @@ export class QualityController {
   /** Set while a step up is on trial: the tier to fall back to, and until when the trial runs. */
   private trialFrom: QualityTier | null = null;
   private trialUntil = 0;
+  /** Samples are ignored until then (s): the frame or two after a change pay for its resize and buffers. */
+  private settleUntil = 0;
   private gpuSeen = false;
 
   constructor(start: QualityTier, mode: QualityMode, private readonly apply: (tier: QualityTier) => void) {
@@ -189,8 +191,9 @@ export class QualityController {
    * visible). Runs the verdict.
    */
   sampleFrame(gapMs: number): void {
-    const dt = Math.min(gapMs, 100) / 1000;
+    const dt = Math.min(gapMs, 500) / 1000;
     this.clock += dt;
+    if (this.clock < this.settleUntil) return;
     this.gapEma = this.gapEma === 0 ? gapMs : this.gapEma + (gapMs - this.gapEma) * 0.1;
     if (this.mode !== 'auto') return;
     // Dropped frames decide (on a weak phone the CPU is often the limit, and a lower tier also
@@ -254,6 +257,7 @@ export class QualityController {
   private set(tier: QualityTier): void {
     if (tier === this.current) return;
     this.current = tier;
+    this.settleUntil = this.clock + 1;
     this.apply(tier);
   }
 }

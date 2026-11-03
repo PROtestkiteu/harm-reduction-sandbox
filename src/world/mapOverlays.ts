@@ -31,7 +31,7 @@ const Y = 0.07;
 
 /** A pool of marks of one shape: per-instance colour and opacity. */
 function markPool(geo: BufferGeometry, offset: number): InstancedMesh {
-  const mat = new MeshBasicMaterial({ transparent: true, depthWrite: false, side: DoubleSide, polygonOffset: true, polygonOffsetFactor: offset });
+  const mat = new MeshBasicMaterial({ transparent: true, depthWrite: false, side: DoubleSide, forceSinglePass: true, polygonOffset: true, polygonOffsetFactor: offset });
   // Opacity per mark, from an instance attribute (three.js has colour per instance, not alpha).
   mat.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader
@@ -66,7 +66,7 @@ export class MapOverlays {
     this.fills = markPool(new CircleGeometry(1, 40).rotateX(-Math.PI / 2), -2);
     this.rings = markPool(new RingGeometry(0.94, 1, 64).rotateX(-Math.PI / 2), -2);
     this.root.add(this.fills, this.rings);
-    const dotMat = new MeshBasicMaterial({ transparent: true, opacity: 0.9, depthWrite: false, side: DoubleSide, polygonOffset: true, polygonOffsetFactor: -3 });
+    const dotMat = new MeshBasicMaterial({ transparent: true, opacity: 0.9, depthWrite: false, side: DoubleSide, forceSinglePass: true, polygonOffset: true, polygonOffsetFactor: -3 });
     this.dots = new InstancedMesh(new CircleGeometry(0.42, 14).rotateX(-Math.PI / 2), dotMat, PEOPLE);
     this.dots.count = 0;
     this.dots.renderOrder = 2;

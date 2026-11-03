@@ -1,7 +1,7 @@
 import { Group, type MeshLambertMaterial, type Object3D } from 'three';
 import type { SatelliteService } from '../sim/property';
 import { createRandom } from '../sim/random';
-import { flatRoofTop, frontFrame, type CityBuilding } from './cityBuildings';
+import { claimRoof, flatRoofTop, frontFrame, roofClaimed, type CityBuilding } from './cityBuildings';
 import { add, bench, box, cylinder, planter, signBoard } from './kit';
 import { clearOfWalks } from './layout';
 import { glowMat, mat } from './materials';
@@ -34,6 +34,8 @@ export class FitOuts {
   private readonly root = dynamic(new Group());
   private readonly byBuilding = new Map<number, Shown>();
   private readonly glow = new Map<number, MeshLambertMaterial>();
+  /** Roofs this has built on (and so claimed). */
+  private readonly ownRoofs = new Set<number>();
 
   /** `warm`: the lit-window material shared with the street. */
   constructor(parent: Object3D, private readonly warm: MeshLambertMaterial) {
@@ -70,7 +72,10 @@ export class FitOuts {
     const clear = (x: number, z: number, w: number, d: number) => clearOfWalks(f.x + x * c + z * s, f.z - x * s + z * c, f.rot, w, d);
     this.dress(front, look, f.width, b.height, b.id, clear);
     const top = flatRoofTop(b);
-    if (look.level >= 3 && top !== null) {
+    // On a flat roof nobody else has taken (a mosque, a rooftop party, a district terrace); claimed for it.
+    if (look.level >= 3 && top !== null && (this.ownRoofs.has(b.id) || !roofClaimed(b.id))) {
+      this.ownRoofs.add(b.id);
+      claimRoof([b.id]);
       const depth = Math.abs(s) > 0.5 ? b.x1 - b.x0 : b.z1 - b.z0;
       const onRoof = add(front, new Group());
       onRoof.position.set(0, top - 0.12, -depth / 2);

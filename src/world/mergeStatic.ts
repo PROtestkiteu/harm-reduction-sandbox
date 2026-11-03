@@ -81,7 +81,9 @@ export function mergeStatic(root: Object3D): void {
     for (const g of geos) g.dispose();
     if (!geometry) return;
     const { material, sync } = glowBankMat(glowMats.slice(bank * GLOW_BANK_SIZE, (bank + 1) * GLOW_BANK_SIZE));
-    const mesh = new Mesh(geometry, material);
+    // Kept out of any later, wider merge (the far city merges, then the whole scene): a re-merge would
+    // drop this per-draw read-back and freeze every light in the bank at its value now.
+    const mesh = dynamic(new Mesh(geometry, material));
     // The light groups' colour and glow, read back from their own materials just before each draw.
     mesh.onBeforeRender = sync;
     // Lit things cast no shadow (as above).

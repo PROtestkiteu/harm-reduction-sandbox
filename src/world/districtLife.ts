@@ -1,7 +1,7 @@
 import { ConeGeometry, Group, Mesh, type MeshLambertMaterial, type Object3D } from 'three';
 import { DEAL_SPOTS, USE_SPOTS } from '../config/flavour/street';
 import { createRandom, type Random } from '../sim/random';
-import { flatRoofTop, frontFrame, type CityBuilding } from './cityBuildings';
+import { claimRoof, flatRoofTop, frontFrame, roofClaimed, type CityBuilding } from './cityBuildings';
 import { awning } from './dressing';
 import { scaffolding } from './grit';
 import { add, box, cylinder, planter } from './kit';
@@ -68,6 +68,8 @@ export class DistrictLife {
   private readonly byId = new Map<number, Site>();
   private readonly root = dynamic(new Group());
   private lastMinute: number | null = null;
+  /** Roofs this has dressed (and so claimed): it may dress them again in another look. */
+  private readonly ownRoofs = new Set<number>();
   private readonly warm: MeshLambertMaterial;
 
   /**
@@ -174,8 +176,10 @@ export class DistrictLife {
     const clear = (x: number, z: number, w: number, d: number) => clearOfWalks(f.x + x * c + z * sn, f.z - x * sn + z * c, f.rot, w, d);
     // Its own random, from its id: the same scaffolding and awning whenever it is built.
     this.dress(front, s.state, f.width, s.b.height, s.b.id, createRandom(s.b.id * 7919 + 13), clear);
-    // On a flat roof, something seen from every side.
-    if (s.roof !== null) {
+    // On a flat roof nobody else has taken (a mosque, a rooftop party), something seen from every side; claimed for it.
+    if (s.roof !== null && (this.ownRoofs.has(s.b.id) || !roofClaimed(s.b.id))) {
+      this.ownRoofs.add(s.b.id);
+      claimRoof([s.b.id]);
       const depth = Math.abs(Math.sin(f.rot)) > 0.5 ? s.b.x1 - s.b.x0 : s.b.z1 - s.b.z0;
       const onRoof = add(front, new Group());
       onRoof.position.set(0, s.roof - 0.12, -depth / 2);

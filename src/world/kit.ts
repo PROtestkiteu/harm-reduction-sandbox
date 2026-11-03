@@ -261,7 +261,7 @@ function lampCone(): MeshBasicMaterial {
   ctx.fillRect(0, 0, 4, 64);
   const tex = new CanvasTexture(canvas);
   tex.colorSpace = SRGBColorSpace;
-  coneMat = new MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, blending: AdditiveBlending, side: DoubleSide, opacity: 0.15 });
+  coneMat = new MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, blending: AdditiveBlending, side: DoubleSide, forceSinglePass: true, opacity: 0.15 });
   return coneMat;
 }
 

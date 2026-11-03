@@ -3,7 +3,7 @@ import type { Archetype } from '../../agents/character';
 import { BENCH, BUSKER, DELIVERY, SMOKERS } from '../../config/flavour/vignettes';
 import { range } from '../../sim/random';
 import { CLUB_QUEUE_DIR, VENUE_FRAME, toWorld } from '../layout';
-import { mat } from '../materials';
+import { instancedMat } from '../materials';
 import { dynamic } from '../mergeStatic';
 import { fade, walkTo, type Actor } from './actors';
 import type { Pack, PackDeps } from './index';
@@ -74,7 +74,7 @@ export function buildVignettes({ pool, random, scene, buses }: PackDeps): Pack {
   partner.heading = BENCH.face;
   partner.pose = 'sit';
   partner.voice = 'passerby';
-  const pigeons = dynamic(new InstancedMesh(new BoxGeometry(0.16, 0.13, 0.26).translate(0, 0.07, 0), mat(0x7a7c84), BENCH.pigeons));
+  const pigeons = dynamic(new InstancedMesh(new BoxGeometry(0.16, 0.13, 0.26).translate(0, 0.07, 0), instancedMat(0x7a7c84), BENCH.pigeons));
   pigeons.castShadow = false;
   root.add(pigeons);
   const birds = Array.from({ length: BENCH.pigeons }, (_, i) => ({ a: (i / BENCH.pigeons) * 6.28, r: 1 + random() * 1.4, peck: random() * 6 }));

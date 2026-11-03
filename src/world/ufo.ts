@@ -40,7 +40,7 @@ function saucer(): { g: Group; ring: Group; beam: Mesh } {
   // The beam: a pale cone from the belly to the street.
   const beam = new Mesh(
     new ConeGeometry(3.4, HOVER.height, 20, 1, true).translate(0, -HOVER.height / 2, 0),
-    new MeshBasicMaterial({ color: 0xc8ffe0, transparent: true, opacity: 0, blending: AdditiveBlending, depthWrite: false, side: DoubleSide }),
+    new MeshBasicMaterial({ color: 0xc8ffe0, transparent: true, opacity: 0, blending: AdditiveBlending, depthWrite: false, side: DoubleSide, forceSinglePass: true }),
   );
   beam.position.y = -0.8;
   g.add(beam);

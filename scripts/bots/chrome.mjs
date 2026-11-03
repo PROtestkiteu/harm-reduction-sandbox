@@ -3,7 +3,7 @@
 // Google Chrome. Used by the bots, the perf check and the clearance check.
 //
 // As a script:  node scripts/bots/chrome.mjs <url> <steps.json> [outDir] [WxH]
-// Steps:        [{ "eval": "js" } | { "wait": ms } | { "shot": "name.png" } | { "profile": ms }]
+// Steps:        [{ "eval": "js" } | { "wait": ms } | { "shot": "name.png" } | { "profile": ms } | { "heapProfile": ms }]
 // SEED=<n> replaces Math.random in the page with a seeded one before any script
 // runs, and pins the launch seed (src/config/launch.ts) to it, so the city's
 // layout and start date (random per launch) are the same on every run.
@@ -151,6 +151,15 @@ export async function drive(url, steps, { out = '.', size = '1280x800', dpr = 1,
         const r = await send('Profiler.stop');
         writeFileSync(join(out, 'profile.json'), JSON.stringify(r.result.profile));
         log('profile saved');
+      }
+      if (s.heapProfile) {
+        // Sampling allocation profile: what the page allocates over `heapProfile` ms (garbage included).
+        await send('HeapProfiler.enable');
+        await send('HeapProfiler.startSampling', { samplingInterval: 8192, includeObjectsCollectedByMajorGC: true, includeObjectsCollectedByMinorGC: true });
+        await sleep(s.heapProfile);
+        const r = await send('HeapProfiler.stopSampling');
+        writeFileSync(join(out, 'heap-profile.json'), JSON.stringify(r.result.profile));
+        log('heap profile saved');
       }
       if (s.shot) {
         const r = await send('Page.captureScreenshot', { format: 'png' });
