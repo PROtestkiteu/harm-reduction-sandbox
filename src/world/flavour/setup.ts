@@ -45,6 +45,7 @@ const BUILDERS: Record<PackId, () => Promise<PackBuilder>> = {
   signs: () => import('./signs').then((m) => m.buildSigns),
   bins: () => import('./bins').then((m) => m.buildBins),
   skaters: () => import('./skaters').then((m) => m.buildSkaters),
+  careStreet: () => import('./careStreet').then((m) => m.buildCareStreet),
 };
 
 export interface FlavourHost {

@@ -29,6 +29,7 @@ import { createIsoCamera, frameCamera, worldToClient } from './render/camera';
 import { CameraRig, MIN_ZOOM, PHONE_MIN_ZOOM } from './render/cameraRig';
 import { Highlight, OVERLAY_LAYER } from './render/highlight';
 import { ScenePipeline } from './render/scenePipeline';
+import { beginAnimationFrame } from './render/animationLod';
 import { QualityController, TIER_SETTINGS, applyAnisotropy, legacyGpu as isLegacyGpu, savedMode, setShadowMapSize, startTier } from './render/renderQuality';
 import { whenViewportSettled } from './render/viewportSettle';
 import { watchCamera } from './render/viewEdge';
@@ -93,6 +94,7 @@ import { Ghosts } from './world/ghosts';
 import { ContextProps } from './world/contextProps';
 import { DISTRICT } from './world/layout';
 import { buildWorld, configureRenderer } from './world/scene';
+import { setSurfaceBend } from './world/materials';
 import { setPuddleView } from './world/puddles';
 import { NeighbourhoodProps } from './world/neighbourhoodProps';
 import { CityProps } from './world/cityProps';
@@ -165,12 +167,14 @@ const quality = new QualityController(startTier(renderer.getContext() as WebGL2R
 });
 pipeline.setTier(quality.tier);
 const world = buildWorld(createRandom(ILLUSTRATIVE.seed));
-// The oldest Apple GPUs (renderQuality.legacyGpu) draw without point lights and the sun's shadows, set
-// once here before anything is compiled; the lamps keep their glowing bulbs and light cones.
+// The oldest Apple GPUs (renderQuality.legacyGpu) draw without point lights, the sun's shadows and the
+// surfaces' vertex bend, set once here before anything is compiled; the lamps keep their glowing bulbs
+// and light cones, and the surfaces their painted wear.
 const legacyGpu = isLegacyGpu(renderer.getContext() as WebGL2RenderingContext);
 const dropPointLights = (root: Object3D) => root.traverse((o) => { if ((o as PointLight).isPointLight) o.visible = false; });
 if (legacyGpu) {
   renderer.shadowMap.enabled = false;
+  setSurfaceBend(false);
   dropPointLights(world.scene);
 }
 const camera = createIsoCamera();
@@ -2000,6 +2004,8 @@ let drewLast = false;
 const gpuSample = (ms: number) => quality.sampleGpu(ms);
 
 function frame(now: number): void {
+  // Animation level of detail (render/animationLod.ts): a frame count and the zoom, before anything animates.
+  beginAnimationFrame(pipeline.worldPerPixel);
   // Only steady frames count: a hidden tab, a stall or an idle (undrawn) frame says nothing about render cost.
   pipeline.pollGpu(gpuSample);
   if (drewLast && now - last < 100) quality.sampleFrame(now - last);

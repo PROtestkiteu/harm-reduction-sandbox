@@ -11,6 +11,17 @@ import { Color, MeshLambertMaterial, MeshPhongMaterial, type Material, type WebG
 /** Settled snow, 0 to 1, shared by every painted surface; set by the season. */
 export const SNOW = { value: 0 };
 
+/**
+ * The bend: every painted vertex nudged by a small noise field, so nothing is ruler-straight. On the
+ * oldest GPUs it is a third of the scene's cost (2 million vertices a frame at 7 noise lookups each),
+ * so they go without (main.ts, set once before anything compiles). Part of the program keys below.
+ */
+let bendOn = true;
+export function setSurfaceBend(on: boolean): void {
+  bendOn = on;
+}
+const flat = () => (bendOn ? '' : '-flat');
+
 function paintSurface(shader: WebGLProgramParametersWithUniforms, moving = false): void {
   shader.uniforms.uSnow = SNOW;
   shader.vertexShader = shader.vertexShader
@@ -50,10 +61,10 @@ function paintSurface(shader: WebGLProgramParametersWithUniforms, moving = false
       ${moving
         // Moving things (cars) take their wear and dents from their own
         // space, so the shape holds and grime does not slide as they drive.
-        ? 'vPaintPos = transformed * 1.7 + vec3(3.1, 0.0, 7.3); transformed += bend(transformed + vec3(0.0, 1.6, 0.0)) * 0.22;'
+        ? `vPaintPos = transformed * 1.7 + vec3(3.1, 0.0, 7.3);${bendOn ? ' transformed += bend(transformed + vec3(0.0, 1.6, 0.0)) * 0.22;' : ''}`
         // Scene geometry is merged in world space (or only translated), so the
         // world-space offset applies to the local position as is.
-        : 'vPaintPos = (modelMatrix * vec4(transformed, 1.0)).xyz; transformed += bend(vPaintPos);'}`,
+        : `vPaintPos = (modelMatrix * vec4(transformed, 1.0)).xyz;${bendOn ? ' transformed += bend(vPaintPos);' : ''}`}`,
     );
   shader.fragmentShader = (moving ? shader.fragmentShader.replace('void main() {', '#define MOVING\nvoid main() {') : shader.fragmentShader)
     .replace(
@@ -250,7 +261,7 @@ function paintSurface(shader: WebGLProgramParametersWithUniforms, moving = false
 
 function painted<T extends MeshLambertMaterial>(m: T): T {
   m.onBeforeCompile = (shader) => paintSurface(shader);
-  m.customProgramCacheKey = () => 'painted-surface';
+  m.customProgramCacheKey = () => 'painted-surface' + flat();
   return m;
 }
 
@@ -285,7 +296,7 @@ export function vertexColourMat(): MeshLambertMaterial {
 /** Painted as a thing, not as a building or the ground: wear and grime, but no brick, plaster or paving. */
 function paintedThing<T extends MeshLambertMaterial>(m: T): T {
   m.onBeforeCompile = (shader) => paintSurface(shader, true);
-  m.customProgramCacheKey = () => 'painted-thing';
+  m.customProgramCacheKey = () => 'painted-thing' + flat();
   return m;
 }
 
@@ -318,18 +329,80 @@ export function mergedPlainMat(m: MeshLambertMaterial): MeshLambertMaterial {
   return plainCloth.has(m) ? vertexClothMat() : vertexColourMat();
 }
 
+const glowing = new WeakSet<Material>();
+
 /**
  * Emissive material owned by one light group (a building's windows, a sign).
- * Callers animate `emissiveIntensity` instead of swapping materials, so the
- * shader programs and light counts never change at runtime.
+ * Callers animate `emissiveIntensity` (or `color` and `emissive`) instead of
+ * swapping materials, so the shader programs and light counts never change at
+ * runtime. Merged, many of them draw as one glow bank (`glowBankMat`), which
+ * reads exactly those three properties back every frame.
  */
 export function glowMat(color: number, emissive: number, intensity = 1): MeshLambertMaterial {
-  return painted(new MeshLambertMaterial({
+  const m = painted(new MeshLambertMaterial({
     color,
     emissive: new Color(emissive),
     emissiveIntensity: intensity,
     flatShading: true,
   }));
+  glowing.add(m);
+  return m;
+}
+
+/** True for materials from `glowMat`. */
+export function isGlow(m: Material): m is MeshLambertMaterial {
+  return glowing.has(m);
+}
+
+/** Light groups one glow bank holds: one program for every bank (a fixed array size). */
+export const GLOW_BANK_SIZE = 64;
+
+/**
+ * One material for up to `GLOW_BANK_SIZE` glow materials merged together: each
+ * vertex carries its group's index (`glowCh`), and the colour and the glow
+ * (emissive times intensity) of every group are copied from the original
+ * materials before each draw, so animating them works as before. Painted like
+ * `glowMat`, in the same order: the group's colour and glow first, then wear
+ * and snow on top. `sync` is the copy; it allocates nothing.
+ */
+export function glowBankMat(sources: readonly MeshLambertMaterial[]): { material: MeshLambertMaterial; sync(): void } {
+  const diffuse = new Float32Array(GLOW_BANK_SIZE * 3);
+  const glow = new Float32Array(GLOW_BANK_SIZE * 3);
+  const sync = () => {
+    for (let i = 0; i < sources.length; i++) {
+      const m = sources[i];
+      const k = m.emissiveIntensity;
+      diffuse[i * 3] = m.color.r; diffuse[i * 3 + 1] = m.color.g; diffuse[i * 3 + 2] = m.color.b;
+      glow[i * 3] = m.emissive.r * k; glow[i * 3 + 1] = m.emissive.g * k; glow[i * 3 + 2] = m.emissive.b * k;
+    }
+  };
+  sync();
+  const material = new MeshLambertMaterial({ flatShading: true });
+  material.onBeforeCompile = (shader) => {
+    paintSurface(shader);
+    shader.uniforms.glowDiffuse = { value: diffuse };
+    shader.uniforms.glowEmissive = { value: glow };
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', /* glsl */ `#include <common>
+      attribute float glowCh;
+      uniform vec3 glowDiffuse[${GLOW_BANK_SIZE}];
+      uniform vec3 glowEmissive[${GLOW_BANK_SIZE}];
+      varying vec3 vGlowDiffuse;
+      varying vec3 vGlowEmissive;`)
+      .replace('#include <begin_vertex>', /* glsl */ `#include <begin_vertex>
+      vGlowDiffuse = glowDiffuse[int(glowCh + 0.5)];
+      vGlowEmissive = glowEmissive[int(glowCh + 0.5)];`);
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', /* glsl */ `#include <common>
+      varying vec3 vGlowDiffuse;
+      varying vec3 vGlowEmissive;`)
+      // Before the paint's own additions (which follow these includes): the wear reads the group's colour,
+      // and snow stays off what glows.
+      .replace('#include <color_fragment>', '#include <color_fragment>\n      diffuseColor.rgb *= vGlowDiffuse;')
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n      totalEmissiveRadiance = vGlowEmissive;');
+  };
+  material.customProgramCacheKey = () => 'painted-glow-bank';
+  return { material, sync };
 }
 
 const softShared = new Map<number, MeshLambertMaterial>();
@@ -361,7 +434,7 @@ export function vehicleMat(color: number, gloss: 0 | 1 | 2 = 1): MeshPhongMateri
       shininess: [4, 38, 110][gloss],
     });
     m.onBeforeCompile = (shader) => paintSurface(shader, true);
-    m.customProgramCacheKey = () => 'painted-vehicle';
+    m.customProgramCacheKey = () => 'painted-vehicle' + flat();
     vehicleShared.set(key, m);
   }
   return m;

@@ -22,6 +22,7 @@ import {
   type Texture,
   type Bone,
 } from 'three';
+import { ANIMATION_LOD, animateThisFrame, animationPhase } from '../render/animationLod';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { gltfLoader } from '../world/gltfLoader';
@@ -615,6 +616,11 @@ export class HumanFigure {
   private current: AnimationAction | null = null;
   private readonly material: MeshToonMaterial;
   private readonly mesh: SkinnedMesh;
+  /** Animation level of detail (render/animationLod.ts): the frame this person was last drawn, their turn, time not yet animated. */
+  private drawnFrame = ANIMATION_LOD.frame;
+  private readonly phase = animationPhase();
+  private pendingDt = 0;
+  private animatedOnce = false;
 
   constructor(lib: PeopleLibrary, readonly look: Appearance) {
     const h = ((look.skin * 7 + look.top * 13 + look.hair) >>> 2) % 1009;
@@ -633,6 +639,8 @@ export class HumanFigure {
     // skipped without recomputing bounds from the skeleton every frame.
     this.mesh.boundingSphere = new Sphere(new Vector3(0, 0.95, 0), 1.35);
     this.mesh.frustumCulled = true;
+    // Stamped only when the body is actually drawn (on screen, visible): off-screen people animate less often.
+    this.mesh.onBeforeRender = () => { this.drawnFrame = ANIMATION_LOD.frame; };
 
     const k = look.kit ?? {};
     const vest = look.police ? PALETTE.policeVest : look.staff ? look.vestColour ?? PALETTE.staffVest : k.hiVis ? 0xe07a20 : null;
@@ -694,8 +702,15 @@ export class HumanFigure {
   update(dt: number, pose: Pose, speed: number): void {
     if (this.disposed) return;
     this.play(pose, speed);
-    this.mixer.update(dt);
-    if (this.body !== 'normal') this.layerBody(dt, pose);
+    this.pendingDt += dt;
+    // Off screen or too small to see limbs: the skeleton moves on less often, by all the time it skipped.
+    // The first update always runs, so nobody is ever drawn in the bind pose.
+    if (this.animatedOnce && !animateThisFrame(this.drawnFrame, this.look.height, this.phase)) return;
+    this.animatedOnce = true;
+    const step = this.pendingDt;
+    this.pendingDt = 0;
+    this.mixer.update(step);
+    if (this.body !== 'normal') this.layerBody(step, pose);
   }
 
   /**

@@ -360,6 +360,11 @@ export class ScenePipeline {
     return frame;
   }
 
+  /** World units per render pixel at the current zoom (from the last `setCameraDepth`). */
+  get worldPerPixel(): number {
+    return this.composite.uniforms.worldPerPixel.value as number;
+  }
+
   setCameraDepth(near: number, far: number, worldPerPixel: number, elevationDeg = 35.26): void {
     this.shadowsStale = true;
     const u = this.composite.uniforms;

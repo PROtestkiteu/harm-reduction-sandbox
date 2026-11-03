@@ -376,7 +376,8 @@ export function car(color: number, lit: boolean, kind?: CarKind): Group {
     for (const x of [-0.5, 0.5]) part(g, bumperGeo, trim, x, y, -0.4, 0.03, 0.35, 0.35).rotation.y = Math.PI / 2;
     if (random() < 0.5) part(g, lampGeo, vehicleMat(0x3a4048, 1), 0, y + 0.1, -0.5, 0.46, 0.14, 0.62);
   }
-  g.traverse((o) => { o.castShadow = true; });
+  // The turning hubcaps (dynamic, kept out of the merge) sit inside their tyres' shadow: four shadow draws a car saved.
+  g.traverse((o) => { o.castShadow = !o.userData.dynamic; });
   // A parked car (unlit) is a fixed obstacle people step round; a lit one drives, and the crowd steers
   // round it as it moves (agents/crowd.ts). Tagged, a moving car was fixed wherever it stood at build
   // time: for the pooled traffic and emergency fleet that was the middle of the square.
@@ -451,7 +452,7 @@ export function bus(): Group {
   // ceiling strip, so the band never washes out to white in daylight.
   for (let z = -3.6; z <= 3.8; z += 1.25) for (const x of [-1.18, 1.18]) g.add(box(0.05, 1.5, 0.12, paint, x, 1.2, z));
   g.add(box(2.1, 0.1, 8.0, BUS_GLASS, 0, 2.62, 0));
-  g.traverse((o) => { o.castShadow = true; });
+  g.traverse((o) => { o.castShadow = !o.userData.dynamic; });
   // Buses only ever drive: never a fixed obstacle (see car()).
   return g;
 }
@@ -482,7 +483,7 @@ export function train(cars: number): Group {
   for (let i = 0; i < cars; i++) {
     const cab = i === 0 || i === cars - 1;
     const car = mouldedVehicle(cab ? 'trainCab' : 'trainCar', cab ? TRAIN_CAB : TRAIN_CAR, paint, i === 0, 0x3a3a3c);
-    car.traverse((o) => { o.castShadow = true; });
+    car.traverse((o) => { o.castShadow = !o.userData.dynamic; });
     // Window mullions on both sides, so the glass reads as a row of windows; a lamp-lit
     // saloon shows as a warm strip along the ceiling.
     for (let z = -7; z <= 7; z += 1.5) for (const x of [-1.46, 1.46]) car.add(box(0.05, 1.9, 0.14, paint, x, 1.3, z));

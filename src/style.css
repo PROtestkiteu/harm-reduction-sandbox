@@ -1666,8 +1666,13 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
 /* Four meters in a row where the column has room for their names, otherwise two by two: never three and one. */
 .stress-wrap { container-type: inline-size; }
 @container (max-width: 460px) { .stress-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* Browsers without container queries (Safari before 16): two by two, which fits wherever the names show. */
+@supports not (container-type: inline-size) { .stress-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .stress { display: flex; align-items: center; gap: 5px; flex: 1 1 auto; min-width: 0; }
-.stress-name { white-space: nowrap; }
+/* Every name takes the same width (room for the longest, Spanish Sanitarios), so the bars all start and end
+   in line and the meters sit evenly; a name never pushes its meter into the next one, ending in an ellipsis
+   if it ever must. */
+.stress-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 1 5.6em; min-width: 0; }
 .stress-bar { flex: 1; height: 4px; min-width: 32px; background: color-mix(in srgb, var(--muted) 28%, transparent); border-radius: 2px; overflow: hidden; }
 .stress-fill { display: block; height: 100%; width: 0; background: var(--open); transition: width 0.4s; }
 .stress-fill[data-state='mid'] { background: var(--closing); }

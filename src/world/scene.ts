@@ -59,7 +59,7 @@ import { seatClear } from './flavour/squatDoors';
 import { LAUNCH_SEED } from '../config/launch';
 import { DistrictLife, type DistrictNow, type FrontState } from './districtLife';
 import { FitOuts, type FitOutLook } from './fitOut';
-import { DOOR_ALONG, allBuildings, claimLook, cityBuilding, frontDoor, frontFrame, registerBuilding, type CityBuilding } from './cityBuildings';
+import { DOOR_ALONG, allBuildings, claimLook, claimRoof, cityBuilding, frontDoor, frontFrame, registerBuilding, type CityBuilding } from './cityBuildings';
 import { t } from '../i18n';
 import { PROPERTY } from '../sim/property';
 import { Expansion, type ExpansionKind, type Facing } from './expansion';
@@ -734,6 +734,7 @@ export function buildWorld(random: Random): World {
   // all but the ones with a look of their own (shops, venues, the squat, civic buildings, landmarks).
   const ownLook = new Set([...taken, ...nightlife.map((n) => n.b.id), ...(squat === null ? [] : [squat]), ...Object.values(beyond.landmarks)]);
   // Pizza, Żabkas, the fast food and the like are in `taken`; the nightlife pack dresses only what is left.
+  claimRoof(worship.keys());
   claimLook([...ownLook, ...zabkas, ...worship.keys(), ...[pizza, fastFood, bookshop, school, library].filter((id): id is number => id !== null && id !== undefined)]);
   const district = new DistrictLife(
     scene,

@@ -72,6 +72,15 @@ export function lookClaimed(id: number): boolean {
   return claimed.has(id);
 }
 
+/** Roofs that are spoken for (a mosque's dome and minaret on its deck): rooftop scenes leave them be. */
+const roofs = new Set<number>();
+export function claimRoof(ids: Iterable<number>): void {
+  for (const id of ids) roofs.add(id);
+}
+export function roofClaimed(id: number): boolean {
+  return roofs.has(id);
+}
+
 export function cityBuilding(id: number): CityBuilding | undefined {
   return buildings[id];
 }
