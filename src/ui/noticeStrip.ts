@@ -34,6 +34,18 @@ export class NoticeStrip {
     this.list = document.createElement('ul');
     this.list.setAttribute('role', 'log');
     this.list.setAttribute('aria-live', 'polite');
+    // Only the latest line shows; a press on the news shows the earlier ones too, and folds them again.
+    this.root.dataset.open = 'false';
+    this.list.tabIndex = 0;
+    this.list.setAttribute('aria-expanded', 'false');
+    this.list.title = t('Show the earlier news');
+    const toggle = () => {
+      const open = this.root.dataset.open !== 'true';
+      this.root.dataset.open = String(open);
+      this.list.setAttribute('aria-expanded', String(open));
+    };
+    this.list.addEventListener('click', toggle);
+    this.list.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
     this.root.append(this.deaths, this.list);
     this.root.hidden = true;
   }

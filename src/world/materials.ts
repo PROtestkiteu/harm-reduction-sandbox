@@ -268,9 +268,9 @@ export function mat(color: number): MeshLambertMaterial {
   return m;
 }
 
-/** True for the plain palette materials from `mat`: same shader, only the colour differs. */
+/** True for the plain palette materials from `mat` and `clothMat`: same shader, only the colour differs. */
 export function isPlain(m: Material): m is MeshLambertMaterial {
-  return plain.has(m);
+  return plain.has(m) || plainCloth.has(m);
 }
 
 let vertexPainted: MeshLambertMaterial | null = null;
@@ -280,6 +280,42 @@ let vertexPainted: MeshLambertMaterial | null = null;
  */
 export function vertexColourMat(): MeshLambertMaterial {
   return (vertexPainted ??= painted(new MeshLambertMaterial({ vertexColors: true, flatShading: true })));
+}
+
+/** Painted as a thing, not as a building or the ground: wear and grime, but no brick, plaster or paving. */
+function paintedThing<T extends MeshLambertMaterial>(m: T): T {
+  m.onBeforeCompile = (shader) => paintSurface(shader, true);
+  m.customProgramCacheKey = () => 'painted-thing';
+  return m;
+}
+
+const clothShared = new Map<number, MeshLambertMaterial>();
+const plainCloth = new WeakSet<Material>();
+
+/**
+ * Shared material for fabric, tarps, cardboard and belongings: the colour as
+ * it is, weathered, never read as a brick wall or a lawn whatever its colour.
+ * Merges like `mat` (into `vertexClothMat`). Never mutate the result.
+ */
+export function clothMat(color: number): MeshLambertMaterial {
+  let m = clothShared.get(color);
+  if (!m) {
+    m = paintedThing(new MeshLambertMaterial({ color, flatShading: true }));
+    clothShared.set(color, m);
+    plainCloth.add(m);
+  }
+  return m;
+}
+
+let vertexCloth: MeshLambertMaterial | null = null;
+/** Every `clothMat` colour at once, on the vertices. */
+export function vertexClothMat(): MeshLambertMaterial {
+  return (vertexCloth ??= paintedThing(new MeshLambertMaterial({ vertexColors: true, flatShading: true })));
+}
+
+/** The one vertex-colour material a plain material merges into. */
+export function mergedPlainMat(m: MeshLambertMaterial): MeshLambertMaterial {
+  return plainCloth.has(m) ? vertexClothMat() : vertexColourMat();
 }
 
 /**

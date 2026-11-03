@@ -120,6 +120,9 @@ export class OrgPanel {
   private readonly nameRow: HTMLElement;
   private readonly driveBtn: HTMLButtonElement;
   private readonly favourBox: HTMLElement;
+  /** The short state beside each fold's title: money in and out, favours held. */
+  private readonly moneyNote: HTMLElement;
+  private readonly favourNote: HTMLElement;
   private readonly favourLine: HTMLElement;
   private readonly favourActions: HTMLElement;
   private favourKey = '';
@@ -292,7 +295,21 @@ export class OrgPanel {
       sub.append(el('summary', undefined, label), part);
       return sub;
     };
-    this.section.append(this.nameRow, this.meterRow, stats, this.summary, actions, this.favourBox, team, this.closed, fold(t('Funding applications'), grants), fold(t('What has happened'), this.log), note);
+    // Money and the favours fold too, each behind a title with its state beside it, so the sheet opens
+    // to the name, the meters and three figures, and a list of folds to open for the detail.
+    const noted = (label: string, cls: string, ...parts: HTMLElement[]) => {
+      const sub = el('details', `sandbox-sub ${cls}`);
+      const summary = el('summary');
+      const note = el('span', 'fold-note');
+      summary.append(el('span', 'fold-title', label), note);
+      sub.append(summary, ...parts);
+      return { sub, note };
+    };
+    const moneyFold = noted(t('Money'), 'org-money', this.summary, actions, note);
+    this.moneyNote = moneyFold.note;
+    const favourFold = noted(t('City hall favours'), 'org-favours-fold', this.favourBox);
+    this.favourNote = favourFold.note;
+    this.section.append(this.nameRow, this.meterRow, stats, moneyFold.sub, favourFold.sub, team, this.closed, fold(t('Funding applications'), grants), fold(t('What has happened'), this.log));
   }
 
   /** The name was changed elsewhere (the welcome): show it here too. */
@@ -309,6 +326,7 @@ export class OrgPanel {
     const driveOff = d.until !== null || d.again !== null || o.budget < d.cost;
     if (this.driveBtn.disabled !== driveOff) this.driveBtn.disabled = driveOff;
     const f = v.favours;
+    setText(this.favourNote, f.held ? t('{n} held', { n: f.held }) : f.owed ? t('one owed') : t('none'));
     setText(this.favourLine, f.held ? t('City hall favours: {n}. City hall asks something back later.', { n: f.held }) : f.owed ? t('No favour now: city hall is owed one.') : t("No favour now: agree to city hall's next request to earn one."));
     // The replies are built once per set of favours; only whether they can be used changes.
     const key = f.items.map((i) => i.id).join('|');
@@ -356,6 +374,7 @@ export class OrgPanel {
     setText(this.staffStat, `${o.paid} + ${o.volunteers}`);
     setText(this.shiftStat, `${assigned} / ${wanted}`);
     this.shiftStat.dataset.state = short ? 'short' : 'ok';
+    setText(this.moneyNote, t('in {in}/h, out {out}/h', { in: money(v.incomePerHour + o.grantIncome), out: money(v.payroll * ORG.wagePerHour + v.runningPerHour) }));
     setText(this.summary, t('In {total}/h (funding {funding}, grants {grants}) · wages {wages}/h · running costs {running}/h', { total: money(v.incomePerHour + o.grantIncome), funding: money(v.incomePerHour), grants: money(o.grantIncome), wages: money(v.payroll * ORG.wagePerHour), running: money(v.runningPerHour) }));
     const recruiting = o.recruiting.length ? t('Recruiting: {list}.', { list: o.recruiting.map((r) => t('{what} until {time}', { what: RECRUIT[r.id].label.toLowerCase(), time: formatClock(o.clockAt(r.readyAt, v.clock)) })).join('; ') }) : '';
     // A paid hire on the way: the wage bill once they start.

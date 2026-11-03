@@ -5,7 +5,7 @@ import type { Random } from '../sim/random';
 import { WindowBank } from './animated';
 import { bench, box, cylinder, gableRoof, add, pixelTextTexture, streetLight, tree } from './kit';
 import { registerBuilding } from './cityBuildings';
-import { DISTRICT, FESTIVAL, GROW, POLICE_STATION, ROAD, STADIUM, STATION_CAMP, STREETS, type Rect } from './layout';
+import { DISTRICT, FESTIVAL, GROW, PARK_CAMP, POLICE_STATION, ROAD, STADIUM, STATION_CAMP, STREETS, type Rect } from './layout';
 import { buildEventGrounds, type EventGrounds } from './eventGrounds';
 import { glowMat, mat, softMat } from './materials';
 import { dynamic, mergeStatic } from './mergeStatic';
@@ -330,6 +330,8 @@ function buildPark(g: Object3D, random: Random, onRoad: (x: number, z: number, w
     if (onRoad(x, z, 3, 3) || Math.abs(z - PARK_PATH_Z) < 3 || Math.abs(x - 12) < 3) continue;
     if (Math.hypot((x - 34) / 13, (z - POND_Z) / 9) < 1) continue;
     if ((x > -28 && x < -19 && z > pz - 4 && z < pz + 4) || onFestival(x, z, 3)) continue;
+    // The camp's lawn stays open.
+    if (x > PARK_CAMP.x0 - 2 && x < PARK_CAMP.x1 + 2 && z > PARK_CAMP.z0 - 2 && z < PARK_CAMP.z1 + 2) continue;
     if (z < 70 + GROW && i % 3 === 0) add(g, tree(pick4(random), 1 + random() * 0.4)).position.set(x, 0, z);
     else farTree(g, x, z, 1 + random() * 0.6, random);
   }

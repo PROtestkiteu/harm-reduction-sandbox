@@ -30,7 +30,7 @@ import {
 } from './details';
 import { add, bench, bin, bollard, box, cylinder, planter, signBoard, setFoliageSeason, setLampNight, streetLight, tree } from './kit';
 import { setPuddleLight, tickPuddles } from './puddles';
-import { AID_BUS, CAMPER_SPOTS, DISTRICT, SQUAT_SPOT, STATION_CAMP, moveCamper as moveCamperFrame, CROSSING, HALF, HOME_CAMPER, HOME_CLUB, LOTS, NODES, PAVE_E, PAVE_W, ROAD, VENUE_FACE, VENUE_FRAME, VENUES_AT_HOME, PATROL, WALK_BAND, frontLineGap, toWorld, walkDistance, type Frame, type P2, type PlaceLot } from './layout';
+import { AID_BUS, CAMPER_SPOTS, DISTRICT, SQUAT_SPOT, PARK_CAMP, STATION_CAMP, moveCamper as moveCamperFrame, CROSSING, HALF, HOME_CAMPER, HOME_CLUB, LOTS, NODES, PAVE_E, PAVE_W, ROAD, VENUE_FACE, VENUE_FRAME, VENUES_AT_HOME, PATROL, WALK_BAND, frontLineGap, toWorld, walkDistance, type Frame, type P2, type PlaceLot } from './layout';
 import { StageProps } from './stageProps';
 import type { ServiceId } from '../sim/types';
 import { buildBlockGround, buildOutskirts, buildStreets } from './district';
@@ -50,6 +50,7 @@ import { Traffic } from './traffic';
 import { TrafficLights } from './trafficLights';
 import { ParkActivities } from './parkActivities';
 import { buildMurals, type MuralSpot } from './murals';
+import { campPitch } from './camps';
 import type { Figure } from '../agents/character';
 import { Letting, type UnitLook } from './letting';
 import { OpeningFx } from './openingFx';
@@ -216,21 +217,18 @@ const SHOP_SIGN: Record<ShopKind, { sign: string; fg: string; bg: string }> = {
 };
 
 /**
- * Tents for a camp: `count` of them in rows of five from (x0, z0), `dz` between
- * rows, sorted nearest the district first (the park camp grows away from it).
+ * Pitches for a camp (world/camps.ts): `count` of them in rows of five from
+ * (x0, z0), `dz` between rows, sorted nearest the district first (the park
+ * camp grows away from it).
  */
 function campTents(random: () => number, count: number, x0: number, z0: number, dz: number): Group[] {
-  const tarps = [0x3a5a7a, 0x6a7a3a, 0x8a4a3a, 0x5a5a5a, 0x7a6a4a, 0x2f5a5a];
   const out: { g: Group; z: number }[] = [];
   for (let i = 0; i < count; i++) {
-    const g = dynamic(new Group());
-    const x = x0 + (i % 5) * 4.2 + (random() - 0.5) * 1.6;
-    const z = z0 + Math.floor(i / 5) * dz + (random() - 0.5) * 1.4;
-    const tent = add(g, new Mesh(new ConeGeometry(1.3, 1.4, 4), mat(tarps[i % tarps.length])), Math.PI / 4 + (random() - 0.5) * 0.5);
-    tent.position.y = 0.7;
-    tent.scale.set(1, 1, 1.4);
-    if (i % 3 === 0) add(g, box(0.9, 0.5, 0.6, mat(0x4a4038), 1.4, 0, 0.6));
+    const g = campPitch(random, i);
+    const x = x0 + (i % 5) * 4.2 + (random() - 0.5) * 0.9;
+    const z = z0 + Math.floor(i / 5) * dz + (random() - 0.5) * 0.8;
     g.position.set(x, -0.04, z);
+    g.rotation.y = (random() - 0.5) * 0.7;
     g.visible = false;
     out.push({ g, z });
   }
@@ -740,14 +738,14 @@ export function buildWorld(random: Random): World {
   // Harm reduction points the player opens in ordinary buildings: a sign each, made when first needed.
   const pointSigns = new Map<number, Letting>();
   // The park camp: tents of tarps and old canvas, nearest the district first.
-  const tents = campTents(mulberry(71), 14, -30, 55, 4);
+  const tents = campTents(mulberry(71), 14, PARK_CAMP.x0 + 2.6, PARK_CAMP.z0 + 2.4, 4);
   for (const t of tents) scene.add(t);
   // The station camp: on the forecourt south of the tracks, just outside the district.
   const stationTents = campTents(mulberry(73), 10, STATION_CAMP.x0 + 4, STATION_CAMP.z0 + 2, 4);
   for (const t of stationTents) scene.add(t);
   // Both camps can be clicked for a card: their ground, registered as open ground (never let or used as a venue).
   const camps = {
-    park: registerBuilding(-32.5, -9.5, 53, 65, 1.6, true),
+    park: registerBuilding(PARK_CAMP.x0, PARK_CAMP.x1, PARK_CAMP.z0, PARK_CAMP.z1, 1.6, true),
     station: registerBuilding(STATION_CAMP.x0, STATION_CAMP.x1, STATION_CAMP.z0, STATION_CAMP.z1, 1.6, true),
   };
   // The warming bus parks on the east street; the water and shade point stands in the pocket park.

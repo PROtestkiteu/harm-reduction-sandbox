@@ -5,7 +5,7 @@ import { frontFrame, type CityBuilding } from './cityBuildings';
 import { awning } from './dressing';
 import { scaffolding } from './grit';
 import { add, box, cylinder, planter } from './kit';
-import { STATION_CAMP, clearOfWalks, type P2 } from './layout';
+import { PARK_CAMP, STATION_CAMP, clearOfWalks, type P2 } from './layout';
 import { mat } from './materials';
 import { dynamic, mergeStatic } from './mergeStatic';
 
@@ -104,7 +104,7 @@ export class DistrictLife {
     const decline = Math.max(
       v.streetMarket * Math.max(0, ...DEAL_SPOTS.map((d) => near(dist(d.at), 24))),
       v.litter * 0.7 * Math.max(0, ...USE_SPOTS.map((u) => near(dist(u.at), 18))),
-      v.camp * near(dist({ x: -20, z: 59 }), 32),
+      v.camp * near(dist({ x: (PARK_CAMP.x0 + PARK_CAMP.x1) / 2, z: (PARK_CAMP.z0 + PARK_CAMP.z1) / 2 }), 32),
       v.stationCamp * near(dist({ x: (STATION_CAMP.x0 + STATION_CAMP.x1) / 2, z: (STATION_CAMP.z0 + STATION_CAMP.z1) / 2 }), 26),
     );
     const t = 0.5 + s.lean

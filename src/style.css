@@ -492,7 +492,8 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
   content: ''; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%;
   background: var(--muted); box-shadow: 0 1px 2px rgb(0 0 0 / 0.4); transition: transform 0.15s, background 0.15s;
 }
-.svc-toggle[aria-checked='true'] .state { justify-content: flex-start; background: var(--open); border-color: var(--open); color: var(--bg); }
+/* On: a deep green with white lettering in every theme (about 5:1), no shadow to blur it. */
+.svc-toggle[aria-checked='true'] .state { justify-content: flex-start; background: #2e7a48; border-color: #2e7a48; color: #fff; text-shadow: none; }
 .svc-toggle[aria-checked='true'] .state::after { transform: translateX(30px); background: #fffaf0; box-shadow: 0 1px 3px rgb(0 0 0 / 0.45); }
 .svc-toggle:hover .state { border-color: var(--text); }
 .svc-toggle:focus-visible { outline: none; }
@@ -1296,6 +1297,11 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
   cursor: pointer;
 }
 .sandbox-sub > summary::-webkit-details-marker { display: none; }
+/* A fold's title with its state beside it (money in and out, favours held, the patrol out till when). */
+.sandbox-sub > summary .fold-title { flex: 1 1 auto; min-width: 0; }
+.sandbox-sub > summary .fold-note { flex: none; margin-left: 10px; color: var(--muted); font-size: 13px; font-weight: 400; white-space: nowrap; }
+/* Something coming that needs preparing: its title in the warning colour, so it reads while folded. */
+.stakes-storm > summary .fold-title { color: var(--law); }
 .sandbox-sub > summary::after { content: '\203A'; color: var(--reply); font-size: 28px; line-height: 1; padding: 0 4px; transition: transform 0.15s; }
 .sandbox-sub[open] > summary::after { transform: rotate(90deg); }
 @media (prefers-reduced-motion: reduce) { .sandbox-sub > summary::after { transition: none; } }
@@ -2137,11 +2143,16 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
 .goals-strip li[data-met='true'] { color: var(--text); }
 .goals-scenario { margin: 2px 0 0; color: var(--reply); font-size: 12px; }
 .notice-strip li { margin-top: 3px; color: var(--text); }
+/* The news: its latest line only, two lines at most, until pressed open (src/ui/noticeStrip.ts). */
+.notice-strip ul { cursor: pointer; }
+.notice-strip ul:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.notice-strip[data-open='false'] li:not(:first-child) { display: none; }
+.notice-strip[data-open='false'] li { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
 .notice-time { margin-right: 6px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .notice-deaths { margin: 0; color: var(--closing); font-weight: 600; }
 .stress[role='button'] { cursor: pointer; }
 .stress[role='button']:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.meter-causes {
+.meter-causes { cursor: pointer;
   position: fixed; z-index: 60; padding: 10px 12px; border-radius: 6px;
   background: var(--panel, rgba(18, 15, 13, 0.96)); border: 1px solid var(--panel-border, #3a3128); color: var(--text);
   font: 13px/1.35 var(--body); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
@@ -2208,8 +2219,7 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
   /* Room above Pause, whose fade would otherwise sit on an open layer's last line. */
   /* The open feed scrolls with the sheet, not inside a box of its own. */
   .column[data-layer='events'] .events { max-height: none; overflow: visible; }
-  .notice-strip li:not(:first-child) { display: none; }
-  .notice-strip li { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; color: var(--muted); }
+  .notice-strip li { color: var(--muted); }
   .column .column-events { margin-top: 0; }
   .column .events-heading { min-height: 34px; font-size: 15px; }
   /* The hint to pick on the map is said by the guide's own reply; your organisation's name is a quiet label. */
@@ -2390,7 +2400,7 @@ button.event-card:focus-visible { outline: 2px solid var(--focus); outline-offse
 }
 .welcome-name input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .stakes-storm { margin: 10px 0; padding: 8px 10px; border-left: 4px solid var(--bar); background: rgba(200, 50, 42, 0.12); }
-.stakes-storm[hidden], .stakes-standing[hidden], .stakes-supplies[hidden] { display: none; }
+.stakes-storm[hidden], .stakes-patrol[hidden], .stakes-standing[hidden], .stakes-supplies[hidden] { display: none; }
 .stakes-standing-order { display: flex; align-items: center; gap: 6px; min-height: 36px; color: var(--muted); font-size: 13px; }
 .stakes .team-status[data-state='broke'] { color: var(--closing); }
 /* Stable portrait framing during asynchronous image loading and failure. */

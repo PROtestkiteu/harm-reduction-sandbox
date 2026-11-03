@@ -7,7 +7,7 @@ import { t } from '../i18n';
  * top opens a small card under it listing what is pushing it up now, largest
  * first, and one thing that helps. It reads the simulation only when opened
  * and while open (twice a second), so it costs nothing otherwise. Escape, a
- * second tap or a tap elsewhere closes it.
+ * second tap, a tap on the card itself or a tap elsewhere closes it.
  */
 type MeterKey = StressMeter | 'district';
 
@@ -54,6 +54,9 @@ export class MeterCauses {
     this.card = Object.assign(document.createElement('div'), { className: 'meter-causes', hidden: true });
     this.card.id = 'meter-causes';
     this.card.setAttribute('role', 'dialog');
+    this.card.title = t('Press to close');
+    // A press on the card closes it: it only explains, nothing in it is pressed for itself.
+    this.card.addEventListener('click', () => this.close(false));
     document.body.append(this.card);
     for (const m of row.querySelectorAll<HTMLElement>('[data-key]')) {
       m.tabIndex = 0;

@@ -1,5 +1,5 @@
 import { BufferAttribute, BufferGeometry, Matrix4, Mesh, type Material, type MeshLambertMaterial, type Object3D } from 'three';
-import { isPlain, vertexColourMat } from './materials';
+import { isPlain, mergedPlainMat } from './materials';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 /** Mark an object (and its subtree) as animated so `mergeStatic` leaves it alone. */
@@ -28,7 +28,7 @@ export function mergeStatic(root: Object3D): void {
       let key: Material = o.material;
       if (isPlain(o.material)) {
         g = withColour(g, o.material.color);
-        key = vertexColourMat();
+        key = mergedPlainMat(o.material);
       }
       const bucket = buckets.get(key) ?? { geos: [], cast: false };
       bucket.geos.push(g);

@@ -41,7 +41,7 @@ import { loadPeople } from './agents/humanFigure';
 import { SEASON_PROFILES } from './config/seasons';
 import { LOCATION_IDS, SERVICE_IDS, serviceAt, type LocationId, type ServiceId, type ServiceStatus } from './sim/types';
 import { ContextSection } from './ui/contextSection';
-import { COMPACT, Hud, type PersonCamperOffer, type PlaceAction } from './ui/hud';
+import { Hud, type PersonCamperOffer, type PlaceAction } from './ui/hud';
 import { COORDINATOR_IDS, PORTRAIT_H, PORTRAIT_W, PortraitLibrary, playerPortraitId, playerPortraitUrl, portraitId, portraitUrl, setPlayerPortrait } from './render/portraitLibrary';
 import { describePerson } from './ui/personInfo';
 import { ActionMenu } from './ui/actionMenu';
@@ -1429,7 +1429,8 @@ async function startGame(): Promise<void> {
 }
 feed.prependBar(org.bar);
 // Goals, news and why the meters move, where the player looks (above the event feed and on the meters).
-const goalsStrip = new GoalsStrip(!window.matchMedia(COMPACT).matches, (open) => {
+// Folded to its line of stars on every screen: the goals open on a press, the rest of the time they take one line.
+const goalsStrip = new GoalsStrip(false, (open) => {
   if (open) feed.setOpen(false);
   hud.setLayer('goals', open);
 });

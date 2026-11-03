@@ -124,6 +124,8 @@ export const STADIUM_GATE: P2 = p(105 + GROW, -29);
 
 /** Just outside the district, north: the forecourt by the railway station where a second camp gathers. */
 export const STATION_CAMP: Rect = r(-46, -14, -59 - GROW, -51 - GROW);
+/** The park camp: on the lawn just south of the district, east of the festival grounds and short of the park's long path. */
+export const PARK_CAMP: Rect = r(-28.5, -6, 76.5, 90.5);
 /** The police station, just past the district's north edge between the main and east roads. */
 export const POLICE_STATION: Rect = r(6, 20, -59.5 - GROW, -51 - GROW);
 

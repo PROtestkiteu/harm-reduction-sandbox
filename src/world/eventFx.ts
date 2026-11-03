@@ -8,6 +8,7 @@ import {
   MeshBasicMaterial,
   MeshLambertMaterial,
   RingGeometry,
+  SphereGeometry,
   type Object3D,
 } from 'three';
 import { bike } from './details';
@@ -15,12 +16,16 @@ import { CharacterRig, randomAppearance, type Figure } from '../agents/character
 import { HumanFigure, peopleLibrary } from '../agents/humanFigure';
 import { createRandom } from '../sim/random';
 import { add, box, cylinder, pixelTextTexture } from './kit';
-import { glowMat, mat } from './materials';
+import { clothMat, glowMat, mat, vehicleMat } from './materials';
+import { mergeStatic } from './mergeStatic';
+import { PARK_CAMP } from './layout';
 
 /** Where the park's pop-up party sets up (matches CityProps' pop-up set). */
 export const PARTY_AT = { x: 8.0, z: 9.9 } as const;
 /** The middle of the park camp's tents. */
-export const CAMP_AT = { x: -22, z: 59 } as const;
+export const CAMP_AT = { x: (PARK_CAMP.x0 + PARK_CAMP.x1) / 2, z: (PARK_CAMP.z0 + PARK_CAMP.z1) / 2 } as const;
+/** A bin bag's shape (squashed per use). */
+const BAG = new SphereGeometry(1, 6, 4);
 
 export type RaveTheme = 'wixapol' | 'hazel';
 /** A place's ground footprint: centre and half-sizes. */
@@ -61,7 +66,7 @@ export class EventFx {
   version = 0;
   private rave: { g: Group; beams: Group[]; spots: Mesh[]; themes: Record<RaveTheme, Group>; candles: MeshLambertMaterial[]; theme: RaveTheme | null } | null = null;
   private raid: { g: Group; washes: MeshBasicMaterial[]; torches: Group[]; until: number } | null = null;
-  private sweep: { g: Group; beacon: MeshLambertMaterial; wash: MeshBasicMaterial; until: number } | null = null;
+  private sweep: { g: Group; beacon: MeshLambertMaterial; wash: MeshBasicMaterial; crew: Figure[]; until: number } | null = null;
   private alert: { g: Group; rings: Mesh[]; until: number } | null = null;
   private press: { g: Group; flashes: MeshBasicMaterial[]; crew: Figure[]; until: number } | null = null;
 
@@ -171,6 +176,8 @@ export class EventFx {
         const k = still ? 0.6 : Math.max(0, Math.sin(t * 6));
         this.sweep.beacon.emissiveIntensity = 0.3 + 2 * k;
         this.sweep.wash.opacity = 0.05 + 0.25 * k;
+        // The workers stand about with their bags; under reduced motion they hold still.
+        for (const f of this.sweep.crew) f.update(still ? 0 : dt, 'stand', 0);
         changed = true;
       }
     }
@@ -286,25 +293,77 @@ export class EventFx {
 
   private buildSweep() {
     const g = add(this.root, new Group());
-    g.position.set(CAMP_AT.x + 9, 0.1, CAMP_AT.z - 6);
+    // Pulled up on the lawn along the camp's south side (off the road, short of the park's path), the crew working along its tents.
+    g.position.set(CAMP_AT.x + 3, 0.1, PARK_CAMP.z1 + 3.2);
     g.rotation.y = Math.PI * 0.15;
     g.visible = false;
-    // A council tipper truck: cab, bed of bags and broken tarps, an amber beacon on top.
-    add(g, box(2.2, 2.0, 2.0, mat(0xe07a20), 1.9, 0.35, 0));
-    add(g, box(3.6, 1.3, 2.1, mat(0x5a5a58), -1.0, 0.35, 0));
-    for (let i = 0; i < 5; i++) add(g, box(0.6, 0.45, 0.6, mat([0x2a2a2a, 0x3a5a7a, 0x6a7a3a][i % 3]), -2.2 + i * 0.55, 1.7, (i % 2) * 0.6 - 0.3));
-    for (const x of [-2, 1.9]) for (const z of [-1.05, 1.05]) add(g, cylinder(0.42, 0.3, mat(0x141414), 10, x, 0, z)).rotation.x = Math.PI / 2;
+    // A council tipper truck, painted as a vehicle (no brick on an orange cab): cab with its glazing, a
+    // steel tipper body with ribs, loaded with crushed tents, tarps, a mattress and bin bags; an amber
+    // beacon on the roof. Merged, apart from the beacon's glow and its wash on the ground.
+    const rig = add(g, new Group());
+    const paint = vehicleMat(0xe07a20);
+    const steel = vehicleMat(0x6a6c6a);
+    const dark = vehicleMat(0x1e1f22, 0);
+    const glass = vehicleMat(0x1c2a34, 2);
+    add(rig, box(6.0, 0.32, 1.8, dark, -0.2, 0.55, 0));
+    for (const x of [2.15, -1.25, -2.25]) for (const z of [-0.95, 0.95]) add(rig, cylinder(0.45, 0.32, dark, 10, x, 0.45, z - 0.16)).rotation.x = Math.PI / 2;
+    add(rig, box(1.9, 1.75, 2.2, paint, 2.0, 0.8, 0));
+    add(rig, box(0.04, 0.8, 1.95, glass, 2.96, 1.55, 0));
+    for (const z of [-1.11, 1.11]) add(rig, box(1.0, 0.65, 0.03, glass, 2.25, 1.6, z));
+    add(rig, box(0.2, 0.3, 2.3, dark, 3.0, 0.62, 0));
+    for (const z of [-0.8, 0.8]) add(rig, box(0.04, 0.16, 0.3, glowMat(0xf0f0e0, 0xfff4d0, 1.2), 3.06, 0.95, z));
+    for (const z of [-1.115, 1.115]) add(rig, box(1.85, 0.14, 0.02, vehicleMat(0x2e7d4a), 2.0, 1.15, z));
+    add(rig, box(3.9, 0.12, 2.2, steel, -1.25, 0.9, 0));
+    for (const z of [-1.08, 1.08]) add(rig, box(3.9, 1.0, 0.06, steel, -1.25, 1.0, z));
+    add(rig, box(0.06, 1.25, 2.2, steel, 0.68, 1.0, 0));
+    add(rig, box(0.06, 0.9, 2.2, steel, -3.18, 1.0, 0)).rotation.z = 0.18;
+    for (let i = 0; i < 5; i++) for (const z of [-1.12, 1.12]) add(rig, box(0.08, 1.0, 0.04, steel, -2.9 + i * 0.85, 1.0, z));
+    // The load: what was a camp an hour ago.
+    const load = [0x3a5a8a, 0x6a7a3a, 0x8a4a30, 0x2f5a9a, 0x6a6a66];
+    for (let i = 0; i < 5; i++) {
+      const t = add(rig, new Mesh(new ConeGeometry(0.9, 0.55, 5), clothMat(load[i])));
+      t.position.set(-2.6 + i * 0.7, 1.35 + (i % 2) * 0.12, (i % 3 - 1) * 0.45);
+      t.rotation.set((i % 2 ? 0.5 : -0.4), i, (i % 3 ? 0.3 : -0.2));
+    }
+    const mattress = add(rig, box(1.9, 0.18, 0.9, clothMat(0xcfc6b4), -1.1, 1.75, 0.2));
+    mattress.rotation.set(0.25, 0.3, -0.35);
+    for (let i = 0; i < 6; i++) {
+      const b = add(rig, new Mesh(BAG, clothMat(i % 3 ? 0x161618 : 0x2a4a8a)));
+      b.position.set(-2.8 + i * 0.6, 1.75 + (i % 2) * 0.15, (i % 2) * 0.6 - 0.3);
+      b.scale.set(0.32, 0.26, 0.3);
+    }
+    // Waiting on the ground for the next lift: bags, a flattened tent, a trolley's worth of things, a chair.
+    for (let i = 0; i < 7; i++) {
+      const b = add(rig, new Mesh(BAG, clothMat(i % 4 ? 0x161618 : 0x2a4a8a)));
+      b.position.set(-4.6 - (i % 4) * 0.55, 0.26, -2.1 + Math.floor(i / 4) * 0.6);
+      b.scale.set(0.3, 0.26, 0.3);
+    }
+    const flat = add(rig, box(2.2, 0.06, 1.6, clothMat(0x6a7a3a), -5.2, 0.02, 0.6));
+    flat.rotation.set(0.04, 0.5, 0.06);
+    add(rig, box(1.6, 0.05, 1.2, clothMat(0x9a7a4e), -3.6, 0.02, 2.2)).rotation.y = -0.3;
+    mergeStatic(rig);
     const beacon = glowMat(0x7a4a10, 0xffa020, 2);
-    add(g, box(0.3, 0.22, 0.3, beacon, 1.9, 2.4, 0));
+    add(g, box(0.34, 0.22, 0.34, beacon, 2.0, 2.55, 0));
     const wash = glow(0xffa020, 0.2);
     add(g, pool(6, wash));
-    // Workers with bin bags.
-    for (const [x, z] of [[-4, 2.5], [-6, -1.5], [-3.2, -3]] as const) {
-      add(g, box(0.4, 1.2, 0.3, mat(0xf2a020), x, 0.4, z));
-      add(g, box(0.28, 0.28, 0.28, mat(0xe8c8a0), x, 1.6, z));
-      add(g, box(0.5, 0.5, 0.45, mat(0x1a1a1a), x + 0.45, 0, z));
-    }
-    return { g, beacon, wash, until: 0 };
+    // Council workers in hi-vis with gloves and bin bags, the crowd's own figures (sculpted once loaded).
+    const random = createRandom(4211);
+    const lib = peopleLibrary();
+    const crew: Figure[] = [];
+    [[-4, 2.5, 0.8], [-6, -1.5, -0.6], [-3.4, -2.9, 2.4]].forEach(([x, z, r], i) => {
+      const look = { ...randomAppearance(random, false, 'everyday'), top: i === 1 ? 0xd8e02a : 0xf28a1a, bottom: 0x2a2e36, dog: false };
+      const f: Figure = lib ? new HumanFigure(lib, look) : new CharacterRig(look);
+      f.root.position.set(x, 0.12, z);
+      f.root.rotation.y = r;
+      f.update(0, 'stand', 0);
+      g.add(f.root);
+      crew.push(f);
+      // A bag in the hand.
+      const bag = add(f.root, new Mesh(BAG, clothMat(0x161618)));
+      bag.position.set(0.3, 0.42, 0.05);
+      bag.scale.set(0.24, 0.3, 0.22);
+    });
+    return { g, beacon, wash, crew, until: 0 };
   }
 
   private buildAlert() {

@@ -73,6 +73,10 @@ export class StakesSection {
   private readonly hardcoreLine: HTMLElement;
   private readonly patrolBox: HTMLElement;
   private readonly patrolLine: HTMLElement;
+  /** The short state beside a fold's title. */
+  private readonly stormNote: HTMLElement;
+  private readonly patrolNote: HTMLElement;
+  private readonly moraleNote: HTMLElement;
   private readonly patrolBtns = {} as Record<PatrolSpot, HTMLButtonElement>;
   private readonly standingBox: HTMLElement;
   private readonly standingSummary: HTMLElement;
@@ -82,10 +86,21 @@ export class StakesSection {
 
   constructor(cb: StakesCallbacks) {
     this.root = el('div', 'stakes');
-    this.stormBox = el('div', 'stakes-storm');
+    // Each part folds behind its title and a short state, opened for the detail and the replies.
+    const fold = (cls: string, title: HTMLElement) => {
+      const box = el('details', `sandbox-sub ${cls}`);
+      const summary = el('summary');
+      const note = el('span', 'fold-note');
+      title.classList.add('fold-title');
+      summary.append(title, note);
+      box.append(summary);
+      return { box, note };
+    };
+    this.stormHead = el('span');
+    const storm = fold('stakes-storm', this.stormHead);
+    this.stormBox = storm.box;
+    this.stormNote = storm.note;
     this.stormBox.hidden = true;
-    this.stormBox.setAttribute('role', 'region');
-    this.stormHead = el('h3', 'level');
     this.stormLine = el('p', 'factor-summary');
     const prepRow = el('div', 'org-actions');
     for (const p of Object.keys(STORM.prepare) as StormPrep[]) {
@@ -99,9 +114,10 @@ export class StakesSection {
     this.stormBox.append(this.stormHead, this.stormLine, prepRow);
 
     // The foot patrol: a reply per spot it can walk to; only the ones open now show.
-    this.patrolBox = el('div', 'stakes-patrol');
+    const patrol = fold('stakes-patrol', el('span', undefined, t('Foot patrol')));
+    this.patrolBox = patrol.box;
+    this.patrolNote = patrol.note;
     this.patrolBox.hidden = true;
-    this.patrolBox.append(el('h3', 'level', t('Foot patrol')));
     this.patrolLine = el('p', 'factor-summary');
     const patrolRow = el('div', 'org-actions');
     for (const spot of PATROL_SPOTS) {
@@ -125,13 +141,15 @@ export class StakesSection {
     this.unlockLine = el('p', 'factor-summary');
     standing.append(this.standingLine, this.unlockLine);
 
-    const morale = el('div', 'stakes-morale');
-    morale.append(el('h3', 'level', t('Team morale')));
+    const moraleFold = fold('stakes-morale', el('span', undefined, t('Team morale')));
+    const morale = moraleFold.box;
+    this.moraleNote = moraleFold.note;
     this.moraleLine = el('p', 'org-summary');
     this.needsLine = el('p', 'factor-summary');
     this.hardcoreLine = el('p', 'factor-summary', t('Hardcore: if the whole team quits, or every place you started with stays shut for {hours} hours, the project folds and the game ends.', { hours: Math.round(ORG.foldAfterShut / 60) }));
     this.hardcoreLine.hidden = true;
-    morale.append(this.moraleLine, this.needsLine, this.hardcoreLine);
+    // How a Hardcore project can fold stays in the open, under the morale fold, never behind it.
+    morale.append(this.moraleLine, this.needsLine);
 
     const supplies = el('details', 'sandbox-sub stakes-supplies');
     this.suppliesBox = supplies;
@@ -161,14 +179,19 @@ export class StakesSection {
       this.rows[id] = { stock, order, standing: box };
     }
     supplies.append(el('p', 'factor-summary', t('Bought ahead in batches and used up per visit. An empty shelf means people go without.')), list);
-    this.root.append(this.stormBox, this.patrolBox, standing, morale, supplies);
+    this.root.append(this.stormBox, this.patrolBox, standing, morale, this.hardcoreLine, supplies);
   }
 
   update(v: StakesView): void {
     const { stakes, team } = v;
     const storm = stakes.storm;
     const on = storm.phase !== 'none' && storm.kind !== null;
-    if (this.stormBox.hidden === on) this.stormBox.hidden = !on;
+    if (this.stormBox.hidden === on) {
+      this.stormBox.hidden = !on;
+      // Announced: it opens by itself, so the replies to prepare are in view (the warning's "Get ready now"
+      // opens this sheet); the player may fold it after.
+      if (on) (this.stormBox as HTMLDetailsElement).open = true;
+    }
     if (on) {
       const name = STORM_TEXT[storm.kind!].name;
       setText(this.stormHead, storm.phase === 'peak'
@@ -178,6 +201,8 @@ export class StakesSection {
           : t('Coming: {name}, tomorrow night {from} to {to}', { name, from: formatClock(STORM.from), to: formatClock(STORM.to) }));
       const stock = STORM_TEXT[storm.kind!].stock;
       setText(this.stormLine, t('Have staff rested, the shelf stocked ({item}: {n}) and the low-threshold places open and staffed. Each person turned away tonight may not survive it.', { item: SUPPLIES[stock].label.toLowerCase(), n: stakes.supplies.stock[stock] }));
+      const ready = (Object.keys(this.prep) as StormPrep[]).filter((p) => storm.prepared.has(p)).length;
+      setText(this.stormNote, storm.phase === 'peak' ? t('now') : t('{n} of {all} ready', { n: ready, all: Object.keys(this.prep).length }));
       for (const p of Object.keys(this.prep) as StormPrep[]) {
         const done = storm.prepared.has(p);
         const b = this.prep[p];
@@ -189,6 +214,7 @@ export class StakesSection {
     const p = v.patrol;
     if (this.patrolBox.hidden === p.running) this.patrolBox.hidden = !p.running;
     if (p.running) {
+      setText(this.patrolNote, p.out ? t('out till {time}', { time: formatClock(v.clock + p.until - v.now) }) : p.ready ? t('at its table') : t('not ready'));
       setText(this.patrolLine, p.out
         ? t('Out at {spot} until {time}: {n} reached so far. The table is shut meanwhile.', { spot: PATROL.spots[p.out].label, time: formatClock(v.clock + p.until - v.now), n: p.reached })
         : p.ready
@@ -226,6 +252,7 @@ export class StakesSection {
       : t('Everything is open to you.')) + ' ' + t('Each person helped adds a point; each turned away takes {away}, a death {death}.', { away: STANDING.turnedAway, death: STANDING.death }));
 
     const shaken = team.members.filter((m) => m.morale < MORALE.shakenBelow).length;
+    setText(this.moraleNote, team.members.length ? `${Math.round(team.morale * 100)}%` : '');
     setText(this.moraleLine, team.members.length
       ? t('{pct}% on average. {shaken} shaken. Helping people lifts it; people turned away and deaths drag it down; below {quit}% a worker quits.', { pct: Math.round(team.morale * 100), shaken, quit: Math.round(MORALE.leaveBelow * 100) })
       : t('Nobody is left in the team.'));
