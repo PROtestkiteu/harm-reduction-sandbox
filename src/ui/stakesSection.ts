@@ -48,10 +48,16 @@ function setDisabled(b: HTMLButtonElement, off: boolean): void {
   if (b.disabled !== off) b.disabled = off;
 }
 
+/** Each way to prepare, short on its reply; what it does goes in the reply's tooltip. */
 const PREP_LABEL: Record<StormPrep, () => string> = {
-  beds: () => t('Emergency beds at the drop-in ({price}): {n} more places, fewer deaths', { price: price(STORM.prepare.beds.cost), n: STORM.prepare.beds.places }),
-  warn: () => t('Warn the street ({n} leaflets): fewer deaths', { n: STORM.prepare.warn.leaflets }),
-  standby: () => t('Volunteers on call ({price}): {n} more hands for the night', { price: price(STORM.prepare.standby.cost), n: STORM.prepare.standby.volunteers }),
+  beds: () => t('Emergency beds ({price})', { price: price(STORM.prepare.beds.cost) }),
+  warn: () => t('Warn the street ({n} leaflets)', { n: STORM.prepare.warn.leaflets }),
+  standby: () => t('Volunteers on call ({price})', { price: price(STORM.prepare.standby.cost) }),
+};
+const PREP_DOES: Record<StormPrep, () => string> = {
+  beds: () => t('{n} more places at the drop-in for the night: fewer deaths.', { n: STORM.prepare.beds.places }),
+  warn: () => t('Leaflets on the street ahead of it: fewer deaths.'),
+  standby: () => t('{n} more hands for the night.', { n: STORM.prepare.standby.volunteers }),
 };
 
 /**
@@ -106,12 +112,13 @@ export class StakesSection {
     for (const p of Object.keys(STORM.prepare) as StormPrep[]) {
       const b = el('button', 'btn org-action', PREP_LABEL[p]());
       b.type = 'button';
+      b.title = PREP_DOES[p]();
       b.id = `stakes-prep-${p}`;
       b.addEventListener('click', () => cb.onPrepare(p));
       prepRow.append(b);
       this.prep[p] = b;
     }
-    this.stormBox.append(this.stormHead, this.stormLine, prepRow);
+    this.stormBox.append(this.stormLine, prepRow);
 
     // The foot patrol: a reply per spot it can walk to; only the ones open now show.
     const patrol = fold('stakes-patrol', el('span', undefined, t('Foot patrol')));
@@ -146,7 +153,7 @@ export class StakesSection {
     this.moraleNote = moraleFold.note;
     this.moraleLine = el('p', 'org-summary');
     this.needsLine = el('p', 'factor-summary');
-    this.hardcoreLine = el('p', 'factor-summary', t('Hardcore: if the whole team quits, or every place you started with stays shut for {hours} hours, the project folds and the game ends.', { hours: Math.round(ORG.foldAfterShut / 60) }));
+    this.hardcoreLine = el('p', 'factor-summary', t('Hardcore: the game ends if the whole team quits or your first places stay shut {hours} h.', { hours: Math.round(ORG.foldAfterShut / 60) }));
     this.hardcoreLine.hidden = true;
     // How a Hardcore project can fold stays in the open, under the morale fold, never behind it.
     morale.append(this.moraleLine, this.needsLine);
@@ -194,13 +201,15 @@ export class StakesSection {
     }
     if (on) {
       const name = STORM_TEXT[storm.kind!].name;
+      const Name = name[0].toUpperCase() + name.slice(1);
+      // The title says what and when, in a few words; one short line says what helps.
       setText(this.stormHead, storm.phase === 'peak'
-        ? t('Now: {name}, until {time}', { name: name[0].toUpperCase() + name.slice(1), time: formatClock(STORM.to) })
+        ? t('{name} now, till {time}', { name: Name, time: formatClock(STORM.to) })
         : v.nights === storm.nextNight
-          ? t('Coming: {name}, tonight {from} to {to}', { name, from: formatClock(STORM.from), to: formatClock(STORM.to) })
-          : t('Coming: {name}, tomorrow night {from} to {to}', { name, from: formatClock(STORM.from), to: formatClock(STORM.to) }));
+          ? t('{name} tonight', { name: Name })
+          : t('{name} tomorrow night', { name: Name }));
       const stock = STORM_TEXT[storm.kind!].stock;
-      setText(this.stormLine, t('Have staff rested, the shelf stocked ({item}: {n}) and the low-threshold places open and staffed. Each person turned away tonight may not survive it.', { item: SUPPLIES[stock].label.toLowerCase(), n: stakes.supplies.stock[stock] }));
+      setText(this.stormLine, t('{from} to {to}. Rest the staff, stock {item} ({n}), keep the low-threshold places open.', { from: formatClock(STORM.from), to: formatClock(STORM.to), item: SUPPLIES[stock].label.toLowerCase(), n: stakes.supplies.stock[stock] }));
       const ready = (Object.keys(this.prep) as StormPrep[]).filter((p) => storm.prepared.has(p)).length;
       setText(this.stormNote, storm.phase === 'peak' ? t('now') : t('{n} of {all} ready', { n: ready, all: Object.keys(this.prep).length }));
       for (const p of Object.keys(this.prep) as StormPrep[]) {
