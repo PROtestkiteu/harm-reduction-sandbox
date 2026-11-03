@@ -15,6 +15,8 @@ import { ACTIVITY, type Activity } from '../config/serviceMix';
 import { Team, type Assignment, type Member } from './team';
 import { Stakes, type RunOverCause } from './stakes';
 import { Patrol } from './patrol';
+import { happeningsAt, type Happening } from './happenings';
+import { HAPPENINGS } from '../config/happenings';
 import { PATROL, type PatrolSpot } from '../config/patrol';
 import type { IntroId } from '../config/intro';
 import type { StormReport } from './storm';
@@ -433,6 +435,45 @@ export class Simulation {
   readonly stakes: Stakes;
   /** The foot patrol at its table or out at a spot (sim/patrol.ts). */
   readonly patrol = new Patrol();
+  /** Festival weekends, home matches and university weekends off on now (sim/happenings.ts), worked out each step. */
+  private tonight: Happening[] = [];
+  /** Which happenings have been announced tonight (id and day of the year). */
+  private readonly happeningSaid = new Set<string>();
+  private happeningDay = -1;
+
+  /** What regular happening is on now, how far along and how big a crowd: for the world to draw. */
+  happenings(): readonly Happening[] {
+    return this.tonight;
+  }
+
+  /** People out against the usual for `flow` from tonight's happenings (1 with none on). */
+  private happeningDemand(flow: 'passerby' | 'club' | 'drugChecking'): number {
+    let f = 1;
+    for (const h of this.tonight) f *= 1 + ((HAPPENINGS[h.id].demand[flow] ?? 1) - 1) * h.crowd;
+    return f;
+  }
+
+  /** Tonight's happenings: worked out from the date and clock, announced as they begin, loading the city's services. */
+  private tickHappenings(dtMinutes: number): void {
+    const before = this.tonight.length;
+    // A new evening: last night's announcements are forgotten.
+    if (this.happeningDay !== this.calendar.date.dayOfYear) { this.happeningDay = this.calendar.date.dayOfYear; this.happeningSaid.clear(); }
+    this.tonight = happeningsAt(this.calendar.date, this.clockMinutes);
+    for (const h of this.tonight) {
+      const info = HAPPENINGS[h.id];
+      const key = h.id;
+      if (!this.happeningSaid.has(key)) {
+        this.happeningSaid.add(key);
+        this.org.notice(this.clockMinutes, info.begins);
+      }
+      for (const meter of ['police', 'medics', 'sobering'] as const) {
+        const load = info.load[meter];
+        if (load) this.cityStress.bump(meter, h.id, load * h.crowd * (dtMinutes / 60));
+      }
+    }
+    // Arrivals follow the crowd: re-time them when a happening starts or ends.
+    if (this.tonight.length !== before) for (const id of ['passerby', 'club', 'drugChecking'] as const) this.timers[id] = nextArrival(this.random, this.rate(id));
+  }
   /** This game so far, for saves and the leaderboard: people served and nights run. */
   readonly totals = { helped: 0, nights: 0 };
   /** How far funders trust the project, from the last day's results (multiplies project funding, grant odds and drives). */
@@ -633,7 +674,9 @@ export class Simulation {
     // The big crisis brings far more people in trouble to the low-threshold doors.
     const storm = this.stakes.storm.phase === 'peak' && (id === 'dropIn' || id === 'outreach' || id === 'footPatrol' || id === 'shelter' || id === 'clinic')
       ? 1 + STORM.demand * this.stakes.storm.severity : 1;
-    return this.rates[id] * boost * street * seasonal * squat * fee * v * grown * need * storm;
+    // A festival, a home match or a university weekend off brings more people out.
+    const crowd = id === 'passerby' || id === 'club' || id === 'drugChecking' ? this.happeningDemand(id) : 1;
+    return this.rates[id] * boost * street * seasonal * squat * fee * v * grown * need * storm * crowd;
   }
 
   private setStaff(id: ServiceId, staff: number): void {
@@ -1717,7 +1760,7 @@ export class Simulation {
     const stretched = Math.max(this.cityStress.police, this.cityStress.medics, this.cityStress.sobering) >= 0.7;
     this.goals.tick(dt * this.minuteRate, stretched);
     if (before < MORNING && this.clockMinutes >= MORNING) {
-      const report = this.goals.end(this.totals.nights, this.totals.helped, this.turnedAwayTotal, this.deaths, this.org.budget, this.totals.helped);
+      const report = this.goals.end(this.totals.nights, this.totals.helped, this.turnedAwayTotal, this.deaths, this.org.budget, this.totals.helped, this.stakes.runOver !== null);
       this.stakes.nightBegins();
       report.district = { size: this.growth.size, street: this.growth.street };
       this.totals.nights++;
@@ -1892,6 +1935,7 @@ export class Simulation {
     }
     const late = this.clockMinutes >= 24 * 60 && this.clockMinutes < MORNING;
     this.tickPatrol(dt * this.minuteRate);
+    this.tickHappenings(dt * this.minuteRate);
     const stormOn = this.stakes.storm.phase === 'peak';
     let rota = this.team.tick((dt * this.minuteRate) / 60, late, { unpaid: this.org.broke && this.org.paid > 0, steadier: this.org.steadierVolunteers, drain: stormOn ? STORM.drain : 1 });
     const outreach = this.services.outreach;

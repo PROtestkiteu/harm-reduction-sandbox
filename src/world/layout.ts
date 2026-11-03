@@ -1,5 +1,6 @@
 import type { WalkInServiceId } from '../sim/types';
 import { t } from '../i18n';
+import { LAUNCH_STREAM, launchRandom } from '../config/launch';
 /**
  * District layout in metres: a 3x3-block neighbourhood about 90 m across,
  * inside a ring road with an outer ring of blocks, 140 m across in all.
@@ -102,6 +103,25 @@ export const BLOCKS: Readonly<Record<string, Rect>> = {
   ...outerBlocks(),
 };
 
+/**
+ * Festival grounds in the west of the big park, between its north edge and
+ * its long path, just past the district's south-west corner: a fenced lawn
+ * with the stage at the west end, food stalls along the south fence. Clear of
+ * the students' lawn spot and their walk along the park's edge (campus pack).
+ * Lit and busy only while a festival is on.
+ */
+export const FESTIVAL: Rect = r(-62, -30, 55 + GROW, 74 + GROW);
+/** Where festival-goers come and go: just outside the gate in the north fence, towards the district. */
+export const FESTIVAL_GATE: P2 = p(-46, 53 + GROW);
+/**
+ * The football stadium across the river, north-east of the district, between
+ * the north street and the railway: stands round a pitch, floodlights on four
+ * masts. In view at the right of the opening view.
+ */
+export const STADIUM: Rect = r(87 + GROW, 147 + GROW, -53 - GROW, -32);
+/** Where the fans come and go: just outside the gate in the south stand, towards the north street. */
+export const STADIUM_GATE: P2 = p(105 + GROW, -29);
+
 /** Just outside the district, north: the forecourt by the railway station where a second camp gathers. */
 export const STATION_CAMP: Rect = r(-46, -14, -59 - GROW, -51 - GROW);
 /** The police station, just past the district's north edge between the main and east roads. */
@@ -195,9 +215,10 @@ const fits = (v: Venue, site: SiteId) => v === 'club' || v === 'dropIn' ? SITES[
 
 const SITE_OF: Record<Venue, SiteId> = (() => {
   const ids = Object.keys(SITES) as SiteId[];
+  const random = launchRandom(LAUNCH_STREAM.sites);
   for (;;) {
     for (let i = ids.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
+      const j = Math.floor(random() * (i + 1));
       [ids[i], ids[j]] = [ids[j], ids[i]];
     }
     if (VENUES.every((v, i) => fits(v, ids[i]))) return Object.fromEntries(VENUES.map((v, i) => [v, ids[i]])) as Record<Venue, SiteId>;
@@ -293,9 +314,10 @@ const CAMPER_SITES: readonly { name: string; x: number; z: number; rot: number }
   { name: t('South street, by the park'), x: 12, z: 20.1, rot: -Math.PI / 2 },
   { name: t('East street, towards the river'), x: 28.1, z: -6, rot: 0 },
 ];
-const CAMPER_AT = Math.floor(Math.random() * CAMPER_SITES.length);
+const kerbRandom = launchRandom(LAUNCH_STREAM.kerbs);
+const CAMPER_AT = Math.floor(kerbRandom() * CAMPER_SITES.length);
 /** One kerb spot, not the camper's, is in front of a squat this launch. */
-export const SQUAT_SPOT = (CAMPER_AT + 1 + Math.floor(Math.random() * (CAMPER_SITES.length - 1))) % CAMPER_SITES.length;
+export const SQUAT_SPOT = (CAMPER_AT + 1 + Math.floor(kerbRandom() * (CAMPER_SITES.length - 1))) % CAMPER_SITES.length;
 /**
  * Every kerb spot, by a fixed index for this launch: the first camper stands
  * at one (`camperSpot`), extra campers at others.
@@ -501,6 +523,71 @@ export const EDGES: [NodeId, NodeId][] = [
   ['xN2', 'xOuterN'], ['xOuterN', 'nEast'], ['nEast', 'nsEast'], ['nsEast', 'pathEast'], ['pathEast', 'parkEast'], ['parkEast', 'snEast'],
   ['snEast', 'sEast'], ['sEast', 'clinicFront'], ['clinicFront', 'xOuterS'], ['xOuterS', 'xS2'],
 ];
+
+/** Half the crowd's walking band either side of a line (crowd.ts offsets walkers up to 0.45 m) plus a walker's radius. */
+export const WALK_BAND = 0.75;
+
+/** How far (x, z) is from the nearest of the crowd's walking lines (the walk graph's edges). */
+export function walkDistance(x: number, z: number): number {
+  let best = Infinity;
+  for (const [a, b] of EDGES) {
+    const p = NODES[a];
+    const q = NODES[b];
+    const dx = q.x - p.x;
+    const dz = q.z - p.z;
+    const t = Math.max(0, Math.min(1, ((x - p.x) * dx + (z - p.z) * dz) / (dx * dx + dz * dz || 1)));
+    best = Math.min(best, Math.hypot(x - p.x - t * dx, z - p.z - t * dz));
+  }
+  return best;
+}
+
+/**
+ * True when a `w` by `d` footprint (local x by local z) centred on (x, z) and
+ * turned by `rot` (as Object3D.rotation.y) keeps the walking band clear of
+ * every walking line: a car parked along a pavement passes, one nosing onto a
+ * crossing does not.
+ */
+export function clearOfWalks(x: number, z: number, rot: number, w: number, d: number): boolean {
+  const c = Math.cos(rot);
+  const s = Math.sin(rot);
+  const hw = w / 2 + WALK_BAND;
+  const hd = d / 2 + WALK_BAND;
+  for (const [a, b] of EDGES) {
+    const p = NODES[a];
+    const q = NODES[b];
+    const steps = Math.max(1, Math.ceil(Math.hypot(q.x - p.x, q.z - p.z) / 0.25));
+    for (let i = 0; i <= steps; i++) {
+      const dx = p.x + ((q.x - p.x) * i) / steps - x;
+      const dz = p.z + ((q.z - p.z) * i) / steps - z;
+      // Into the footprint's frame: local x along (cos, -sin), local z along (sin, cos).
+      if (Math.abs(dx * c - dz * s) < hw && Math.abs(dx * s + dz * c) < hd) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * How far out from a lot's facade the crowd's nearest walking line runs in
+ * front of it (Infinity when none does within 8 m). The shuffle deals each
+ * place a different site, and on some (the centre's east site) the line passes
+ * well under a metre from the wall: whatever stands out front has to fit.
+ */
+export function frontLineGap(lot: PlaceLot): number {
+  const { x0, x1, z0, z1 } = lot.rect;
+  let gap = Infinity;
+  for (const [a, b] of EDGES) {
+    const p = NODES[a];
+    const q = NODES[b];
+    const steps = Math.max(1, Math.ceil(Math.hypot(q.x - p.x, q.z - p.z) / 0.25));
+    for (let i = 0; i <= steps; i++) {
+      const x = p.x + ((q.x - p.x) * i) / steps;
+      const z = p.z + ((q.z - p.z) * i) / steps;
+      const [out, along, lo, hi] = lot.face === '+x' ? [x - x1, z, z0, z1] : [z - z1, x, x0, x1];
+      if (out > 0 && out < 8 && along >= lo && along <= hi) gap = Math.min(gap, out);
+    }
+  }
+  return gap;
+}
 
 export const ENTRY_NODES: NodeId[] = ['wN2', 'eN2', 'wS2', 'eS2', 'nW', 'nE', 'sW', 'sE', 'xN2', 'xS2'];
 

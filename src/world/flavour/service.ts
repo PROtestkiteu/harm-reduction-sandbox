@@ -1,5 +1,7 @@
 import { Group, type Mesh, type MeshLambertMaterial } from 'three';
-import { BIN_ROUND, COURIERS, SWEEPER } from '../../config/flavour/service';
+import { BIN_ROUND, COURIERS, SWEEPER, UNSEEN_HURRY } from '../../config/flavour/service';
+import { inView } from '../../render/viewEdge';
+import { Route, type RoutePoint } from '../routes';
 import { range } from '../../sim/random';
 import { add, box, cylinder } from '../kit';
 import { glowMat, mat } from '../materials';
@@ -62,6 +64,7 @@ export function buildService({ pool, board, random, scene, traffic }: PackDeps):
   const beacon = glowMat(0x7a4a10, 0xffa020, 1.2);
   const truck = lorry(beacon);
   truck.visible = false;
+  truck.userData.mover = 'lorry';
   root.add(truck);
   const truckCar = traffic.add(3.4);
   const bins = BIN_ROUND.bins.map((at) => {
@@ -74,11 +77,27 @@ export function buildService({ pool, board, random, scene, traffic }: PackDeps):
     a.voice = 'crew';
     return { a, i };
   });
-  const round = { on: false, z: BIN_ROUND.lane.from, v: 0, stop: -1, t: 0, done: new Set<number>() };
+  const route = new Route(BIN_ROUND.route, 4);
+  // Where along the route each bin is: the nearest point of the lane to it.
+  const here: RoutePoint = { x: 0, z: 0, dx: 0, dz: 1 };
+  const seg = { seg: 0 };
+  const binS = BIN_ROUND.bins.map((b) => {
+    let best = 0;
+    let bestD = Infinity;
+    for (let s = 0; s < route.length; s += 0.5) {
+      route.point(s, here, seg);
+      const d = Math.hypot(here.x - b.x, here.z - b.z);
+      if (d < bestD) { bestD = d; best = s; }
+    }
+    return best;
+  });
+  seg.seg = 0;
+  const round = { on: false, s: 0, v: 0, stop: -1, t: 0, done: new Set<number>() };
 
   // The sweeper.
   const sw = sweeper();
   sw.g.visible = false;
+  sw.g.userData.mover = 'sweeper';
   sw.g.rotation.y = Math.PI / 2;
   root.add(sw.g);
   const swCar = traffic.add(1.5);
@@ -94,6 +113,12 @@ export function buildService({ pool, board, random, scene, traffic }: PackDeps):
     return { a, on: false, car: traffic.add(0.9) as TrafficCar, x: COURIERS.lane.from, v: 0 };
   });
   let courierIn = 5;
+
+  /** No other vehicle in the lane round where `car` would set out, at (x, z) heading (dx, dz). */
+  const clearToStart = (car: TrafficCar, x: number, z: number, dx: number, dz: number) => {
+    Object.assign(car, { x, z, dx, dz });
+    return traffic.laneClear(car, car.half + 8, car.half + 6) && traffic.gapAhead(car) > 8;
+  };
 
   /** Drives a registered vehicle along its lane: slows for the gap ahead; returns the speed. */
   const drive = (car: TrafficCar, x: number, z: number, dx: number, dz: number, cruise: number, v: number, dt: number, stopping: boolean) => {
@@ -112,20 +137,28 @@ export function buildService({ pool, board, random, scene, traffic }: PackDeps):
       for (const c of crew) fade(c.a, false, dt);
       return;
     }
+    // Sets out (out of sight, at the city's edge) only once its lane is clear there.
+    if (round.s === 0 && !clearToStart(truckCar, route.start.x, route.start.z, route.start.dx, route.start.dz)) { truck.visible = false; truckCar.active = false; return; }
     truck.visible = true;
     beacon.emissiveIntensity = 0.5 + 0.9 * Math.max(0, Math.sin(round.t * 7));
     round.t += dt;
     // The next bin ahead (the lorry stops level with it, its rear at the bin).
-    const next = bins.findIndex((b, i) => !round.done.has(i) && b.at.z > round.z - 1);
-    const stopAt = next >= 0 ? bins[next].at.z - 3 : Infinity;
-    const stopping = round.stop >= 0 || (next >= 0 && stopAt - round.z < 3);
-    round.v = drive(truckCar, BIN_ROUND.lane.x, round.z, 0, 1, BIN_ROUND.speed, round.v, dt, stopping);
-    round.z += round.v * dt;
-    truck.position.set(BIN_ROUND.lane.x, 0.02, round.z);
-    if (round.stop < 0 && next >= 0 && round.v < 0.05 && stopAt - round.z < 3) { round.stop = next; round.t = 0; }
+    const next = bins.findIndex((_, i) => !round.done.has(i) && binS[i] > round.s - 1);
+    const stopAt = next >= 0 ? binS[next] - 3 : Infinity;
+    const stopping = round.stop >= 0 || (next >= 0 && stopAt - round.s < 3);
+    route.point(round.s, here, seg);
+    const seen = inView(here.x, here.z, here.dx, here.dz, 4, 3.2);
+    round.v = drive(truckCar, here.x, here.z, here.dx, here.dz, BIN_ROUND.speed * (seen ? 1 : UNSEEN_HURRY), round.v, dt, stopping);
+    round.s += round.v * dt;
+    truck.position.set(here.x, 0.02, here.z);
+    truck.rotation.y = Math.atan2(here.dx, here.dz);
+    if (round.stop < 0 && next >= 0 && round.v < 0.05 && stopAt - round.s < 3) { round.stop = next; round.t = 0; }
+    // The crew's spots behind the lorry: on the ring's east road it faces south (+z), its rear to the north.
+    const rearX = here.x - here.dz * 1.5 - here.dx * 3.8;
+    const rearZ = here.z + here.dx * 1.5 - here.dz * 3.8;
     if (round.stop >= 0) {
       const b = bins[round.stop];
-      const rear = { x: BIN_ROUND.lane.x - 1.5, z: round.z - 3.8 };
+      const rear = { x: rearX, z: rearZ };
       // One fetches the bin to the lorry's rear, it is lifted and tipped, and they take it back.
       const fetcher = crew[0].a;
       const t = round.t;
@@ -156,15 +189,17 @@ export function buildService({ pool, board, random, scene, traffic }: PackDeps):
         for (const c of crew) { c.a.shown = 0; c.a.x = rear.x; c.a.z = rear.z; }
       }
     } else {
-      for (const c of crew) { c.a.x = BIN_ROUND.lane.x - 1.4; c.a.z = round.z - 3.8; fade(c.a, false, dt, 4); }
+      for (const c of crew) { c.a.x = rearX; c.a.z = rearZ; fade(c.a, false, dt, 4); }
     }
-    if (round.z > BIN_ROUND.lane.to) { round.on = false; }
+    if (round.s >= route.length) { round.on = false; }
   };
 
   const tickSweep = (dt: number) => {
     if (!sweep.on) { sw.g.visible = false; swCar.active = false; return; }
+    if (sweep.x === SWEEPER.lane.from && !clearToStart(swCar, sweep.x, SWEEPER.lane.z, 1, 0)) { swCar.active = false; return; }
     sw.g.visible = true;
-    sweep.v = drive(swCar, sweep.x, SWEEPER.lane.z, 1, 0, SWEEPER.speed, sweep.v, dt, false);
+    const seen = inView(sweep.x, SWEEPER.lane.z, 1, 0, 1.5, 2);
+    sweep.v = drive(swCar, sweep.x, SWEEPER.lane.z, 1, 0, SWEEPER.speed * (seen ? 1 : UNSEEN_HURRY * 2), sweep.v, dt, false);
     sweep.x += sweep.v * dt;
     sw.g.position.set(sweep.x, 0.02, SWEEPER.lane.z);
     for (const b of sw.brushes) b.rotation.y += dt * 9 * (b.position.x < 0 ? 1 : -1);
@@ -181,14 +216,17 @@ export function buildService({ pool, board, random, scene, traffic }: PackDeps):
     }
     for (const c of couriers) {
       if (!c.on) { c.a.shown = 0; c.car.active = false; continue; }
-      c.v = drive(c.car, c.x, COURIERS.lane.z - 0.9, -1, 0, COURIERS.speed, c.v, dt, false);
+      if (c.x === COURIERS.lane.from && !clearToStart(c.car, c.x, COURIERS.lane.z - 0.9, -1, 0)) { c.car.active = false; continue; }
+      const seen = inView(c.x, COURIERS.lane.z - 0.9, -1, 0, 1, 2);
+      c.v = drive(c.car, c.x, COURIERS.lane.z - 0.9, -1, 0, COURIERS.speed * (seen ? 1 : UNSEEN_HURRY), c.v, dt, false);
       c.x -= c.v * dt;
       c.a.x = c.x;
       c.a.z = COURIERS.lane.z - 0.9;
       c.a.heading = -Math.PI / 2;
       c.a.pose = 'sit';
       c.a.speed = 1;
-      fade(c.a, c.x > COURIERS.lane.to + 6, dt, 3);
+      // Out of sight at both ends of the lane, so shown the whole way.
+      fade(c.a, true, dt, 3);
       if (c.x < COURIERS.lane.to) { c.on = false; c.car.active = false; }
     }
   };
@@ -208,7 +246,7 @@ export function buildService({ pool, board, random, scene, traffic }: PackDeps):
     },
     update(dt, ctx) {
       if (!enabled) return;
-      for (const t of BIN_ROUND.times) if (due(t, ctx.clock) && !round.on) Object.assign(round, { on: true, z: BIN_ROUND.lane.from, v: BIN_ROUND.speed, stop: -1, t: 0, done: new Set<number>() });
+      for (const t of BIN_ROUND.times) if (due(t, ctx.clock) && !round.on) { Object.assign(round, { on: true, s: 0, v: BIN_ROUND.speed, stop: -1, t: 0, done: new Set<number>() }); seg.seg = 0; }
       if (due(SWEEPER.time, ctx.clock) && !sweep.on) Object.assign(sweep, { on: true, x: SWEEPER.lane.from, v: SWEEPER.speed });
       last = ctx.clock;
       tickRound(dt);

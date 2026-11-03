@@ -5,7 +5,8 @@
 // As a script:  node scripts/bots/chrome.mjs <url> <steps.json> [outDir] [WxH]
 // Steps:        [{ "eval": "js" } | { "wait": ms } | { "shot": "name.png" } | { "profile": ms }]
 // SEED=<n> replaces Math.random in the page with a seeded one before any script
-// runs, so the city's layout (random per launch) is the same on every run.
+// runs, and pins the launch seed (src/config/launch.ts) to it, so the city's
+// layout and start date (random per launch) are the same on every run.
 
 import { spawn } from 'node:child_process';
 import { mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -16,7 +17,7 @@ import { pathToFileURL } from 'node:url';
 const CHROME = process.env.CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const seeded = (seed) => `(() => { let a = ${Number(seed)} >>> 0; Math.random = () => {
+const seeded = (seed) => `(() => { globalThis.__launchSeed = ${Number(seed)} >>> 0; let a = ${Number(seed)} >>> 0; Math.random = () => {
   a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
   return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();`;
 

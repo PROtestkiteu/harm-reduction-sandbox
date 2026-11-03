@@ -20,6 +20,7 @@ import {
   LOTS,
   PATROL,
   SPOTS,
+  STREETS,
   STAND_QUEUE_DIR,
   VENUE_FRAME,
   VENUE_ROT,
@@ -34,6 +35,8 @@ import { bus, car, CAR_COLOURS, rollWheels } from '../world/vehicles';
 import type { CityHappening, PasserbyKind } from '../sim/cityLife';
 import { approach } from '../world/animated';
 import { speedForGap, stood, type TrafficCar } from '../world/traffic';
+import { inView } from '../render/viewEdge';
+import { FAR } from '../world/ambient';
 import { PALETTE } from '../config/palette';
 import { CharacterRig, randomAppearance, type Appearance, type Archetype, type BodyState, type Figure, type Pose } from './character';
 import { HumanFigure, peopleLibrary } from './humanFigure';
@@ -69,8 +72,19 @@ const BUS_DWELL = 4;
 /** Seconds the cars may be held at a busy zebra before it is their turn, and how long their turn lasts. */
 const ZEBRA_PATIENCE = 6;
 const CARS_TURN = 5;
-/** Main-street cars start and end this far out, beyond what the camera sees, so none pops in at the district's edge. */
-const CAR_RUN = 120;
+/**
+ * Main-street cars set out north of the district and leave south of it, each
+ * where the camera does not see the road (at most FAR out), so none pops in
+ * or out on screen. The search starts here, just past the district's edge.
+ */
+const CAR_EDGE = 75;
+/** Seconds a taxi stands at the club while someone gets in, and where it pulls up: just past the zebra by the club's door. */
+const TAXI_DWELL = 6;
+const TAXI_STOP_Z = 1.6;
+/** Share of main-street cars that are taxis while the club is open. */
+const TAXI_SHARE = 0.25;
+/** The cross streets with traffic lights where they meet the main and east streets: people cross them with the lights. */
+const LIT_STREETS = [STREETS.north.road, STREETS.south.road];
 
 export type Mode =
   | 'walking'      // on the way somewhere; `onArrive` decides what happens next
@@ -189,9 +203,10 @@ interface Car {
   half: number;
   /** Its own cruising speed: drivers differ. */
   cruise: number;
-  /** The night bus stops once at the shelter. */
+  /** The night bus stops once at the shelter; a taxi at the club. */
   stopAt?: number;
   stopLeft?: number;
+  taxi?: boolean;
   /** Its place in the city's traffic, so cross traffic sees it and it sees cross traffic. */
   rec: TrafficCar;
   /** Exhaust and grit (world/puffs.ts). */
@@ -1469,14 +1484,34 @@ export class Crowd {
 
   // Cars
 
+  /** Where a main-street car or bus `half` long sets out: the nearest point north of the district the camera does not see. */
+  private carStart(half: number): number {
+    for (let z = -CAR_EDGE; z > -FAR; z -= 8) if (!inView(ROAD.laneX, z, 0, 1, half)) return z;
+    return -FAR;
+  }
+
+  /** No other vehicle in the lane round where a car `half` long would set out (an ambulance on its way in, say). */
+  private laneFree(z: number, half: number): boolean {
+    const probe: TrafficCar = { id: -1, x: ROAD.laneX, z, dx: 0, dz: 1, half, active: false, waited: 0 };
+    return this.world.traffic.laneClear(probe, half + 8, half + 6);
+  }
+
   private spawnCar(): void {
     if (this.cars.length >= MAX_CARS) return;
+    const z = this.carStart(2.4);
     const last = this.cars[this.cars.length - 1];
-    if (last && last.z < -CAR_RUN + 6 + last.half) return;
-    const group = car(pick(this.random, CAR_COLOURS), true);
-    group.position.set(ROAD.laneX, 0.02, -CAR_RUN);
+    if (last && last.z < z + 6 + last.half) return;
+    if (!this.laneFree(z, 2.2)) return;
+    // While the club is open some are taxis, and they stop at its door for a fare.
+    const taxi = this.sim.clubOpen && this.random() < TAXI_SHARE;
+    const group = car(pick(this.random, CAR_COLOURS), true, taxi ? 'taxi' : undefined);
+    group.position.set(ROAD.laneX, 0.02, z);
+    group.userData.mover = taxi ? 'taxi' : 'main';
     this.world.scene.add(group);
-    this.cars.push({ group, z: -CAR_RUN, speed: 5.5, half: 2, cruise: 4.5 + this.random() * 2.8, rec: this.world.traffic.add(2.2), pipe: { t: this.random(), v: 5.5 } });
+    this.cars.push({
+      group, z, speed: 5.5, half: 2, cruise: 4.5 + this.random() * 2.8, rec: this.world.traffic.add(2.2), pipe: { t: this.random(), v: 5.5 },
+      ...(taxi ? { taxi, stopAt: TAXI_STOP_Z, stopLeft: TAXI_DWELL } : {}),
+    });
   }
 
   // City life: night bus, cleaners, street incidents
@@ -1489,14 +1524,26 @@ export class Crowd {
 
   private spawnBus(): void {
     // One night bus on the street at a time: the next waits for this one to be gone.
-    if (this.cars.some((c) => c.stopAt !== undefined)) return;
+    if (this.cars.some((c) => c.stopAt !== undefined && !c.taxi)) return;
+    const z = this.carStart(5.2);
     const last = this.cars[this.cars.length - 1];
-    if (last && last.z < -CAR_RUN + 8 + last.half) return;
+    if (last && last.z < z + 8 + last.half) return;
+    if (!this.laneFree(z, 5.2)) return;
     const group = bus();
-    const z = -CAR_RUN - 2.5;
+    group.userData.mover = 'nightBus';
     group.position.set(ROAD.laneX, 0.02, z);
     this.world.scene.add(group);
     this.cars.push({ group, z, speed: 5, half: 4.5, cruise: 5, stopAt: BUS_STOP_Z, stopLeft: BUS_DWELL, rec: this.world.traffic.add(5.2), pipe: { t: this.random(), v: 5 } });
+  }
+
+  /** A taxi at the club: someone just out of it, close by and on their way, walks over and gets in. */
+  private taxiArrived(): void {
+    for (const a of this.agents.values()) {
+      if (a.mode !== 'leaving' || !a.visible || SPECIAL_ROLES.has(a.role) || a.rig.look.staff || dist(a.pos, SPOTS.clubExit) > 9) continue;
+      this.walk(a, [{ x: ROAD.x0 + 0.2, z: TAXI_STOP_Z }], () => this.remove(a));
+      a.mode = 'leaving';
+      return;
+    }
   }
 
   /** The bus is at the stop: people waiting board, and a few people get off. */
@@ -1595,6 +1642,26 @@ export class Crowd {
     return MAIN_CROSSINGS.some((c, i) => this.carsTurn[i] > 0 && a.pos.z >= c.z0 - 0.6 && a.pos.z <= c.z1 + 0.6);
   }
 
+  /**
+   * About to step off the kerb across the north or south street beside a lit
+   * junction while the cars along that street may still go: waits for their
+   * red, so people gather at the kerb and cross together with the lights.
+   * Someone already on the road walks on.
+   */
+  private waitsForLights(a: Agent): boolean {
+    const next = a.route[0];
+    if (!next) return false;
+    for (const road of LIT_STREETS) {
+      const on = (z: number) => z > road.z0 - 0.1 && z < road.z1 + 0.1;
+      if (on(a.pos.z) || !(on(next.z) || (next.z - road.z0) * (a.pos.z - road.z0) < 0)) continue;
+      const kerb = a.pos.z < road.z0 ? road.z0 : road.z1;
+      if (Math.abs(a.pos.z - kerb) > 1.8) continue;
+      const light = this.world.traffic.lightAt(a.pos.x, (road.z0 + road.z1) / 2, 'x');
+      return light !== null && light !== 'red';
+    }
+    return false;
+  }
+
   private updateCars(dt: number): void {
     const busy = this.busyCrossings();
     const held = MAIN_CROSSINGS.map(() => false);
@@ -1614,7 +1681,10 @@ export class Crowd {
         // The bus pulls in at the shelter, waits, then goes on.
         const toStop = c.stopAt - c.z;
         if (toStop < 0.3) {
-          if (c.speed < 0.2 && c.stopLeft === BUS_DWELL) this.busArrived();
+          if (c.speed < 0.2 && c.stopLeft === (c.taxi ? TAXI_DWELL : BUS_DWELL)) {
+            if (c.taxi) this.taxiArrived();
+            else this.busArrived();
+          }
           if (c.speed < 0.2) c.stopLeft -= dt;
           target = 0;
         } else target = Math.min(target, toStop * 1.2);
@@ -1644,7 +1714,8 @@ export class Crowd {
       this.crossHeld[k] = held[k] ? this.crossHeld[k] + dt : 0;
       if (this.crossHeld[k] > ZEBRA_PATIENCE) { this.carsTurn[k] = CARS_TURN; this.crossHeld[k] = 0; }
     });
-        while (this.cars.length && this.cars[0].z > CAR_RUN) {
+    // The car furthest on leaves once past the district and out of sight (or at the city's edge).
+    while (this.cars.length && (this.cars[0].z > FAR || (this.cars[0].z > CAR_EDGE && !inView(ROAD.laneX, this.cars[0].z, 0, 1, this.cars[0].half + 0.4)))) {
       const gone = this.cars.shift()!;
       this.world.scene.remove(gone.group);
       this.world.traffic.remove(gone.rec);
@@ -1746,7 +1817,7 @@ export class Crowd {
 
   private step(a: Agent, dt: number): void {
     // The cars' turn at the zebra ahead: stand at the kerb until it is over.
-    const atKerb = a.mode !== 'pausing' && a.route.length > 0 && this.waitsAtKerb(a);
+    const atKerb = a.mode !== 'pausing' && a.route.length > 0 && (this.waitsAtKerb(a) || this.waitsForLights(a));
     if (a.mode === 'pausing') {
       a.pauseLeft -= dt;
       if (a.pauseLeft <= 0) {

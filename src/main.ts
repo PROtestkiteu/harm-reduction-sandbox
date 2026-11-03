@@ -31,9 +31,11 @@ import { Highlight, OVERLAY_LAYER } from './render/highlight';
 import { ScenePipeline } from './render/scenePipeline';
 import { DynamicResolution } from './render/dynamicResolution';
 import { whenViewportSettled } from './render/viewportSettle';
+import { watchCamera } from './render/viewEdge';
 import { CoinPops } from './render/coinPops';
 import { dayFactor, formatClock, nightFactor } from './sim/clock';
 import { createRandom } from './sim/random';
+import { LAUNCH_STREAM, launchRandom } from './config/launch';
 import { Simulation } from './sim/simulation';
 import { loadPeople } from './agents/humanFigure';
 import { SEASON_PROFILES } from './config/seasons';
@@ -99,7 +101,7 @@ import { GoalsStrip } from './ui/goalsStrip';
 import { MeterCauses } from './ui/meterCauses';
 import { NightReportBox } from './ui/nightReport';
 import { scenariosSection } from './ui/scenariosSection';
-import { scenarioById } from './config/scenarios';
+import { scenarioById, scenarioProgress } from './config/scenarios';
 import type { NightReport } from './sim/goals';
 import { Sound, type SoundState } from './audio';
 import { soundSection } from './ui/soundSection';
@@ -144,6 +146,7 @@ configureRenderer(renderer);
 const pipeline = new ScenePipeline(renderer);
 const world = buildWorld(createRandom(ILLUSTRATIVE.seed));
 const camera = createIsoCamera();
+watchCamera(camera);
 camera.layers.enable(OVERLAY_LAYER);
 const sim = new Simulation(ILLUSTRATIVE.seed);
 // People's assets (about 0.6 MB) load before the crowd is built (the loading screen stays up);
@@ -371,6 +374,7 @@ sim.on((e) => {
 
   if (e.type === 'alert') props.flashAlert(e.word);
   // A theft for the thieves pack to show; a few at most wait (the pack takes them each frame while on).
+  if (e.type === 'city' && e.happening.kind === 'crime' && e.happening.crime === 'scuffle') flavour.context.scuffles++;
   if (e.type === 'theft' && flavour.settings.on.thieves && flavour.context.thefts.length < 4) flavour.context.thefts.push(e.theft);
   if (e.type === 'city' && e.happening.kind === 'crime' && e.happening.crime === 'carBreakIn') cityProps.carAlarm(sim.city.incidents.carBreakIn);
   // A grant that unlocks a context option (a licence, stable funding) changes the selection like a slider would.
@@ -532,6 +536,12 @@ function updateFlavour(dt: number): void {
   c.squat = sim.camp.squat;
   c.still = reducedMotion.matches;
   c.street = sim.growth.street;
+  // The big days (sim.happenings: festival weekends, home matches, university weekends) and the open bars' pavement spots.
+  c.happenings = [...sim.happenings()];
+  if (c.happenings.length) {
+    const open = sim.vitality.venues;
+    c.bars = world.barSpots.filter((s) => s.venue < open);
+  }
   for (let i = 0; i < sim.petty.hits.length; i++) {
     c.shopGuard[i] = sim.petty.guarded(i, sim.org.now);
     c.shopShut[i] = sim.petty.shut(i, sim.org.now);
@@ -816,6 +826,22 @@ function refreshHud(): void {
   const exposure = exposureNow(sim.season, sim.clockMinutes, sim.events.isActive('coldNight'));
   world.setAid(sim.warmingBus && exposure === 'cold', sim.coolingPoint && exposure === 'heat');
   world.setCamp(sim.camp.size, sim.camp.station);
+  // The district's ordinary buildings run down or get done up with it, game hour by game hour.
+  const hood = sim.neighbourhood.state;
+  world.setDistrict({
+    vitality: sim.vitality.level, safety: hood.safety, shopTrade: hood.shopTrade, streetMarket: hood.streetMarket, litter: hood.litter,
+    camp: sim.camp.size, stationCamp: sim.camp.station, skip: sim.property.points.map((p) => p.building),
+  }, (sim.calendar.year * 365 + sim.calendar.dayOfYear) * 1440 + sim.clockMinutes);
+  // The festival grounds and the stadium light up with tonight's happenings (sim/happenings.ts):
+  // the grounds with the crowd (beams from half), the floodlights only while the match is on.
+  {
+    const h = sim.happenings();
+    const fest = h.find((x) => x.id === 'festival');
+    world.setHappenings({
+      festival: !fest ? 0 : fest.phase === 'on' ? Math.max(0.6, fest.crowd) : 0.4 * fest.crowd,
+      match: h.some((x) => x.id === 'match' && x.phase === 'on') ? 1 : 0,
+    });
+  }
   world.setParkActivities(sim.park.now);
   world.setNightlife(sim.vitality.venues, sim.vitality.partners);
   syncProperty();
@@ -1074,7 +1100,7 @@ sandbox.mount(languageSection((lang) => {
 sandbox.mount(aboutSection(__APP_VERSION__));
 
 // Big events: every 10 to 25 game hours one may stop the clock and ask for a decision.
-const eventRandom = createRandom((Math.random() * 0x7fffffff) | 0);
+const eventRandom = launchRandom(LAUNCH_STREAM.events);
 // The first decision comes early (2 to 4 hours in); after that every 10 to 25 hours.
 let nextBigEvent = 2 * 60 + eventRandom() * 2 * 60;
 let nextBudgetWarning = 0;
@@ -1492,9 +1518,7 @@ function refreshGuide(): void {
 function refreshGoals(): void {
   const s = sim.goals.scenario;
   goalsStrip.set(sim.goals.progress(sim.totals.helped, sim.org.budget), s
-    ? (sim.goals.won ? t('{title}: won.', { title: s.title }) : t('{title}: {nights} of {needNights} nights, {helped} of {needHelped} helped, {stars} of {needStars} stars.', {
-      title: s.title, nights: sim.totals.nights, needNights: s.nights, helped: sim.totals.helped, needHelped: s.helped, stars: sim.goals.stars, needStars: s.stars,
-    }))
+    ? scenarioProgress(s, { nights: sim.totals.nights, helped: sim.totals.helped, stars: sim.goals.stars, deaths: sim.deaths, won: sim.goals.won, folded: sim.stakes.runOver !== null })
     : null);
   notices.refresh(sim.org.now, sim.deaths);
   if (pendingReport && !document.querySelector('dialog[open]')) {

@@ -1,9 +1,15 @@
 import { QUALITY } from '../render/quality';
 import { CapsuleGeometry, Color, Group, InstancedMesh, Matrix4, MeshLambertMaterial, Quaternion, SphereGeometry, Vector3, type Object3D } from 'three';
 import type { Random } from '../sim/random';
-import { GROW, ROAD, STREETS } from './layout';
+import { GROW, ROAD, STREETS, type Rect } from './layout';
 import { bridgeSlope, bridgeY } from './bridges';
 import { bus, car, CAR_COLOURS, emergencyVehicle, rollWheels, type EmergencyVehicle } from './vehicles';
+import { Route, type RoutePoint } from './routes';
+import { inView } from '../render/viewEdge';
+import { Helicopter } from './helicopter';
+import { add, box } from './kit';
+import { glowMat } from './materials';
+import type { Solids } from './solids';
 import type { Puffs, Tailpipe } from './puffs';
 import { dynamic } from './mergeStatic';
 import { approach } from './animated';
@@ -47,6 +53,10 @@ export interface Ambient {
   vehicles(): readonly { id: number; root: Object3D }[];
   /** What a vehicle is doing and why it came, while it is out. */
   vehicle(id: number): VehicleInfo | undefined;
+  /** The fixed obstacles, once the world is built: delivery vans look for a free stretch of kerb in them. */
+  setSolids(solids: Solids): void;
+  /** How dark it is (0 day, 1 night): the police helicopter's searchlight. */
+  setNight(night: number): void;
 }
 
 export interface VehicleInfo {
@@ -63,69 +73,147 @@ const POOL = QUALITY.figures;
 /** Below this many pixels tall a person is drawn as a cheap instanced shape. */
 const TINY_PX = 9;
 
-interface Run { from: Vector3; to: Vector3 }
+type DriverKind = 'through' | 'outer' | 'van';
+/** A delivery van's stop: it pulls across into a free stretch of the parking kerb, stands with its hazards on, and pulls out. */
+interface Bay {
+  /** Distance along its route where it starts to pull in. */
+  s: number;
+  /** From its lane to the bay, sideways. */
+  ox: number; oz: number;
+  /** 0 in its lane, 1 in the bay. */
+  u: number;
+  hold: number;
+  state: 'ahead' | 'in' | 'stopped' | 'out' | 'done';
+}
 interface Driver {
-  group: Group; run: Run; t: number;
-  /** Cruising speed for this run, and the speed it is doing now (it slows for traffic and people). */
+  group: Group; route: Route; s: number; seg: { seg: number };
+  /** Cruising speed for this route, and the speed it is doing now (it slows for traffic and people). */
   speed: number; v: number;
-  length: number;
   car: TrafficCar;
-  /** Seconds off the road before its next run. */
+  /** Seconds off the road before its next route. */
   wait?: number;
   /** Exhaust and grit (world/puffs.ts). */
   pipe: Tailpipe;
   bus: boolean;
+  kind: DriverKind;
+  bay?: Bay;
+  /** A van's hazard lights, blinking while it stands. */
+  hazards?: Object3D;
 }
-interface Walker { run: Run; t: number; speed: number; length: number; phase: number; height: number }
+interface Walker { route: Route; s: number; seg: { seg: number }; speed: number; phase: number }
 
-const FAR = 250 + GROW;
+/**
+ * Where the through-traffic sets out and ends, in metres from the middle:
+ * past the widest view (tilted low and zoomed out, the camera sees about
+ * 290 m out), so no car appears or vanishes on screen.
+ */
+export const FAR = 340;
 /** The big park, south of the district: its lawn's edges and its long path. */
 const PARK = { x0: -44 - GROW, x1: 48 + GROW, z0: 52 + GROW, z1: 117 + GROW, path: 76 + GROW };
+/** The streets of the city beyond the district (world/cityBeyond.ts): x holds the ones running along z. */
+export interface OuterStreets { x: readonly Rect[]; z: readonly Rect[] }
+/** How far out the outer streets carry cars: short of the skyline blocks past the street grid. */
+const OUTER_REACH = 183;
+/** Cars on the streets of the city beyond, both ways. */
+const OUTER_CARS = 14;
+const VANS = 2;
+/** Metres a van rolls on while it pulls across into its bay, and out again. */
+const PULL = 4;
+/** Seconds a van takes to pull across. */
+const PULL_TIME = 2.5;
 
-export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic, puffs: Puffs): Ambient {
-  const runs: Run[] = [];
-  const lane = (a: [number, number], b: [number, number]) => runs.push({ from: new Vector3(a[0], 0, a[1]), to: new Vector3(b[0], 0, b[1]) });
-  // Through-traffic, one way per street, horizon to horizon, so no car ever
-  // appears or vanishes at the district's edge: eastbound on the north street,
-  // westbound on the south street, southbound on the east street, each in the
-  // kerb lane kept free of parking. The main street's own traffic is the crowd's.
+export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic, puffs: Puffs, outer: OuterStreets): Ambient {
+  // Through-traffic, one way per street as the district's streets are (the
+  // far kerb is for parking), horizon to horizon: eastbound on the north
+  // street, westbound on the south street, southbound on the east street,
+  // each in the kerb lane kept free of parking. Some turn right at the lights
+  // from one into the next. The main street's own traffic is the crowd's.
   const north = STREETS.north.road;
   const south = STREETS.south.road;
   const east = STREETS.east.road;
-  lane([-FAR, north.z0 + 1.4], [FAR, north.z0 + 1.4]);
-  lane([FAR, south.z0 + 1.4], [-FAR, south.z0 + 1.4]);
-  lane([east.x0 + 1.4, -FAR], [east.x0 + 1.4, FAR]);
+  const nz = north.z0 + 1.4;
+  const sz = south.z0 + 1.4;
+  const ex = east.x0 + 1.4;
+  const straight = [new Route([[-FAR, nz], [FAR, nz]]), new Route([[FAR, sz], [-FAR, sz]]), new Route([[ex, -FAR], [ex, FAR]])];
+  const turning = [new Route([[-FAR, nz], [ex, nz], [ex, FAR]], 3), new Route([[ex, -FAR], [ex, sz], [-FAR, sz]], 3)];
+  /** Sideways from each straight route's lane to its parking kerb, where a van can pull in. */
+  const BAY_SIDE = [{ x: 0, z: north.z1 - 1.0 - nz }, { x: 0, z: south.z1 - 1.0 - sz }, { x: east.x1 - 1.0 - ex, z: 0 }];
+  const throughRoute = (turns: boolean) => (turns && random() < 0.3 ? turning[Math.floor(random() * turning.length)] : straight[Math.floor(random() * straight.length)]);
+  // Both ways along the outer streets, keeping right, short of the skyline past the street grid.
+  const outerRoutes: Route[] = [];
+  const LANE = 1.1;
+  for (const r of outer.x) {
+    const z0 = Math.max(r.z0, -OUTER_REACH) + 1;
+    const z1 = Math.min(r.z1, OUTER_REACH) - 1;
+    if (z1 - z0 < 40 || r.x1 - r.x0 < 4) continue;
+    const cx = (r.x0 + r.x1) / 2;
+    outerRoutes.push(new Route([[cx - LANE, z0], [cx - LANE, z1]]), new Route([[cx + LANE, z1], [cx + LANE, z0]]));
+  }
+  for (const r of outer.z) {
+    const x0 = Math.max(r.x0, -OUTER_REACH) + 1;
+    const x1 = Math.min(r.x1, OUTER_REACH) - 1;
+    if (x1 - x0 < 40 || r.z1 - r.z0 < 4) continue;
+    const cz = (r.z0 + r.z1) / 2;
+    outerRoutes.push(new Route([[x0, cz + LANE], [x1, cz + LANE]]), new Route([[x1, cz - LANE], [x0, cz - LANE]]));
+  }
+  // The road's height along the cross streets, which climb the river's arched bridges.
+  const onBridgeLine = (z: number) => Math.abs(z - (north.z0 + north.z1) / 2) < 4 || Math.abs(z - (south.z0 + south.z1) / 2) < 4;
 
   const drivers: Driver[] = [];
   let yieldTo: ((x: number, z: number, dx: number, dz: number) => boolean) | null = null;
   // Everything here moves: kept out of the static merge.
   const g = dynamic(new Group());
   scene.add(g);
+  const addDriver = (group: Group, route: Route, s: number, speed: number, half: number, kind: DriverKind, isBus = false): Driver => {
+    group.traverse((o) => { o.castShadow = false; });
+    // Tagged for the dev edge check (scripts/bots/edges.js), which watches every mover appear and leave.
+    group.userData.mover = isBus ? 'bus' : kind;
+    g.add(group);
+    const d: Driver = { group, route, s, seg: { seg: 0 }, speed, v: speed, car: traffic.add(half), pipe: { t: random(), v: speed }, bus: isBus, kind };
+    drivers.push(d);
+    return d;
+  };
   // Cars, and a city bus among them (its index kept, so it can be clicked).
   const busDrivers: number[] = [];
   for (let i = 0; i < 22; i++) {
-    const run = runs[Math.floor(random() * runs.length)];
-    // One city bus among the cars: more bunch up at the lights on one street.
+    // One city bus among the cars: more bunch up at the lights on one street. It keeps to the straight runs.
     const isBus = i === 11;
+    const route = throughRoute(!isBus);
     const group = isBus ? bus() : car(CAR_COLOURS[Math.floor(random() * CAR_COLOURS.length)], true);
-    group.traverse((o) => { o.castShadow = false; });
-    const dir = new Vector3().subVectors(run.to, run.from);
-    group.rotation.y = Math.atan2(dir.x, dir.z);
-    g.add(group);
-    const speed = 8 + random() * 7;
     if (isBus) busDrivers.push(drivers.length);
-    drivers.push({ group, run, t: random(), speed, v: speed, length: dir.length(), car: traffic.add(isBus ? 5.2 : 2.2), pipe: { t: random(), v: speed }, bus: isBus });
+    addDriver(group, route, random() * route.length, 8 + random() * 7, isBus ? 5.2 : 2.2, 'through', isBus);
+  }
+  // Delivery vans on the straight runs: each stops once in the district, at a free stretch of kerb.
+  const hazardMat = glowMat(0x3a2a0a, 0xffa020, 2.2);
+  for (let i = 0; i < VANS; i++) {
+    const route = straight[Math.floor(random() * straight.length)];
+    const van = car([0xe8e6e0, 0xc8c2b4, 0x3a4a5a][i % 3], true, 'delivery');
+    const d = addDriver(van, route, random() * route.length, 8 + random() * 3, 2.4, 'van');
+    const hz = add(van, new Group());
+    for (const [x, z] of [[-0.82, 2.3], [0.82, 2.3], [-0.82, -2.3], [0.82, -2.3]]) add(hz, box(0.16, 0.1, 0.06, hazardMat, x, 0.72, z));
+    hz.visible = false;
+    d.hazards = hz;
+  }
+  // Both ways along the outer streets, setting out only where nobody sees.
+  for (let i = 0; i < OUTER_CARS && outerRoutes.length; i++) {
+    const route = outerRoutes[Math.floor(random() * outerRoutes.length)];
+    const d = addDriver(car(CAR_COLOURS[Math.floor(random() * CAR_COLOURS.length)], true), route, 0, 6 + random() * 4, 2.2, 'outer');
+    d.wait = 1 + random() * 10;
+    d.group.visible = false;
   }
 
   // Walkers: where people stroll outside the district.
-  const paths: Run[] = [];
-  const path = (a: [number, number], b: [number, number]) => paths.push({ from: new Vector3(a[0], 0, a[1]), to: new Vector3(b[0], 0, b[1]) });
-  path([52 + GROW, -150], [52 + GROW, 150]); path([53.5 + GROW, 150], [53.5 + GROW, -150]); // the promenade
-  path([PARK.x0 - 1, PARK.path], [PARK.x1, PARK.path]); path([PARK.x1, PARK.path + 1.2], [PARK.x0 - 1, PARK.path + 1.2]); // the park's long path
-  path([12, PARK.z0 - 2], [12, PARK.z1 + 1]); path([13.2, PARK.z1 + 1], [13.2, PARK.z0 - 2]); // and its cross path
-  path([-60 - GROW, 4], [-120 - GROW, 4]); path([-120 - GROW, 2], [-60 - GROW, 2]); // through the old town and its square
-  path([-48, -68.6 - GROW], [-8, -68.6 - GROW]); path([-8, -69.4 - GROW], [-48, -69.4 - GROW]); // the station platform
-  path([-56 - GROW, -40], [-56 - GROW, 40]); path([-130 - GROW, -20], [-60 - GROW, -20]);
+  // Each a loop, out on one side of the way and back on the other, so nobody appears or vanishes.
+  const loops: Route[] = [];
+  const loop = (a: [number, number], b: [number, number], side: [number, number]) =>
+    loops.push(new Route([a, b, [b[0] + side[0], b[1] + side[1]], [a[0] + side[0], a[1] + side[1]], a], 0.6));
+  loop([52 + GROW, -150], [52 + GROW, 150], [1.5, 0]); // the promenade
+  loop([PARK.x0 - 1, PARK.path], [PARK.x1, PARK.path], [0, 1.2]); // the park's long path
+  loop([12, PARK.z0 - 2], [12, PARK.z1 + 1], [1.2, 0]); // and its cross path
+  loop([-60 - GROW, 4], [-120 - GROW, 4], [0, -2]); // through the old town and its square
+  loop([-48, -68.6 - GROW], [-8, -68.6 - GROW], [0, -0.8]); // the station platform
+  loop([-56 - GROW, -40], [-56 - GROW, 40], [1.2, 0]);
+  loop([-130 - GROW, -20], [-60 - GROW, -20], [0, 1.2]);
   const walkers: Walker[] = [];
   const strollers = 48;
   // The park's own life after the strollers: sellers, buyers and police.
@@ -139,8 +227,8 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic, 
   const drunkBase = strollers + SELLERS.length + BUYERS;
   const joggerBase = drunkBase + DRUNKS;
   for (let i = 0; i < strollers; i++) {
-    const run = paths[i % paths.length];
-    walkers.push({ run, t: random(), speed: 1.1 + random() * 0.5, length: run.from.distanceTo(run.to), phase: random() * 6.28, height: 0.9 + random() * 0.2 });
+    const route = loops[i % loops.length];
+    walkers.push({ route, s: random() * route.length, seg: { seg: 0 }, speed: 1.1 + random() * 0.5, phase: random() * 6.28 });
   }
   const bodyMat = new MeshLambertMaterial({ color: 0xffffff });
   const headMat = new MeshLambertMaterial({ color: 0xffffff });
@@ -183,6 +271,7 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic, 
     const v = emergencyVehicle(kind);
     v.group.visible = false;
     v.group.traverse((o) => { o.castShadow = false; });
+    v.group.userData.mover = kind;
     g.add(v.group);
     fleet.push({ v, kind, path: [], kerb: new Vector3(), leg: 0, hold: 0, busy: false, reason: '', car: traffic.add(kind === 'ambulance' ? 2.8 : 2.3), speed: 0 });
   }
@@ -191,14 +280,13 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic, 
   let patrolLevel = 0;
   for (let i = 0; i < 2; i++) {
     const v = emergencyVehicle('police');
-    const run = runs[(i * 5 + 3) % runs.length];
-    const dir = new Vector3().subVectors(run.to, run.from);
-    v.group.rotation.y = Math.atan2(dir.x, dir.z);
-    v.group.traverse((o) => { o.castShadow = false; });
-    g.add(v.group);
+    const route = straight[(i * 2 + 1) % straight.length];
+    addDriver(v.group, route, random() * route.length, 8, 2.3, 'through');
     patrols.push(v.group);
-    drivers.push({ group: v.group, run, t: random(), speed: 8, v: 8, length: dir.length(), car: traffic.add(2.3), pipe: { t: random(), v: 8 }, bus: false });
   }
+  const helicopter = new Helicopter(scene, random);
+  let night = 0;
+  let solids: Solids | null = null;
   /**
    * A route in from the city's edge to the road nearest (x, z), to stop there, and where to pull
    * over: up on the kerb, out of the moving lane (the other side of each street is lined with
@@ -210,12 +298,15 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic, 
     const cross = [STREETS.north.road, STREETS.south.road];
     const road = cross.reduce((a, b) => (Math.abs(z - (a.z0 + a.z1) / 2) < Math.abs(z - (b.z0 + b.z1) / 2) ? a : b));
     const nearest = (road.z0 + road.z1) / 2;
+    // With the flow of each one-way lane, never against it (the lane is shared with the traffic):
+    // south down the main street, east along the north street, west along the south street.
+    // From 25 m past where the traffic sets out, so it never starts on top of a car or bus there.
     if (toMain <= Math.abs(z - nearest)) {
-      const from = z < 0 ? -FAR : FAR;
+      const from = -FAR - 25;
       const stop = Math.max(-FAR, Math.min(FAR, z));
       return { path: [new Vector3(ROAD.laneX, 0, from), new Vector3(ROAD.laneX, 0, stop)], kerb: new Vector3(ROAD.x0 - 0.5, 0, stop) };
     }
-    const from = x < 0 ? -FAR : FAR;
+    const from = road === STREETS.north.road ? -FAR - 25 : FAR + 25;
     const stop = Math.max(-FAR, Math.min(FAR, x));
     return { path: [new Vector3(from, 0, nearest - 1.2), new Vector3(stop, 0, nearest - 1.2)], kerb: new Vector3(stop, 0, road.z1 + 1.0) };
   };
@@ -250,6 +341,9 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic, 
   scene.add(dynamic(bodies), dynamic(heads));
 
   const at = new Vector3();
+  const here: RoutePoint = { x: 0, z: 0, dx: 0, dz: 1 };
+  const probe = { seg: 0 };
+  let blink = 0;
   const m = new Matrix4();
   const q = new Quaternion();
   const s = new Vector3();
@@ -275,8 +369,40 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic, 
     f.v.flashing = true;
     f.v.group.visible = true;
     f.v.group.position.copy(f.path[0]);
+    // Now and then the helicopter comes too: the police one after dark, the air ambulance by day.
+    if (kind === 'police' ? night > 0.5 && random() < 0.2 : night < 0.5 && random() < 0.08) helicopter.call(kind === 'police' ? 'police' : 'medical', x, z);
     return true;
   }
+
+  /** Is the kerb at (x, z) free along a van's length (heading dx, dz), with no fixed obstacle in it? */
+  const free = { x: 0, z: 0 };
+  const kerbFree = (x: number, z: number, dx: number, dz: number): boolean => {
+    if (!solids) return false;
+    for (let k = -4; k <= 4; k += 2) {
+      free.x = free.z = 0;
+      if (solids.push(x + dx * k, z + dz * k, 1.1, free)) return false;
+    }
+    // Clear of the junctions, where people cross and cars turn.
+    for (const st of Object.values(STREETS)) {
+      const q = st.road;
+      if (Math.abs(dx) > 0.7 ? st.along !== 'z' : st.along !== 'x') continue;
+      if (x > q.x0 - 9 && x < q.x1 + 9 && z > q.z0 - 9 && z < q.z1 + 9) return false;
+    }
+    return !drivers.some((o) => o.bay && o.bay.state !== 'ahead' && o.bay.state !== 'done' && Math.hypot(o.group.position.x - x, o.group.position.z - z) < 10);
+  };
+  /** A van's stop on its new route: a free stretch of parking kerb in the district, or none this time. */
+  const planBay = (d: Driver): Bay | undefined => {
+    const k = straight.indexOf(d.route);
+    if (k < 0) return undefined;
+    const side = BAY_SIDE[k];
+    for (let i = 0; i < 12; i++) {
+      // The district spans about 60 m either side of the route's middle.
+      const s = FAR - 58 + random() * 116;
+      d.route.point(s, here, probe);
+      if (kerbFree(here.x + side.x, here.z + side.z, here.dx, here.dz)) return { s: s - PULL, ox: side.x, oz: side.z, u: 0, hold: 0, state: 'ahead' };
+    }
+    return undefined;
+  };
 
   function draw(dt: number): void {
     const tiny = !makeFigure || 1.7 / view.mpp < TINY_PX;
@@ -337,62 +463,102 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic, 
 
   return {
     update(dt) {
+      blink += dt;
       for (const d of drivers) {
-        const inv = 1 / d.length;
-        const hx = (d.run.to.x - d.run.from.x) * inv;
-        const hz = (d.run.to.z - d.run.from.z) * inv;
-        if (d.wait && d.wait > 0) {
+        if (d.wait !== undefined && d.wait > 0) {
           d.wait -= dt;
-          // Sets out only once the start of its road is clear.
-          if (d.wait <= 0) {
-            Object.assign(d.car, { x: d.run.from.x, z: d.run.from.z, dx: hx, dz: hz });
-            if (traffic.gapAhead(d.car) < 8) d.wait = 1;
-          }
           d.car.active = false;
+          // Sets out only once the start of its road is clear and, on the outer streets (whose ends can be in view), unseen.
+          if (d.wait <= 0) {
+            const st = d.route.start;
+            Object.assign(d.car, { x: st.x, z: st.z, dx: st.dx, dz: st.dz });
+            if (traffic.gapAhead(d.car) < 8 || !traffic.laneClear(d.car, d.car.half + 6, d.car.half + 4) || !traffic.clearAround(st.x, st.z, d.car.half + 2) || (d.kind === 'outer' && inView(st.x, st.z, st.dx, st.dz, d.car.half))) d.wait = 1;
+          }
           continue;
         }
-        at.lerpVectors(d.run.from, d.run.to, d.t);
-        Object.assign(d.car, { x: at.x, z: at.z, dx: hx, dz: hz, active: true });
-        // Slows for the car or crossing traffic ahead, and stops for anyone on the road just ahead.
-        const gap = traffic.gapAhead(d.car);
-        let target = speedForGap(d.speed, gap);
-        if (yieldTo && d.t > 0 && yieldTo(at.x, at.z, hx, hz)) target = 0;
-        d.v = gap < 1.2 ? 0 : approach(d.v, target, target < d.v ? 12 : 4, dt);
+        d.route.point(d.s, here, d.seg);
+        const bay = d.bay;
+        const u = bay ? bay.u : 0;
+        const x = here.x + (bay ? bay.ox * u : 0);
+        const z = here.z + (bay ? bay.oz * u : 0);
+        Object.assign(d.car, { x, z, dx: here.dx, dz: here.dz, active: !bay || bay.state !== 'stopped' });
+        if (bay && bay.state !== 'ahead' && bay.state !== 'done') {
+          // Pulling across, standing at the kerb with its hazards on, or pulling out once the lane is clear.
+          if (bay.state === 'stopped') {
+            bay.hold -= dt;
+            d.hazards!.visible = blink % 1 < 0.55;
+            if (bay.hold <= 0) {
+              Object.assign(d.car, { x: here.x, z: here.z });
+              if (traffic.laneClear(d.car, 14, 8)) bay.state = 'out';
+            }
+            d.v = 0;
+          } else {
+            d.v = PULL / PULL_TIME;
+            bay.u += (bay.state === 'in' ? dt : -dt) / PULL_TIME;
+            if (bay.state === 'in' && bay.u >= 1) {
+              bay.u = 1;
+              bay.state = 'stopped';
+              bay.hold = 15 + random() * 15;
+            } else if (bay.state === 'out' && bay.u <= 0) {
+              bay.u = 0;
+              bay.state = 'done';
+              d.hazards!.visible = false;
+            }
+            if (bay.state === 'in' || bay.state === 'out') d.hazards!.visible = blink % 1 < 0.55;
+          }
+        } else {
+          // Slows for the car or crossing traffic ahead, and stops for anyone on the road just ahead.
+          const gap = traffic.gapAhead(d.car);
+          let target = speedForGap(d.speed, gap);
+          if (yieldTo && d.s > 0 && yieldTo(x, z, here.dx, here.dz)) target = 0;
+          // A van slows to its bay, then pulls in.
+          if (bay && bay.state === 'ahead') {
+            target = Math.min(target, Math.max(1.2, (bay.s - d.s) * 0.8));
+            if (d.s >= bay.s) bay.state = 'in';
+          }
+          d.v = gap < 1.2 ? 0 : approach(d.v, target, target < d.v ? 12 : 4, dt);
+        }
         stood(d.car, d.v, dt);
-        d.t += (dt * d.v) / d.length;
+        d.s += dt * d.v;
         rollWheels(d.group, d.v * dt);
-        if (d.t >= 1) {
+        if (d.s >= d.route.length) {
+          // On an outer street it may end in view: it waits there, as at a junction, until nobody sees it.
+          const end = d.route.end;
+          if (d.kind === 'outer' && inView(end.x, end.z, end.dx, end.dz, d.car.half)) {
+            d.s = d.route.length;
+            d.v = 0;
+            continue;
+          }
           // A new journey each time: another road and direction, another pace, after a pause off screen.
-          d.t = 0;
-          d.run = runs[Math.floor(random() * runs.length)];
-          const dir = at.subVectors(d.run.to, d.run.from);
-          d.length = dir.length();
-          d.group.rotation.y = Math.atan2(dir.x, dir.z);
-          d.speed = 8 + random() * 7;
+          d.route = d.kind === 'outer' ? outerRoutes[Math.floor(random() * outerRoutes.length)] : d.kind === 'van' ? straight[Math.floor(random() * straight.length)] : throughRoute(!d.bus && !patrols.includes(d.group));
+          d.s = 0;
+          d.seg.seg = 0;
+          d.speed = d.kind === 'outer' ? 6 + random() * 4 : d.kind === 'van' ? 8 + random() * 3 : 8 + random() * 7;
           d.v = d.speed;
-          d.wait = random() * 5;
+          d.wait = random() * 5 + (d.kind === 'outer' ? 2 : 0);
           d.group.visible = false;
           d.car.active = false;
+          if (d.kind === 'van') d.bay = planBay(d);
           continue;
         }
-        at.lerpVectors(d.run.from, d.run.to, d.t);
-        // Over the river's arched bridges (world/bridges.ts), nose up on the way up and down on the way down.
-        at.y = bridgeY(at.x);
-        d.group.position.copy(at);
+        d.group.position.set(x, onBridgeLine(z) ? bridgeY(x) : 0.02, z);
         d.group.rotation.order = 'YXZ';
-        d.group.rotation.x = -Math.atan(bridgeSlope(at.x) * Math.sign(d.run.to.x - d.run.from.x));
-        puffs.vehicle(d.pipe, at.x, at.z, hx, hz, d.v, dt, d.bus);
+        // Nose a little towards the kerb while pulling in, away from it while pulling out.
+        const steer = bay && (bay.state === 'in' || bay.state === 'out') ? (bay.state === 'in' ? 0.14 : -0.14) * Math.sign(bay.ox * here.dz - bay.oz * here.dx) : 0;
+        d.group.rotation.y = Math.atan2(here.dx, here.dz) + steer;
+        // Over the river's arched bridges (world/bridges.ts), nose up on the way up and down on the way down.
+        d.group.rotation.x = onBridgeLine(z) ? -Math.atan(bridgeSlope(x) * here.dx) : 0;
+        puffs.vehicle(d.pipe, x, z, here.dx, here.dz, d.v, dt, d.bus);
         // Full size the whole way: a car shrinking to nothing reads as a toy.
         d.group.visible = true;
       }
       for (let i = 0; i < walkers.length; i++) {
         const w = walkers[i];
-        w.t += (dt * w.speed) / w.length;
-        if (w.t >= 1) w.t -= 1;
+        w.s += dt * w.speed;
+        if (w.s >= w.route.length) { w.s -= w.route.length; w.seg.seg = 0; }
         w.phase += dt * 8 * w.speed;
-        at.lerpVectors(w.run.from, w.run.to, w.t);
-        const k = Math.min(1, w.t * w.length / 2, (1 - w.t) * w.length / 2);
-        place(i, at, k, Math.abs(Math.sin(w.phase)) * 0.04);
+        w.route.point(w.s, here, w.seg);
+        place(i, at.set(here.x, 0, here.z), 1, Math.abs(Math.sin(w.phase)) * 0.04);
       }
       // Police walk the park's round in pairs; the first pair always, the second with more policing.
       police.forEach((p, i) => {
@@ -511,12 +677,22 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic, 
           f.leg++;
           if (f.leg === f.path.length - 1 && f.v.flashing) f.hold = 28;
         }
-        pos.y = bridgeY(pos.x);
+        pos.y = onBridgeLine(pos.z) ? bridgeY(pos.x) : 0.02;
       }
+      helicopter.update(dt);
       draw(dt);
     },
     setYield(ahead) {
       yieldTo = ahead;
+    },
+    setSolids(s) {
+      solids = s;
+      // A van already past the district on its first run makes its stop next time.
+      for (const d of drivers) if (d.kind === 'van' && !d.bay && d.s < FAR - 70) d.bay = planBay(d);
+    },
+    setNight(n) {
+      night = n;
+      helicopter.setNight(n);
     },
     setHangouts(points) {
       hangouts = points.map((p) => new Vector3(p.x, 0, p.z));

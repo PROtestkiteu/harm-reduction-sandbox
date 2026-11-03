@@ -55,6 +55,8 @@ export type StressMeter = 'police' | 'medics' | 'sobering';
  */
 export type StressCause =
   | 'crime' | 'theft' | 'scuffle' | 'policeStop' | 'drunk' | 'overdoseAlone' | 'overdoseHelped' | 'exposure' | 'camp' | 'crisis' | 'daemon'
+  /** A festival weekend, a home match or a university weekend off (config/happenings.ts). */
+  | 'festival' | 'match' | 'uniWeekend'
   | `turnedAway:${ServiceId}`;
 
 export class CityStress {

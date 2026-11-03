@@ -17,6 +17,7 @@ async () => {
   const de = await import('/src/config/flavour/decor.ts');
   const ki = await import('/src/config/flavour/kids.ts');
   const pi = await import('/src/config/flavour/pioneers.ts');
+  const to = await import('/src/config/flavour/tourists.ts');
   const items = [];
   const add = (name, p, r = 0.35, still = true) => items.push({ name, x: p.x, z: p.z, r, still });
   st.DEAL_SPOTS.forEach((d, i) => { add('dealer' + i, d.at); if (d.lookout) add('lookout' + i, d.lookout); });
@@ -48,6 +49,8 @@ async () => {
   pe.PETS.cats.forEach((c, i) => add('cat' + i, c, 0.2));
   de.DECOR.forEach((d, i) => add(d.kind + i, d.at, d.kind === 'planter' ? 0.8 : 0.3));
   { const id = __sandbox.world.bookshop; const b = id === null ? null : (await import('/src/world/cityBuildings.ts')).cityBuilding(id); if (b) add('bookCart', { x: b.x1 - 1.2, z: b.z1 + 0.55 }, 0.6); }
+  // Where big-day crowds gather when no bar is open (world/flavour/crowds.ts NO_BARS, mirrored here).
+  for (const [x, z] of [[-28, -54.2], [12, -54.2], [38, -54.2]]) add('crowdSpot' + x, { x, z }, 1.2);
   // Squat sitters and club smokers, where they stand this launch.
   for (const a of __sandbox.flavour.packs.pool.actors) if (a.voice === 'smoker' || (a.voice === 'user' && a.look.kit?.bedroll && a.shown > 0.1)) add(a.voice + '@' + a.x.toFixed(1) + ',' + a.z.toFixed(1), a);
   // Distance from a point to a segment.
@@ -63,7 +66,7 @@ async () => {
     out.push({ n: it.name, clear: +best.toFixed(2), edge, inBuilding: inB });
   }
   // The guard round and the moving actors' lines: closest approach to the crowd's lines.
-  const lines = [...gd.GUARD_ROUND.map((p, i, r) => ['guard', p, r[(i + 1) % r.length]]), ...st.DEAL_SPOTS.map((d, i) => ['approach' + i, d.approach[0], d.approach[1]]), ...sp.PICKPOCKET_BEATS.map((b, i) => ['pickpocket' + i, b.from, b.to]), ...sp.PICKPOCKET_BEATS.map((b, i) => ['pickpocketAway' + i, b.from, b.away]), ...pe.DOG_WALKS.map((w, i) => ['dogWalk' + i, w.from, w.to]), ...ki.FAMILIES.map((f, i) => ['family' + i, f.from, f.to]), ...pi.PIONEER_WALK.slice(1).map((p, i) => ['pioneers' + i, pi.PIONEER_WALK[i], p])];
+  const lines = [...gd.GUARD_ROUND.map((p, i, r) => ['guard', p, r[(i + 1) % r.length]]), ...st.DEAL_SPOTS.map((d, i) => ['approach' + i, d.approach[0], d.approach[1]]), ...sp.PICKPOCKET_BEATS.map((b, i) => ['pickpocket' + i, b.from, b.to]), ...sp.PICKPOCKET_BEATS.map((b, i) => ['pickpocketAway' + i, b.from, b.away]), ...pe.DOG_WALKS.map((w, i) => ['dogWalk' + i, w.from, w.to]), ...ki.FAMILIES.map((f, i) => ['family' + i, f.from, f.to]), ...pi.PIONEER_WALK.slice(1).map((p, i) => ['pioneers' + i, pi.PIONEER_WALK[i], p]), ...to.TOURIST_ROUTES.flatMap((r, k) => r.path.slice(1).map((p, i) => ['tourists' + k + '.' + i, r.path[i], p]))];
   for (const [n, a, b] of lines) {
     let best = Infinity, edge = '';
     for (let k = 0; k <= 40; k++) { const p = { x: a.x + (b.x - a.x) * k / 40, z: a.z + (b.z - a.z) * k / 40 }; for (const [e0, e1] of L.EDGES) { const d = seg(p, L.NODES[e0], L.NODES[e1]) - BAND - 0.3; if (d < best) { best = d; edge = e0 + '-' + e1; } } }

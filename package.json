@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "bots": "node scripts/bots/run-bots.mjs",
     "perf": "node scripts/bots/perf.mjs",
-    "clearance": "node scripts/bots/clearance.mjs"
+    "clearance": "node scripts/bots/clearance.mjs",
+    "edges": "node scripts/bots/edges.mjs"
   },
   "dependencies": {
     "@fontsource/roboto-condensed": "5.3.0",

@@ -17,7 +17,7 @@ export function scenariosSection(current: string | null): HTMLFieldSetElement {
     const b = Object.assign(document.createElement('button'), { type: 'button', className: 'btn save-btn scenario-btn' });
     b.append(Object.assign(document.createElement('strong'), { textContent: s.title }), Object.assign(document.createElement('span'), {
       className: 'scenario-blurb',
-      textContent: `${s.blurb} ${t('Goal: {nights} nights, {helped} people helped, {stars} stars.', { nights: s.nights, helped: s.helped, stars: s.stars })}`,
+      textContent: `${s.blurb} ${t('Goal: {nights} nights, {helped} people helped, {stars} stars, no more than {deaths} deaths.', { nights: s.nights, helped: s.helped, stars: s.stars, deaths: s.deaths })}`,
     }));
     if (s.id === current) b.setAttribute('aria-current', 'true');
     b.addEventListener('click', () => {

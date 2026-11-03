@@ -6,7 +6,7 @@ import { DoorState, WindowBank, approach } from './animated';
 import { add, bench, bin, box, cylinder, planter, signBoard, stanchion, tree } from './kit';
 import { acUnit, antenna, bike, drainpipe, flowerPot, roofVent, windowTrim } from './details';
 import { roofClutter, wallClutter } from './grit';
-import { AE_ALONG, AMBULANCE_BAY, LOTS, PATROL, PHARMACY_LOT, type P2, type PlaceLot } from './layout';
+import { AE_ALONG, AMBULANCE_BAY, LOTS, PATROL, PHARMACY_LOT, WALK_BAND, frontLineGap, type P2, type PlaceLot } from './layout';
 import { registerBuilding } from './cityBuildings';
 import { glowMat, mat } from './materials';
 import { dynamic, mergeStatic } from './mergeStatic';
@@ -59,6 +59,19 @@ function frameFor(id: string, lot: PlaceLot): Frame {
     w: turned ? z1 - z0 : x1 - x0,
     d: turned ? x1 - x0 : z1 - z0,
     along: (p) => (turned ? -(p.z - cz) : p.x - cx),
+  };
+}
+
+/**
+ * Where frontage furniture `depth` metres deep stands out from the facade:
+ * `want` metres out to its middle, pulled back so it keeps clear of the
+ * walking band in front, or null where even against the wall it would not.
+ */
+function kerbside(lot: PlaceLot): (depth: number, want: number) => number | null {
+  const gap = frontLineGap(lot);
+  return (depth, want) => {
+    const most = gap - WALK_BAND - depth / 2;
+    return most >= depth / 2 + 0.02 ? Math.min(want, most) : null;
   };
 }
 
@@ -189,8 +202,12 @@ export function buildPharmacyShop(random: Random): { root: Group; building: numb
   add(bracket, box(0.08, 0.08, 0.9, mat(PALETTE.metal), 0, 0.45, -0.3));
   add(bracket, box(0.12, 0.9, 0.3, cross, 0, 0, 0.2));
   add(bracket, box(0.12, 0.3, 0.9, cross, 0, 0.3, 0.2));
-  add(g, box(0.5, 0.85, 0.4, mat(0xd8b23a), sh.doorX + 1.7, 0, front + 0.35));
-  add(g, planter(1.6, 0.5)).position.set(sh.doorX - 2.4, 0, front + 0.5);
+  // Out front, clear of the walking line however near this site's runs.
+  const out = kerbside(lot);
+  const binAt = out(0.4, 0.35);
+  if (binAt !== null) add(g, box(0.5, 0.85, 0.4, mat(0xd8b23a), sh.doorX + 1.7, 0, front + binAt));
+  const potAt = out(0.5, 0.5);
+  if (potAt !== null) add(g, planter(1.6, 0.5)).position.set(sh.doorX - 2.4, 0, front + potAt);
   // A shop in the evening: lit at a steady level, nothing to animate.
   sh.storefront.emissiveIntensity = 0.9;
   sh.lobby.emissiveIntensity = 1.0;
@@ -257,12 +274,18 @@ export function buildDrugChecking(random: Random): LocationVisual {
   const sh = shell(f, lot, { wall: 0x9fb0ae, trim: 0x5f6f6e, accent: 0x3a8f8a, sign: 'DRUG CHECKING', signFg: '#eafffb', signBg: '#245c58', storey: 3.2 }, random);
   const g = f.body;
   const front = f.d / 2;
-  for (const x of [sh.doorX + 2.6, sh.doorX + 4.4]) add(g, bench()).position.set(x, 0, front + 0.6);
+  // Out front, clear of the walking line however near this site's runs.
+  const out = kerbside(lot);
+  const benchAt = out(0.5, 0.6);
+  if (benchAt !== null) for (const x of [sh.doorX + 2.6, sh.doorX + 4.4]) add(g, bench()).position.set(x, 0, front + benchAt);
   const info = signBoard('FREE + CONFIDENTIAL', 3.4, 0.45, '#eafffb', '#2a3a3a', 0.25);
   add(g, info.mesh).position.set(sh.doorX - 3.4, 1.9, front + 0.1);
-  for (const x of [sh.doorX + 1.6, sh.doorX + 6.2]) add(g, stanchion()).position.set(x, 0, front + 1.2);
-  add(g, flowerPot(0.7, 1.2)).position.set(sh.doorX - 1.6, 0, front + 0.4);
-  add(g, bin()).position.set(sh.doorX - 5.2, 0, front + 0.5);
+  const ropeAt = out(0.3, 1.2);
+  if (ropeAt !== null) for (const x of [sh.doorX + 1.6, sh.doorX + 6.2]) add(g, stanchion()).position.set(x, 0, front + ropeAt);
+  const potAt = out(0.7, 0.4);
+  if (potAt !== null) add(g, flowerPot(0.7, 1.2)).position.set(sh.doorX - 1.6, 0, front + potAt);
+  const binAt = out(0.6, 0.5);
+  if (binAt !== null) add(g, bin()).position.set(sh.doorX - 5.2, 0, front + binAt);
   return visual('drugChecking', f, lot, sh, (level, _dt, _time, shut) => {
     info.material.emissiveIntensity = (shut ? 0 : 0.1) + 0.5 * level;
   });
@@ -279,12 +302,19 @@ export function buildShelter(random: Random): LocationVisual {
   const front = f.d / 2;
   const day = signBoard('DAY CENTRE', 2.8, 0.5, '#fff1d8', '#3a2f3a', 0.3);
   add(g, day.mesh).position.set(sh.doorX + 3.6, 2.15, front + 0.1);
-  // Against the wall, clear of the pavement's walking line.
-  add(g, bench()).position.set(sh.doorX - 2.8, 0, front + 0.3);
-  for (const x of [sh.doorX + 5.0, sh.doorX + 5.8]) add(g, box(0.06, 0.7, 0.6, mat(PALETTE.metal), x, 0, front + 0.8));
-  add(g, bike(0x5a7a5a), Math.PI / 2).position.set(sh.doorX + 5.0, 0, front + 0.8);
-  add(g, planter(1.4, 0.6)).position.set(sh.doorX - 4.6, 0, front + 0.32);
-  add(g, tree(1, 0.8)).position.set(-f.w / 2 + 1.2, 0, front + 1.4);
+  // Against the wall and out front, clear of the walking line however near this site's runs.
+  const out = kerbside(lot);
+  const benchAt = out(0.5, 0.3);
+  if (benchAt !== null) add(g, bench()).position.set(sh.doorX - 2.8, 0, front + benchAt);
+  const rackAt = out(0.6, 0.8);
+  if (rackAt !== null) {
+    for (const x of [sh.doorX + 5.0, sh.doorX + 5.8]) add(g, box(0.06, 0.7, 0.6, mat(PALETTE.metal), x, 0, front + rackAt));
+    add(g, bike(0x5a7a5a), Math.PI / 2).position.set(sh.doorX + 5.0, 0, front + rackAt);
+  }
+  const potAt = out(0.6, 0.32);
+  if (potAt !== null) add(g, planter(1.4, 0.6)).position.set(sh.doorX - 4.6, 0, front + potAt);
+  const treeAt = out(0.6, 1.4);
+  if (treeAt !== null) add(g, tree(1, 0.8)).position.set(-f.w / 2 + 1.2, 0, front + treeAt);
   return visual('shelter', f, lot, sh, (level, _dt, _time, shut) => {
     day.material.emissiveIntensity = (shut ? 0 : 0.1) + 0.7 * level;
   });
@@ -327,8 +357,12 @@ export function buildClinic(random: Random): LocationVisual {
     for (const sx of [-0.7, 0.7]) add(amb, box(0.3, 0.16, 0.3, beacon, sx, 2.66, -1.0));
     for (const wz of [-1.6, 1.8]) for (const wx of [-0.98, 0.98]) add(amb, box(0.24, 0.7, 0.7, mat(PALETTE.tyre), wx, 0, wz));
   }
-  add(g, bench()).position.set(sh.doorX + 2.6, 0, front + 0.6);
-  add(g, planter(1.6, 0.5)).position.set(sh.doorX - 2.6, 0, front + 0.5);
+  // Out front, clear of the walking line however near this site's runs.
+  const out = kerbside(lot);
+  const benchAt = out(0.5, 0.6);
+  if (benchAt !== null) add(g, bench()).position.set(sh.doorX + 2.6, 0, front + benchAt);
+  const potAt = out(0.5, 0.5);
+  if (potAt !== null) add(g, planter(1.6, 0.5)).position.set(sh.doorX - 2.6, 0, front + potAt);
 
   return visual('clinic', f, lot, sh, (level) => {
     aeGlow.emissiveIntensity = 0.6 + 0.8 * level;

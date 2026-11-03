@@ -4,6 +4,7 @@ import { add, box, cylinder } from './kit';
 import { glowMat, mat } from './materials';
 import { dynamic, mergeStatic } from './mergeStatic';
 import type { Light, Signal, Traffic } from './traffic';
+import { RAIL_Z } from './cityBeyond';
 
 /** Seconds of green, amber and all-red in each half of a cycle. */
 const GREEN = 11;
@@ -40,11 +41,18 @@ function head(l: Lamps): Group {
  * traffic (cars stop at red), and their lamps change brightness only when
  * the light changes; the poles and cases merge into a few draw calls.
  */
+/** Level crossings: the main road and the east street cross the railway (world/cityBeyond.ts). */
+const RAIL_ROADS = [STREETS.main.road, STREETS.east.road];
+/** Metres ahead of the train's front, and behind its back, that a level crossing stays closed. */
+const CLOSED = { ahead: 70, behind: 12 };
+
 export class TrafficLights {
   private readonly junctions: Junction[] = [];
+  private readonly crossings: Signal[] = [];
   private time = 0;
 
-  constructor(scene: Object3D, traffic: Traffic) {
+  /** `trainSpan`: where the train is along x (front to back), or null; road traffic stops at the line while it passes. */
+  constructor(scene: Object3D, traffic: Traffic, private readonly trainSpan: () => readonly [number, number] | null = () => null) {
     const g = dynamic(new Group());
     scene.add(g);
     const pole = mat(0x2a2c2e);
@@ -74,6 +82,11 @@ export class TrafficLights {
       }
     });
     mergeStatic(g);
+    for (const r of RAIL_ROADS) {
+      const s: Signal = { x0: r.x0, x1: r.x1, z0: RAIL_Z - 3.2, z1: RAIL_Z + 3.2, x: 'green', z: 'green' };
+      traffic.addSignal(s);
+      this.crossings.push(s);
+    }
     this.update(0);
   }
 
@@ -91,6 +104,9 @@ export class TrafficLights {
       changed = show(j.x, j.signal.x) || changed;
       changed = show(j.z, j.signal.z) || changed;
     }
+    // The train runs east (+x): a crossing closes as it nears and opens once it is past.
+    const span = this.trainSpan();
+    for (const c of this.crossings) c.z = span && span[0] - CLOSED.behind < c.x1 && span[1] + CLOSED.ahead > c.x0 ? 'red' : 'green';
     return changed;
   }
 }

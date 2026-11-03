@@ -3,6 +3,8 @@ import { BOATS, FISHING, RIVER_RUN } from '../../config/flavour/river';
 import { add, box, cylinder } from '../kit';
 import { glowMat, mat, vehicleMat } from '../materials';
 import { RIVER_X } from '../bridges';
+import { STREETS } from '../layout';
+import { inView } from '../../render/viewEdge';
 import { fade } from './actors';
 import type { Pack, PackDeps } from './index';
 import { prop as propOf } from './props';
@@ -14,6 +16,10 @@ import { prop as propOf } from './props';
  * over the water. Three boats and two anglers a frame.
  */
 const mid = (RIVER_X.x0 + RIVER_X.x1) / 2;
+/** The arched road bridges' middles along the river. */
+const BRIDGES = [STREETS.north.road, STREETS.south.road].map((r) => (r.z0 + r.z1) / 2);
+/** Under (or about to pass under) a bridge's arch: the bridge's middle, or null. */
+const archAt = (z: number) => BRIDGES.find((b) => Math.abs(z - b) < RIVER_RUN.arch) ?? null;
 
 /**
  * A hull along +z: a box amidships, a pointed bow (a triangular prism with
@@ -75,6 +81,7 @@ export function buildRiver({ pool, scene }: PackDeps): Pack {
   scene.add(root);
   const boats = BOATS.map((b, i) => {
     const g = propOf(root, boat(b.kind));
+    g.userData.mover = 'boat';
     return { g, b, z: RIVER_RUN.z[0] + ((i + 1) / (BOATS.length + 1)) * (RIVER_RUN.z[1] - RIVER_RUN.z[0]), dir: i % 2 ? -1 : 1, bob: i * 2 };
   });
   const anglers = FISHING.spots.map((s, i) => {
@@ -95,11 +102,15 @@ export function buildRiver({ pool, scene }: PackDeps): Pack {
     update(dt, ctx) {
       time += dt;
       for (const p of boats) {
-        p.z += p.dir * p.b.speed * dt;
-        // Turn round at the ends of the run, crossing to the other side of the river.
+        // Short of an arch while a boat comes the other way under it, it holds back.
+        const ahead = archAt(p.z + p.dir * (p.b.length / 2 + 2));
+        const wait = ahead !== null && archAt(p.z) === null && boats.some((o) => o !== p && o.dir !== p.dir && archAt(o.z) === ahead);
+        const lane = p.dir > 0 ? -p.b.lane : p.b.lane;
+        const seen = inView(mid + lane, p.z, 0, 1, p.b.length / 2, 2, RIVER_RUN.y);
+        if (!wait) p.z += p.dir * p.b.speed * (seen ? 1 : RIVER_RUN.unseenHurry) * dt;
+        // Turn round at the ends of the run, out of sight, crossing to the other side of the river.
         if (p.z > RIVER_RUN.z[1]) { p.z = RIVER_RUN.z[1]; p.dir = -1; }
         if (p.z < RIVER_RUN.z[0]) { p.z = RIVER_RUN.z[0]; p.dir = 1; }
-        const lane = p.dir > 0 ? p.b.lane : -p.b.lane;
         p.g.position.set(mid + lane, RIVER_RUN.y + (ctx.still ? 0 : Math.sin(time * 1.3 + p.bob) * 0.04), p.z);
         p.g.rotation.y = p.dir > 0 ? 0 : Math.PI;
       }

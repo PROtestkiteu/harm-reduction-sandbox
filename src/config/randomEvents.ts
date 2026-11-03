@@ -535,7 +535,8 @@ export const EVENTS: Record<EventId, EventDef> = {
     perHour: 0, durationMinutes: 330, riskMultiplier: 1,
     happens: t('Fans pass through before the match and come back after it; heavy drinking and a few more scuffles, mostly nothing to do with drugs.'),
     mitigation: t('Police on a normal beat and welfare staff at closing keep it calm.'),
-    effects: { demand: { passerby: 1.4 }, scuffles: 1.8 },
+    // More people out comes from the home match itself (config/happenings.ts); the feed card keeps the scuffles.
+    effects: { scuffles: 1.8 },
     hints: [
       { factor: 'policing', option: 'neutral', label: t('Routine patrols') },
       { param: 'clubHr.staff', direction: 'up', label: t('Welfare staff at the stand') },

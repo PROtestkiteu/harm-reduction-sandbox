@@ -1,6 +1,7 @@
 import { normalize } from '../config/sandboxParams';
 import { newGameAddress } from '../game/liveGame';
 import { LANG, LANGS, t, type Lang } from '../i18n';
+import { LAUNCH_STREAM, launchRandom } from '../config/launch';
 
 /** Small topics of the sandbox menu: New game, Language and About. */
 
@@ -14,9 +15,9 @@ const SHUFFLE_KEY = 'hrs-shuffle';
  * night is what the game is about, so a start in the empty daytime hours is
  * left to the Time of day slider.
  */
-const pick = (): DateClock => ({
-  date: 1 + Math.floor(Math.random() * 365),
-  clock: 18 * 60 + Math.floor((Math.random() * 7 * 60) / 5) * 5,
+const pick = (random: () => number = Math.random): DateClock => ({
+  date: 1 + Math.floor(random() * 365),
+  clock: 18 * 60 + Math.floor((random() * 7 * 60) / 5) * 5,
 });
 
 /**
@@ -72,7 +73,8 @@ export function startDateClock(draw: boolean): DateClock | null {
       if (Number.isFinite(date) && Number.isFinite(clock)) return { date, clock };
     } catch { /* a bad value is ignored */ }
   }
-  return draw ? pick() : null;
+  // A fresh game's own draw comes from the launch seed, so a pinned seed starts on the same date.
+  return draw ? pick(launchRandom(LAUNCH_STREAM.startDate)) : null;
 }
 
 /** Language: each in its own name; picking one reloads the page in it, the game kept. */

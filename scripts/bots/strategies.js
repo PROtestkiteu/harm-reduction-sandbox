@@ -27,12 +27,8 @@ async (name, days = 3, opts = {}) => {
   st.hardcore = true;
   // `careful`: hire only when the hour's surplus already covers the new wage, and never while a storm is coming.
   const grow = (careful = false) => {
-    // A careful player applies for one grant at a time and keeps a reserve; a first-timer applies for all.
-    if (!careful) grant(200);
-    else if (!grants.some((g) => sim.org.applications[g].status === 'pending')) {
-      const g = grants.find((id) => sim.org.applications[id].status === 'idle');
-      if (g && sim.org.budget > 450) did('grant', sim.applyFor(g));
-    }
+    // Everyone applies for every grant they can afford: it is the main way money comes in.
+    grant(200);
     did('drive', sim.startDonationDrive());
     const want = Object.values(sim.services).reduce((n, x) => n + (x.closedReason === null || x.closedReason === 'noStaff' ? x.requested : 0), 0);
     const have = sim.org.paid + sim.org.volunteers;
@@ -54,6 +50,13 @@ async (name, days = 3, opts = {}) => {
       const tired = working.filter((m) => m.morale < 0.3 || (storm === 'warned' && m.energy < 0.6)).sort((a, b) => a.morale - b.morale).slice(0, cap);
       for (const m of tired) did('rest', sim.assignMember(m.id, 'rest'));
       if (storm === 'peak') for (const m of resting) sim.assignMember(m.id, 'auto');
+      // Spare money goes into capacity, as a good player in a well-funded city would: one more
+      // service at a time (with volunteers to staff it), then growing the busiest place.
+      if (storm === 'none' && sim.org.budget > 1500) {
+        const closed = ids.find((i) => !sim.services[i].switchedOn && !sim.org.closedDown.has(i));
+        if (closed) { sim.setEnabled(closed, true); did('open', true); if (sim.org.recruiting.length === 0) did('volunteers', sim.recruit('volunteerDrive')); }
+        else if (sim.org.budget > 1200) did('invest', sim.invest(sim.busiest.service));
+      }
       // Keep the shelf stocked ahead; before a storm, stock what it needs.
       for (const [id, low] of [['naloxone', 6], ['kits', 15]]) if (st.supplies.stock[id] < low && sim.org.budget > 300) did('order', sim.orderSupply(id));
       if (st.supplies.stock.leaflets < 50 && sim.org.budget > 120) did('order', sim.orderSupply('leaflets'));
@@ -94,7 +97,7 @@ async (name, days = 3, opts = {}) => {
   const red = () => { const s = sim.cityStress; return s.police >= 0.7 || s.medics >= 0.7 || s.sobering >= 0.7 || sim.vitality.level < 0.3; };
   const rows = [];
   const start = sim.org.now;
-  let firstRed = null, overAt = null, redHours = 0, nextAct = 0, nextLog = 0, guard = 0, foldedAt = null, quits = 0;
+  let firstRed = null, overAt = null, redHours = 0, nextAct = 0, nextLog = 0, guard = 0, foldedAt = null, quits = 0, wonAt = null;
   const storms = [];
   // Where morale went: every rise and fall through Team.move, summed by cause (lifts as 'lift').
   const morale = {};
@@ -120,6 +123,7 @@ async (name, days = 3, opts = {}) => {
     // No game over any more: the first hour all three starting services had closed down for money.
     if (overAt === null && sim.org.closedDown.size >= 3) overAt = Math.round(t / 60);
     if (foldedAt === null && st.runOver) foldedAt = Math.round(t / 60);
+    if (wonAt === null && sim.goals.won) wonAt = Math.round(t / 60);
     if (t >= nextLog) {
       nextLog += 60;
       const s = sim.cityStress;
@@ -136,5 +140,5 @@ async (name, days = 3, opts = {}) => {
     if (guard % 240 === 0) await new Promise((r) => setTimeout(r, 0));
   }
   const totals = Object.fromEntries(Object.entries(sim.totals).filter(([, v]) => typeof v === 'number'));
-  return { name, days, clockSpeed: opts.clockSpeed ?? 1, firstRedHour: firstRed, redHours: Math.round(redHours), gameOverHour: overAt, foldedHour: foldedAt, quits, storms, morale, alone: sim.health.alone, acts, totals, rows };
+  return { name, days, clockSpeed: opts.clockSpeed ?? 1, firstRedHour: firstRed, redHours: Math.round(redHours), gameOverHour: overAt, foldedHour: foldedAt, quits, storms, scenario: sim.goals.scenario?.id ?? null, foldCause: st.runOver?.cause ?? null, closedDown: [...sim.org.closedDown], closedReasons: Object.fromEntries(ids.map((i) => [i, sim.services[i].closedReason])), wonHour: wonAt, stars: sim.goals.stars, nights: sim.totals.nights, morale, alone: sim.health.alone, acts, totals, rows };
 }

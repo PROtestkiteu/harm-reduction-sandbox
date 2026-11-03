@@ -5,7 +5,8 @@ import type { Random } from '../sim/random';
 import { WindowBank } from './animated';
 import { bench, box, cylinder, gableRoof, add, pixelTextTexture, streetLight, tree } from './kit';
 import { registerBuilding } from './cityBuildings';
-import { DISTRICT, GROW, POLICE_STATION, ROAD, STATION_CAMP, STREETS, type Rect } from './layout';
+import { DISTRICT, FESTIVAL, GROW, POLICE_STATION, ROAD, STADIUM, STATION_CAMP, STREETS, type Rect } from './layout';
+import { buildEventGrounds, type EventGrounds } from './eventGrounds';
 import { glowMat, mat, softMat } from './materials';
 import { dynamic, mergeStatic } from './mergeStatic';
 import { car, train as trainModel } from './vehicles';
@@ -38,11 +39,20 @@ export interface CityBeyond {
   update(dt: number): void;
   /** Swaps in the kits' trees and buildings once they have loaded, and dresses the park. */
   applyKits(kits: Kits): void;
-  /** Building ids of the public hospital and the sobering-up centre, for their cards. */
-  landmarks: { hospital: number; sobering: number; police: number; cityHall: number };
+  /** Building ids of the public hospital, the sobering-up centre and the other landmarks, for their cards. */
+  landmarks: { hospital: number; sobering: number; police: number; cityHall: number; stadium: number; festival: number };
   /** Ordinary housing on the university's site, hidden while the campus pack shows the university. */
   campusSite: Object3D;
+  /** The streets of the street grid out to the skyline: x holds those running along z. For the outer traffic. */
+  streets: { x: Rect[]; z: Rect[] };
+  /** Where the train is along x, front to back, or null while it is off the line. For the level crossings. */
+  trainSpan(): readonly [number, number] | null;
+  /** The festival grounds and the stadium: their lights follow what is on. */
+  events: EventGrounds;
 }
+
+/** True when (x, z) is on the festival grounds (with `pad` metres round them): the park keeps its trees and bushes off it. */
+const onFestival = (x: number, z: number, pad = 2) => x > FESTIVAL.x0 - pad && x < FESTIVAL.x1 + pad && z > FESTIVAL.z0 - pad && z < FESTIVAL.z1 + pad;
 
 const EDGE = DISTRICT + 2;
 /**
@@ -69,7 +79,7 @@ export function heightCap(x: number, z: number): number {
 /** The river runs north to south east of the district. */
 const RIVER = { x0: 56 + GROW, x1: 76 + GROW };
 /** The railway runs east to west north of the district. */
-const RAIL_Z = -64 - GROW;
+export const RAIL_Z = -64 - GROW;
 
 export function buildCityBeyond(scene: Object3D, random: Random): CityBeyond {
   const g = add(scene, new Group());
@@ -101,6 +111,7 @@ export function buildCityBeyond(scene: Object3D, random: Random): CityBeyond {
 
   buildRiver(g, random);
   buildPark(g, random, onRoad);
+  const events = buildEventGrounds(g);
   const station = buildRailway(g);
   const landmarks = buildLandmarks(g, lit);
   const towerGlass: MeshLambertMaterial[] = [];
@@ -158,8 +169,11 @@ export function buildCityBeyond(scene: Object3D, random: Random): CityBeyond {
   return {
     windows: [new WindowBank(lit, 0.75, 0.05, random), new WindowBank(cool, 0.9, 0.08, random), new WindowBank(towerGlass, 0.95, 0.75, random), new WindowBank([...farLit, ...farCool], 0.8, 0.1, random)],
     update: (dt) => station.update(dt),
-    landmarks,
+    landmarks: { ...landmarks, ...events.ids },
     campusSite,
+    streets,
+    trainSpan: () => station.span(),
+    events,
     applyKits(kits) {
       // Trees: the kit's, instanced, on the simple trees' spots.
       const broad = ['CommonTree_1', 'CommonTree_2', 'CommonTree_3'].map((n) => kits.piece(n)).filter(Boolean) as Object3D[];
@@ -185,7 +199,7 @@ export function buildCityBeyond(scene: Object3D, random: Random): CityBeyond {
           const x = -44 - GROW + random() * (92 + 2 * GROW);
           const z = 52 + GROW + random() * 64;
           if (Math.abs(z - PARK_PATH_Z - 0.6) < 2.5 || Math.abs(x - 12.6) < 2.5 || Math.hypot((x - 34) / 13, (z - POND_Z) / 9) < 1) continue;
-          if (Math.abs(x - (ROAD.x0 + ROAD.x1) / 2) < 6 || (x > 21 && x < 33)) continue;
+          if (Math.abs(x - (ROAD.x0 + ROAD.x1) / 2) < 6 || (x > 21 && x < 33) || onFestival(x, z)) continue;
           const piece = pieces[i % pieces.length];
           const list = groups.get(piece) ?? [];
           list.push({ x, y: LAYER.grass, z, rot: random() * Math.PI * 2, scale: scale * (0.8 + random() * 0.4) });
@@ -228,8 +242,8 @@ function buildRiver(g: Object3D, random: Random): void {
   const paving = mat(PALETTE.pavementAlt);
   const grass = mat(PALETTE.grassDark);
   const w = RIVER.x1 - RIVER.x0;
-  // Long enough to run past the park and the far blocks at both ends.
-  const len = 260 + 2 * GROW;
+  // Long enough to run past the widest view at both ends (traffic and boats go out to 340 m).
+  const len = 690;
   // Water a hair above the ground plane, walled in by stone embankments; it mirrors the promenade lamps
   // (heads 0.85 m out on their arms from posts 1 m off the bank, every 20 m from z = -115, 4.07 m up).
   const river = add(g, dynamic(new Mesh(new PlaneGeometry(w, len).rotateX(-Math.PI / 2), riverMaterial(RIVER.x0 - 1.85, -115, 20, 4.07))));
@@ -315,7 +329,7 @@ function buildPark(g: Object3D, random: Random, onRoad: (x: number, z: number, w
     const z = z0 + 2 + random() * (z1 - z0 - 4);
     if (onRoad(x, z, 3, 3) || Math.abs(z - PARK_PATH_Z) < 3 || Math.abs(x - 12) < 3) continue;
     if (Math.hypot((x - 34) / 13, (z - POND_Z) / 9) < 1) continue;
-    if (x > -28 && x < -19 && z > pz - 4 && z < pz + 4) continue;
+    if ((x > -28 && x < -19 && z > pz - 4 && z < pz + 4) || onFestival(x, z, 3)) continue;
     if (z < 70 + GROW && i % 3 === 0) add(g, tree(pick4(random), 1 + random() * 0.4)).position.set(x, 0, z);
     else farTree(g, x, z, 1 + random() * 0.6, random);
   }
@@ -354,18 +368,22 @@ function farTree(_g: Object3D, x: number, z: number, s: number, random: Random, 
 
 // ------------------------------------------------------------------ railway and station
 
-function buildRailway(g: Object3D): { update(dt: number): void } {
+/** How far either way the railway runs: past the widest view, so the train comes and goes unseen. */
+const LINE = 345;
+
+function buildRailway(g: Object3D): { update(dt: number): void; span(): readonly [number, number] | null } {
   const ballast = mat(0x5a5048);
   const steel = mat(0x8a8a86);
   const sleeper = mat(0x4a3a30);
   // Track bed across the whole city, with two rails, crossing the river on a bridge.
-  add(g, box(400, 0.19, 5, ballast, 0, -0.1, RAIL_Z));
-  for (const dz of [-0.75, 0.75]) add(g, box(400, 0.1, 0.08, steel, 0, 0.09, RAIL_Z + dz));
-  for (let x = -198; x < 200; x += 1.6) add(g, box(0.25, 0.05, 2.2, sleeper, x, 0.06, RAIL_Z));
+  add(g, box(2 * LINE, 0.19, 5, ballast, 0, -0.1, RAIL_Z));
+  for (const dz of [-0.75, 0.75]) add(g, box(2 * LINE, 0.1, 0.08, steel, 0, 0.09, RAIL_Z + dz));
+  for (let x = -LINE + 2; x < LINE; x += 1.6) add(g, box(0.25, 0.05, 2.2, sleeper, x, 0.06, RAIL_Z));
   const truss = mat(0x4a5258);
   for (const dz of [-2.6, 2.6]) {
     add(g, box(RIVER.x1 - RIVER.x0 + 2, 0.3, 0.3, truss, (RIVER.x0 + RIVER.x1) / 2, 2.6, RAIL_Z + dz));
-    for (let x = RIVER.x0; x <= RIVER.x1; x += 4) add(g, box(0.25, 2.8, 0.25, truss, x, 0, RAIL_Z + dz));
+    // Posts on the banks only: the boats pass beneath (flavour/river.ts).
+    for (const x of [RIVER.x0, RIVER.x1]) add(g, box(0.25, 2.8, 0.25, truss, x, 0, RAIL_Z + dz));
   }
   // Level crossing where the main road meets the line: barrier posts.
   for (const x of [ROAD.x0 - 1, ROAD.x1 + 1]) add(g, box(0.25, 1.2, 0.25, mat(0xc8c0b0), x, 0, RAIL_Z + 3.4));
@@ -428,32 +446,43 @@ function buildRailway(g: Object3D): { update(dt: number): void } {
   cars.rotation.y = Math.PI / 2;
   cars.position.x = 3 * 16.4;
   train.add(cars);
-  train.position.set(-220, 0, RAIL_Z);
+  // Its length either side of its origin, so it enters and leaves wholly beyond the line's visible part.
+  const ext = new Box3().setFromObject(train);
+  const start = -LINE - ext.max.x - 5;
+  const stop = sx - 34;
+  const end = LINE - ext.min.x + 5;
+  const IN = 35;
+  const HALT = 12;
+  const OUT = 35;
+  const CYCLE = IN + HALT + OUT + 15;
+  train.position.set(start, 0, RAIL_Z);
+  train.userData.mover = 'train';
   g.parent!.add(dynamic(train)); // moving: kept out of the static merge
   let t = 0;
-  const run = 260; // metres from start to end
   return {
     update(dt) {
-      // About a minute and a half per pass: in, a stop at the platform, out, a pause off screen.
-      t = (t + dt) % 90;
-      const stopAt = sx - 34 + 220; // distance where the train's middle meets the platform
-      let d: number;
-      if (t < 25) d = (t / 25) ** 0.8 * stopAt;
-      else if (t < 37) d = stopAt;
-      else if (t < 62) d = stopAt + ((t - 37) / 25) ** 1.25 * (run + 220 - stopAt);
-      else d = -400;
-      train.visible = d > -1;
-      train.position.x = -220 + Math.max(0, d);
+      // About a minute and a half per pass: in from beyond the view, a stop at the platform, out, a pause off the line.
+      t = (t + dt) % CYCLE;
+      let x: number;
+      if (t < IN) x = start + (t / IN) ** 0.8 * (stop - start);
+      else if (t < IN + HALT) x = stop;
+      else if (t < IN + HALT + OUT) x = stop + ((t - IN - HALT) / OUT) ** 1.25 * (end - stop);
+      else x = end;
+      train.visible = t < IN + HALT + OUT;
+      train.position.x = x;
     },
+    span: () => (train.visible ? [train.position.x + ext.min.x, train.position.x + ext.max.x] as const : null),
   };
 }
 
 // ------------------------------------------------------------------ hospital and sobering-up centre
 
 /** The public hospital across the river, east of the district; the sobering-up centre by the railway, north. */
-const HOSPITAL = { x0: 88 + GROW, x1: 124 + GROW, z0: -30, z1: 2 };
+// Between the north and south streets (roads at z -21.5..-16.5 and 16.5..21.5), its 2 m forecourt up to their kerbs, so through traffic passes it.
+const HOSPITAL = { x0: 88 + GROW, x1: 124 + GROW, z0: -13.5, z1: 14.5 };
 /** City hall: on the old town's edge nearest the district, facing it across the main street west. */
-const CITY_HALL = { x0: -68 - GROW, x1: -54 - GROW, z0: -21, z1: -6 };
+// South of the north street (road z -21.5..-16.5, its pavement to -14), its 2 m forecourt up to that pavement.
+const CITY_HALL = { x0: -68 - GROW, x1: -54 - GROW, z0: -12, z1: 3 };
 const SOBERING = { x0: 30, x1: 44, z0: -59 - GROW, z1: -51 - GROW };
 
 function buildLandmarks(g: Object3D, lit: MeshLambertMaterial[]): { hospital: number; sobering: number; police: number; cityHall: number } {
@@ -481,37 +510,111 @@ function buildLandmarks(g: Object3D, lit: MeshLambertMaterial[]): { hospital: nu
     }
   };
 
-  // Hospital: a long main block, a taller ward wing with a helipad, an A&E canopy facing the river.
+  // Hospital: a three-storey podium along the south street with a glazed half-round atrium at the
+  // entrance, a finned ward tower stepping back at the top under a raised helipad, a lower east wing
+  // with a sawtooth of rooflights, a glass bridge between them, the A&E canopy facing the river,
+  // and the boiler house's chimney. Ribbon glazing round every face, lit in a clinical white.
   const h = HOSPITAL;
   const cx = (h.x0 + h.x1) / 2;
   const cz = (h.z0 + h.z1) / 2;
   add(g, box(h.x1 - h.x0 + 4, 0.22, h.z1 - h.z0 + 4, mat(PALETTE.pavement), cx, -0.1, cz));
-  add(g, box(h.x1 - h.x0, 12, 14, white, cx, 0, h.z1 - 7));
-  add(g, box(16, 24, h.z1 - h.z0 - 10, white, h.x0 + 10, 0, h.z0 + (h.z1 - h.z0 - 10) / 2));
-  for (const [x, z, w, d, top] of [[cx, h.z1 - 7, h.x1 - h.x0, 14, 12], [h.x0 + 10, h.z0 + (h.z1 - h.z0 - 10) / 2, 16, h.z1 - h.z0 - 10, 24]] as const) {
-    add(g, box(w + 0.4, 0.5, d + 0.4, trim, x, top, z));
-    // A darker plinth, and a band of blue between the storeys.
-    add(g, box(w + 0.1, 0.9, d + 0.1, mat(0x8a929a), x, 0, z));
+  const ward = glowMat(0x2a3440, 0xd8f0ff, 0.55);
+  // The far city's own warm window light (already a draw call, and it flickers with the rest).
+  const warm = lit[0];
+  const darkGlass = mat(0x2a3038);
+  /** A white block with a band of glazing per floor round all four faces, a dark plinth and a parapet. */
+  const block = (x0: number, x1: number, z0: number, z1: number, floors: number, y0 = 0, groundGlass = false) => {
+    const w = x1 - x0;
+    const d = z1 - z0;
+    const bx = (x0 + x1) / 2;
+    const bz = (z0 + z1) / 2;
+    const top = y0 + floors * 3.6;
+    add(g, box(w, top - y0, d, white, bx, y0, bz));
+    if (y0 === 0) add(g, box(w + 0.12, 0.9, d + 0.12, trim, bx, 0, bz));
+    for (let f = 0; f < floors; f++) {
+      const ground = f === 0 && y0 === 0;
+      const band = ground && groundGlass ? warm : (f + Math.round(x0)) % 3 === 1 ? darkGlass : ward;
+      add(g, box(w + 0.08, ground ? 2.6 : 1.7, d + 0.08, band, bx, y0 + f * 3.6 + (ground ? 0.9 : 1.2), bz));
+    }
+    add(g, box(w + 0.4, 0.6, d + 0.4, trim, bx, top, bz));
+    return top;
+  };
+  // The podium, with the hospital's name over the entrance and plant on its roof.
+  const podTop = block(h.x0, h.x1, h.z0 + 16.5, h.z1, 3, 0, true);
+  const name = new MeshLambertMaterial({ map: pixelTextTexture('CITY HOSPITAL', '#ffffff', '#2a5a8a'), emissive: 0xffffff, emissiveIntensity: 0.6, emissiveMap: pixelTextTexture('CITY HOSPITAL', '#ffffff', '#2a5a8a') });
+  add(g, box(9, 1.0, 0.1, name, cx + 4, podTop - 1.2, h.z1 + 0.25));
+  for (const [x, z] of [[cx - 6, h.z1 - 4], [cx - 1, h.z1 - 6], [cx + 10, h.z1 - 4]] as const) add(g, acUnit()).position.set(x, podTop + 0.6, z);
+  add(g, box(5, 1.8, 3, mat(0xb8bcc0), cx + 14, podTop + 0.6, h.z1 - 6));
+  // The atrium: a glazed half drum out on the south front, ribbed, a flat disc for a roof.
+  const ax = cx + 4;
+  const atrium = new Mesh(new CylinderGeometry(4.2, 4.2, 8.6, 18, 1, true, -Math.PI / 2, Math.PI), warm);
+  atrium.position.set(ax, 4.3, h.z1);
+  g.add(atrium);
+  const disc = new Mesh(new CylinderGeometry(4.5, 4.5, 0.4, 18, 1, false, -Math.PI / 2, Math.PI), trim);
+  disc.position.set(ax, 8.8, h.z1);
+  g.add(disc);
+  for (let k = 0; k <= 6; k++) {
+    const a = (k / 6) * Math.PI;
+    add(g, box(0.16, 8.6, 0.16, white, ax + Math.cos(a) * 4.25, 0, h.z1 + Math.sin(a) * 4.25));
   }
-  // Windows one by one, without frames (it is far away and has a lot of them): a sill under each.
-  windows(h.x0, h.x1, h.z1 - 14, h.z1, [4.4, 8.0], 2.4, 1.3, 1.6, false, false);
-  windows(h.x0 + 2, h.x0 + 18, h.z0, h.z1 - 10, [13.6, 16.8, 20.0], 2.4, 1.3, 1.6, false, false);
-  // Ground floor of the main block: a glazed front with the entrance and its A&E sign.
-  add(g, box(h.x1 - h.x0 - 6, 2.6, 0.08, glowMat(0x2a3440, PALETTE.warmWindow, 0.7), cx + 2, 0.6, h.z1 + 0.04));
-  add(g, box(3.2, 2.6, 0.1, glowMat(0x2a3440, 0xd8f0ff, 0.9), h.x0 + 6, 0.5, h.z1 + 0.06));
-  add(g, box(5, 0.3, 2.2, trim, h.x0 + 6, 3.0, h.z1 + 1.1));
+  // The ward tower: seven storeys with vertical fins on every face, the top two set back, a raised helipad.
+  const tw = { x0: h.x0 + 2, x1: h.x0 + 16, z0: h.z0 + 1, z1: h.z0 + 16.5 };
+  const lowTop = block(tw.x0, tw.x1, tw.z0, tw.z1, 5);
+  const fin = mat(0xc8ccd0);
+  for (let x = tw.x0 + 0.75; x < tw.x1; x += 1.5) for (const z of [tw.z0 - 0.25, tw.z1 + 0.25]) add(g, box(0.16, lowTop - 1, 0.5, fin, x, 0.9, z));
+  for (let z = tw.z0 + 0.75; z < tw.z1; z += 1.5) for (const x of [tw.x0 - 0.25, tw.x1 + 0.25]) add(g, box(0.5, lowTop - 1, 0.16, fin, x, 0.9, z));
+  const towerTop = block(tw.x0 + 2, tw.x1 - 2, tw.z0 + 2, tw.z1 - 2, 2, lowTop + 0.6);
+  // The helipad on four legs above the roof: a deck, the H, lamps round its edge, a stair down.
+  const padX = (tw.x0 + tw.x1) / 2;
+  const padZ = (tw.z0 + tw.z1) / 2;
+  for (const [dx, dz] of [[-3, -3], [3, -3], [3, 3], [-3, 3]] as const) add(g, box(0.4, 2.2, 0.4, mat(0x6a7078), padX + dx, towerTop + 0.6, padZ + dz));
+  add(g, cylinder(5.6, 0.35, mat(0x4a5058), 20, padX, towerTop + 2.8, padZ));
+  add(g, cylinder(4.6, 0.02, mat(0xd8d8d0), 20, padX, towerTop + 3.16, padZ));
+  add(g, cylinder(4.3, 0.03, mat(0x4a5058), 20, padX, towerTop + 3.17, padZ));
+  for (const dx of [-1.2, 1.2]) add(g, box(0.5, 0.05, 3.6, mat(0xf0f0f0), padX + dx, towerTop + 3.2, padZ));
+  add(g, box(2.4, 0.05, 0.5, mat(0xf0f0f0), padX, towerTop + 3.2, padZ));
+  const padLamp = glowMat(0x3a2a1a, 0xffc040, 1.0);
+  for (let k = 0; k < 12; k++) {
+    const a = (k / 12) * Math.PI * 2;
+    add(g, box(0.25, 0.2, 0.25, padLamp, padX + Math.cos(a) * 5.4, towerTop + 3.15, padZ + Math.sin(a) * 5.4));
+  }
+  add(g, box(1.2, 2.6, 2.2, white, tw.x1 - 2.6, towerTop + 0.6, padZ + 4));
+  // Red crosses high on the tower, south and east.
+  for (const [x, z, r] of [[padX, tw.z1 + 0.5, 0], [tw.x1 + 0.5, padZ, Math.PI / 2]] as const) {
+    const cross = add(g, new Group(), r);
+    cross.position.set(x, lowTop - 5, z);
+    add(cross, box(3.4, 1.1, 0.3, red, 0, 1.15, 0));
+    add(cross, box(1.1, 3.4, 0.3, red, 0, 0, 0));
+  }
+  // The east wing: four storeys, a sawtooth of rooflights along it.
+  const ew = { x0: h.x0 + 20, x1: h.x1, z0: h.z0 + 1, z1: h.z0 + 15 };
+  const eastTop = block(ew.x0, ew.x1, ew.z0, ew.z1, 4);
+  const roofGlass = ward;
+  for (let x = ew.x0 + 2; x < ew.x1 - 1; x += 3) {
+    add(g, gableRoof(2.6, ew.z1 - ew.z0 - 3, 1.4, mat(0x8a929a))).position.set(x, eastTop + 0.6, (ew.z0 + ew.z1) / 2);
+    add(g, box(0.1, 1.0, ew.z1 - ew.z0 - 3.2, roofGlass, x + 0.7, eastTop + 0.7, (ew.z0 + ew.z1) / 2)).rotation.z = -0.9;
+  }
+  // The glass bridge from the tower to the east wing at the second floor, and a little garden below it.
+  add(g, box(ew.x0 - tw.x1 + 0.4, 3.0, 3.2, warm, (tw.x1 + ew.x0) / 2, 7.4, h.z0 + 7));
+  add(g, box(ew.x0 - tw.x1 + 0.6, 0.4, 3.4, trim, (tw.x1 + ew.x0) / 2, 10.4, h.z0 + 7));
+  add(g, box(ew.x0 - tw.x1, 0.13, 6, mat(PALETTE.grass), (tw.x1 + ew.x0) / 2, 0, h.z0 + 2.5));
+  add(g, tree(1, 0.7)).position.set((tw.x1 + ew.x0) / 2, 0.12, h.z0 + 2.5);
+  // A&E on the west front, facing the river: a canopy on columns out over the ambulance bays.
+  const aeZ = h.z0 + 21;
+  add(g, box(4.2, 0.4, 9, trim, h.x0 - 2.1, 3.6, aeZ));
+  for (const dz of [-4, 0, 4]) add(g, cylinder(0.18, 3.6, white, 8, h.x0 - 3.9, 0, aeZ + dz));
+  add(g, box(0.1, 2.6, 4, ward, h.x0 - 0.06, 0.4, aeZ));
   const ae = new MeshLambertMaterial({ map: pixelTextTexture('A&E', '#ffffff', '#b8202a'), emissive: 0xffffff, emissiveIntensity: 0.8, emissiveMap: pixelTextTexture('A&E', '#ffffff', '#b8202a') });
-  add(g, box(2.6, 1.0, 0.1, ae, h.x0 + 6, 3.35, h.z1 + 2.2));
-  // Roof plant on the main block.
-  for (const [x, z] of [[cx + 4, h.z1 - 9], [cx + 9, h.z1 - 5], [cx + 13, h.z1 - 9]] as const) add(g, acUnit()).position.set(x, 12.5, z);
-  add(g, box(4, 1.6, 3, mat(0xb8bcc0), cx - 2, 12.5, h.z1 - 7));
-  add(g, cylinder(4, 0.2, mat(0x4a5058), 16, h.x0 + 10, 24.5, h.z0 + 8));
-  add(g, box(5, 0.05, 1, mat(0xf0f0f0), h.x0 + 10, 24.72, h.z0 + 8));
-  add(g, box(1, 0.05, 5, mat(0xf0f0f0), h.x0 + 10, 24.72, h.z0 + 8));
-  add(g, box(10, 0.3, 4, mat(0x9a3a34), h.x0 - 1, 3.2, h.z1 - 3));
-  add(g, box(3.4, 3.4, 0.4, red, h.x0 + 18, 12.6, h.z1 + 0.1));
-  add(g, box(1.1, 3.4, 0.45, white, h.x0 + 18, 12.6, h.z1 + 0.1));
-  add(g, box(3.4, 1.1, 0.45, white, h.x0 + 18, 13.75, h.z1 + 0.1));
+  add(g, box(0.1, 1.0, 2.6, ae, h.x0 - 4.25, 4.0, aeZ));
+  const bay = mat(0xd8b020);
+  for (const dz of [-3, 3]) {
+    add(g, box(3.4, 0.02, 0.12, bay, h.x0 - 2.1, 0.13, aeZ + dz - 1.4));
+    add(g, box(3.4, 0.02, 0.12, bay, h.x0 - 2.1, 0.13, aeZ + dz + 1.4));
+  }
+  // The boiler house in the north-east corner and its tall chimney, banded red and white at the top.
+  add(g, box(6, 5, 4, mat(0x9a948a), h.x1 - 3, 0, h.z0 + 2));
+  add(g, cylinder(0.9, 32, mat(0xa8a49c), 10, h.x1 - 1.5, 0, h.z0 + 0.8));
+  for (const [y, c] of [[28, 0xb8302a], [29.5, 0xe8e8e0], [31, 0xb8302a]] as const) add(g, cylinder(0.95, 1.5, mat(c), 10, h.x1 - 1.5, y, h.z0 + 0.8));
   const hospital = registerBuilding(h.x0, h.x1, h.z0, h.z1, 24);
   // Sobering-up centre: a two-storey municipal block, barred windows, a canopy over the door, a blue lamp.
   const s = SOBERING;
@@ -806,16 +909,11 @@ function buildHill(g: Object3D, random: Random): void {
  * out to the horizon, where the haze takes them. Tall behind the district
  * (north and west), low in front of it. Cheap: a few materials, merged.
  */
-const MASS_WALLS = [0x9a8a78, 0xa8987e, 0x8a7a6a, 0xb0a088, 0x7a6e62, 0x9a7a6a, 0x8a8a7e];
+// Brick, ochre and plaster rather than seven greys: the far city reads as streets of different houses.
+const MASS_WALLS = [0x9a8a78, 0x8a4a3c, 0xa8865a, 0x6a3e34, 0xb8ae9a, 0x7a7670, 0x7e5e4a];
 const MASS_ROOFS = [0x6a3a30, 0x4a4440, 0x5a3a34];
 let massCount = 0;
 
-/**
- * A plain building for the far city: a wall box, a trim, sometimes a gable
- * roof, and one band of windows per floor wrapped round all four faces (one
- * box, some floors lit). Seen from afar it reads as a city block; it costs a
- * few dozen triangles.
- */
 /**
  * A strip of windows for the far blocks' floor bands: `n` windows across, the gaps
  * see-through (alpha), so the wall shows between them. Lit bands vary each
@@ -840,20 +938,88 @@ function windowStrip(n: number, random: Random, lit: boolean): CanvasTexture {
 /** The far blocks' window materials: set once per city by buildCityBeyond. */
 let farWindows: { lit: MeshLambertMaterial[]; cool: MeshLambertMaterial[]; dark: Material } | null = null;
 
-function massing(g: Object3D, x: number, z: number, w: number, d: number, floors: number, random: Random, lit: Material[], cool: Material[]): void {
-  const k = massCount++;
+/** Trim, plinths and rooftop plant of the far blocks: one shared colour, so they merge with the cornices. */
+const MASS_TRIM = 0x5a524a;
+
+/**
+ * One box of a far building: walls `floors` storeys high from `y0`, a band of
+ * windows per floor (skipping the ground floor when it is a shop), and a
+ * cornice on top.
+ */
+function massPart(g: Object3D, x: number, z: number, w: number, d: number, y0: number, floors: number, wall: Material, k: number, shop: boolean, random: Random, lit: Material[], cool: Material[]): void {
   const h = floors * 3;
-  add(g, box(w, h, d, mat(MASS_WALLS[k % MASS_WALLS.length]), x, -0.1, z));
-  add(g, box(w + 0.3, 0.3, d + 0.3, mat(0x5a524a), x, h - 0.1, z));
-  if (floors <= 5 && random() < 0.6) add(g, gableRoof(d, w + 0.2, 2.4, mat(MASS_ROOFS[k % MASS_ROOFS.length])), Math.PI / 2).position.set(x, h - 0.1, z);
-  for (let f = 0; f < floors; f++) {
+  add(g, box(w, h, d, wall, x, y0 - 0.1, z));
+  add(g, box(w + 0.3, 0.3, d + 0.3, mat(MASS_TRIM), x, y0 + h - 0.1, z));
+  for (let f = shop && y0 === 0 ? 1 : 0; f < floors; f++) {
     // Two warm and one cool window material for the whole far city: a few draw calls per cell.
     // With window strips the bands read as rows of windows; without them (never here), plain bands.
     const fw = farWindows;
     const m = random() < 0.35
       ? (random() < 0.8 ? (fw ? fw.lit[(k + f) % fw.lit.length] : lit[(k + f) % 2]) : (fw ? fw.cool[0] : cool[0]))
       : (fw ? fw.dark : mat(0x26282c));
-    add(g, box(w + 0.06, 1.0, d + 0.06, m, x, f * 3 + 1.1, z));
+    add(g, box(w + 0.06, 1.0, d + 0.06, m, x, y0 + f * 3 + 1.1, z));
+  }
+}
+
+/**
+ * A far building: a plain block, a block with its top floors set back, or two
+ * wings of different heights; some with a lit shop floor on a stone plinth,
+ * a gable or plant and a water tank on the roof. Every piece shares the far
+ * city's few materials, so a cell still merges into a handful of draw calls.
+ */
+function massing(g: Object3D, x: number, z: number, w: number, d: number, floors: number, random: Random, lit: Material[], cool: Material[]): void {
+  const k = massCount++;
+  const h = floors * 3;
+  const wall = mat(MASS_WALLS[Math.floor(random() * MASS_WALLS.length)]);
+  const shop = floors >= 2 && random() < 0.45;
+  const form = random();
+  let flatTop = h;
+  if (floors >= 5 && form < 0.35) {
+    // The top two floors set back from the street, as rebuilt blocks often are.
+    massPart(g, x, z, w, d, 0, floors - 2, wall, k, shop, random, lit, cool);
+    massPart(g, x, z - d * 0.12, w * 0.72, d * 0.66, (floors - 2) * 3, 2, wall, k + 1, false, random, lit, cool);
+  } else if (floors >= 3 && form < 0.7) {
+    // Two wings side by side, the lower one a storey or two down.
+    const alongX = random() < 0.5;
+    const split = 0.55 + random() * 0.15;
+    const low = Math.max(1, floors - 1 - Math.floor(random() * 2));
+    const [a, b] = alongX ? [w * split, w * (1 - split)] : [d * split, d * (1 - split)];
+    const mid = alongX ? x - w / 2 : z - d / 2;
+    if (alongX) {
+      massPart(g, mid + a / 2, z, a, d, 0, floors, wall, k, shop, random, lit, cool);
+      massPart(g, mid + a + b / 2, z, b, d, 0, low, wall, k + 1, shop, random, lit, cool);
+    } else {
+      massPart(g, x, mid + a / 2, w, a, 0, floors, wall, k, shop, random, lit, cool);
+      massPart(g, x, mid + a + b / 2, w, b, 0, low, wall, k + 1, shop, random, lit, cool);
+    }
+    // The lower wing of a low house under a pitched roof.
+    if (low <= 4 && random() < 0.5) {
+      const roof = mat(MASS_ROOFS[k % MASS_ROOFS.length]);
+      if (alongX) add(g, gableRoof(b + 0.2, d + 0.2, 2.0, roof), 0).position.set(mid + a + b / 2, low * 3 - 0.1, z);
+      else add(g, gableRoof(b + 0.2, w + 0.2, 2.0, roof), Math.PI / 2).position.set(x, low * 3 - 0.1, mid + a + b / 2);
+    }
+  } else {
+    massPart(g, x, z, w, d, 0, floors, wall, k, shop, random, lit, cool);
+    if (floors <= 5 && random() < 0.6) {
+      // A gable with its ridge along the longer side.
+      const alongX = w >= d;
+      add(g, gableRoof(alongX ? d : w, (alongX ? w : d) + 0.2, 2.4, mat(MASS_ROOFS[k % MASS_ROOFS.length])), alongX ? Math.PI / 2 : 0).position.set(x, h - 0.1, z);
+      flatTop = -1;
+    }
+  }
+  // A shop floor: a stone plinth a little proud of the wall, its windows lit.
+  if (shop) {
+    add(g, box(w + 0.14, 3.0, d + 0.14, mat(MASS_TRIM), x, -0.1, z));
+    const fw = farWindows;
+    add(g, box(w + 0.2, 1.5, d + 0.2, fw ? fw.lit[k % fw.lit.length] : lit[k % 2], x, 0.5, z));
+  }
+  // Plant on a flat roof: a lift housing or a water tank.
+  if (flatTop > 0 && random() < 0.55) {
+    const px = x + (random() - 0.5) * w * 0.4;
+    const pz = z + (random() - 0.5) * d * 0.4;
+    const top = floors >= 5 && form < 0.35 ? h : flatTop;
+    if (random() < 0.5) add(g, box(2.2, 1.6, 1.8, mat(MASS_TRIM), px, top + 0.2, pz));
+    else add(g, cylinder(0.9, 1.7, mat(MASS_TRIM), 6, px, top + 0.2, pz));
   }
 }
 
@@ -863,11 +1029,14 @@ function buildSkyline(cellAt: (x: number, z: number) => Object3D, random: Random
   for (let x = -260 - GROW + ox; x <= 260 + GROW; x += 20) {
     for (let z = -260 - GROW + oz; z <= 260 + GROW; z += 20) {
       if (Math.abs(x) < 170 + GROW && Math.abs(z) < 170 + GROW) continue;
-      if (x > RIVER.x0 - 4 && x < RIVER.x1 + 4) continue;
-      if (Math.abs(z - RAIL_Z) < 6) continue;
+      // Clear of the water, the track and the four through roads (out to the horizon) by the widest half house (8 m) and its jitter.
+      if (x > RIVER.x0 - 12 && x < RIVER.x1 + 12) continue;
+      if (Math.abs(z - RAIL_Z) < 12) continue;
+      if ([STREETS.main, STREETS.north, STREETS.south, STREETS.east].some((st) => (st.along === 'z' ? x + 10 > st.road.x0 - 3 && x - 10 < st.road.x1 + 3 : z + 10 > st.road.z0 - 3 && z - 10 < st.road.z1 + 3))) continue;
       if (random() < 0.1) continue;
       const floors = Math.max(2, Math.min(3 + Math.floor(random() * 6), Math.floor(heightCap(x, z) / 3)));
-      massing(cellAt(x, z), x, z, 11 + random() * 5, 11 + random() * 5, floors, random, lit, cool);
+      // Off the lattice by a metre or so, so the far rows do not read as a grid.
+      massing(cellAt(x, z), x + (random() - 0.5) * 3, z + (random() - 0.5) * 3, 11 + random() * 5, 11 + random() * 5, floors, random, lit, cool);
     }
   }
 }
@@ -886,6 +1055,7 @@ const TAKEN: Rect[] = [
   { x0: STATION_CAMP.x0 - 2, x1: STATION_CAMP.x1 + 2, z0: STATION_CAMP.z0, z1: STATION_CAMP.z1 + 1 }, // the station forecourt and its camp
   { x0: POLICE_STATION.x0 - 2, x1: POLICE_STATION.x1 + 2, z0: POLICE_STATION.z0, z1: POLICE_STATION.z1 + 2 }, // the police station
   CAMPUS, // the university (or, with its pack off, the housing kept for its site)
+  { x0: STADIUM.x0 - 6, x1: STADIUM.x1 + 6, z0: STADIUM.z0 - 6, z1: STADIUM.z1 + 6 }, // the football stadium and its forecourt
 ];
 
 /** Cuts every rect round the taken ground, keeping the free pieces `keep` accepts. */

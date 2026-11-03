@@ -1,5 +1,6 @@
 import { BoxGeometry, CylinderGeometry, Group, InstancedMesh, Matrix4, Mesh, Quaternion, SphereGeometry, Vector3, type Object3D } from 'three';
 import { SKY } from '../../config/flavour/sky';
+import { inView } from '../../render/viewEdge';
 import { range } from '../../sim/random';
 import { add, box } from '../kit';
 import { glowMat, mat, vehicleMat } from '../materials';
@@ -14,6 +15,13 @@ import type { Pack, PackDeps } from './index';
  * costs a few draw calls only while something is up.
  */
 interface Crossing { g: Object3D; on: boolean; wait: number; t: number; from: Vector3; dir: Vector3; speed: number; length: number }
+
+/** How far either side of (x, z) a crossing at `height` must start and end to be out of sight along `dir`. */
+function reachFor(x: number, z: number, dx: number, dz: number, height: number): number {
+  let r = SKY.reach;
+  while (r < 700 && (inView(x - dx * r, z - dz * r, 0, 0, 6, 6, height - 3) || inView(x + dx * r, z + dz * r, 0, 0, 6, 6, height - 3))) r += 30;
+  return r;
+}
 
 function lightPlane(): Group {
   const g = new Group();
@@ -66,9 +74,10 @@ export function buildSky({ pool, random, scene }: PackDeps): Pack {
   wing.castShadow = false;
   wing.count = 0;
   root.add(wing);
-  const flock = { on: false, wait: range(random, SKY.birds.every) * 0.3, t: 0, n: 0, from: new Vector3(), dir: new Vector3(), offs: [] as { x: number; y: number; z: number; ph: number }[] };
+  const flock = { on: false, wait: range(random, SKY.birds.every) * 0.3, t: 0, d: 0, reach: SKY.reach, n: 0, from: new Vector3(), dir: new Vector3(), offs: [] as { x: number; y: number; z: number; ph: number }[] };
   const make = (g: Object3D, every: readonly [number, number]): Crossing => {
     g.visible = false;
+    g.userData.mover = 'air';
     root.add(g);
     return { g, on: false, wait: range(random, every) * 0.5, t: 0, from: new Vector3(), dir: new Vector3(), speed: 0, length: SKY.reach * 2 };
   };
@@ -86,28 +95,37 @@ export function buildSky({ pool, random, scene }: PackDeps): Pack {
   const flapQ = new Quaternion();
   let time = 0;
 
-  /** Starts a crossing past the view's middle at `height`, in a random direction. */
-  const launch = (c: { from: Vector3; dir: Vector3 }, height: number) => {
+  let wind = random() * Math.PI * 2;
+  /**
+   * Starts a crossing past the view's middle at `height`, heading `angle` (a
+   * random one if not given), from and to points out of sight. Returns its length.
+   */
+  const launch = (c: { from: Vector3; dir: Vector3 }, height: number, angle = random() * Math.PI * 2): number => {
     const view = pool.viewCentre;
-    const a = random() * Math.PI * 2;
-    c.dir.set(Math.sin(a), 0, Math.cos(a));
+    c.dir.set(Math.sin(angle), 0, Math.cos(angle));
     const side = (random() - 0.5) * 30;
-    c.from.set(view.x - c.dir.x * SKY.reach + c.dir.z * side, height, view.z - c.dir.z * SKY.reach - c.dir.x * side);
+    const mx = view.x + c.dir.z * side;
+    const mz = view.z - c.dir.x * side;
+    const reach = reachFor(mx, mz, c.dir.x, c.dir.z, height);
+    c.from.set(mx - c.dir.x * reach, height, mz - c.dir.z * reach);
+    return reach * 2;
   };
-  const tick = (c: Crossing, dt: number, every: readonly [number, number], height: number, speed: number, allowed: boolean) => {
+  /** Metres it moved this frame: its speed, made up when out of sight. */
+  const pace = (x: number, y: number, z: number, speed: number, dt: number) => speed * dt * (inView(x, z, 0, 0, 6, 6, y - 3) ? 1 : SKY.unseenHurry);
+  const tick = (c: Crossing, dt: number, every: readonly [number, number], height: number, speed: number, allowed: boolean, angle?: () => number) => {
     if (!c.on) {
       if ((c.wait -= dt) > 0 || !allowed) return;
       c.on = true;
       c.t = 0;
       c.speed = speed;
-      launch(c, height);
+      c.length = launch(c, height, angle?.());
       c.g.visible = true;
       c.g.rotation.y = Math.atan2(c.dir.x, c.dir.z);
     }
-    c.t += dt;
-    const d = c.t * c.speed;
-    c.g.position.copy(c.from).addScaledVector(c.dir, d);
-    if (d > c.length) { c.on = false; c.g.visible = false; c.wait = range(random, every); }
+    // `t` is the distance flown.
+    c.t += pace(c.g.position.x, height, c.g.position.z, c.speed, dt);
+    c.g.position.copy(c.from).addScaledVector(c.dir, c.t);
+    if (c.t > c.length) { c.on = false; c.g.visible = false; c.wait = range(random, every); }
   };
 
   return {
@@ -119,7 +137,9 @@ export function buildSky({ pool, random, scene }: PackDeps): Pack {
       const day = ctx.day > 0.4;
       tick(planeX, dt, SKY.plane.every, SKY.plane.height, SKY.plane.speed, true);
       blink.visible = !day && Math.sin(time * 6) > 0.6;
-      tick(balloonX, dt, SKY.balloon.every, SKY.balloon.height, SKY.balloon.speed, day && !ctx.snowy);
+      // The balloon goes where the wind takes it; the wind veers a little between one balloon and the next.
+      tick(balloonX, dt, SKY.balloon.every, SKY.balloon.height, SKY.balloon.speed, day && !ctx.snowy, () => (wind += (random() - 0.5) * 2 * SKY.windVeer));
+      if (balloonX.on) balloonX.g.position.y += ctx.still ? 0 : Math.sin(time * 0.4) * 1.2;
       // A glider circles a little as it goes.
       tick(gliderX, dt, SKY.glider.every, SKY.glider.height, SKY.glider.speed, day && !ctx.snowy);
       if (gliderX.on) gliderX.g.rotation.z = 0.25;
@@ -129,15 +149,22 @@ export function buildSky({ pool, random, scene }: PackDeps): Pack {
           flock.on = true;
           flock.t = 0;
           flock.n = Math.round(range(random, SKY.birds.flock));
-          launch(flock, range(random, SKY.birds.height));
           flock.offs = Array.from({ length: flock.n }, (_, i) => ({ x: (random() - 0.5) * 6, y: (random() - 0.5) * 2, z: -i * 1.4 - random(), ph: random() * 6 }));
+          // At dusk the flocks head for their roost in the big park, at dawn away from it.
+          const v = pool.viewCentre;
+          const toRoost = Math.atan2(SKY.roost.x - v.x, SKY.roost.z - v.z);
+          const c = ctx.clock;
+          const angle = c >= SKY.roost.dusk[0] && c < SKY.roost.dusk[1] ? toRoost : c >= SKY.roost.dawn[0] && c < SKY.roost.dawn[1] ? toRoost + Math.PI : undefined;
+          flock.reach = launch(flock, range(random, SKY.birds.height), angle) / 2;
+          flock.d = 0;
         }
         wing.count = 0;
         return;
       }
       flock.t += dt;
-      const d = flock.t * SKY.birds.speed;
-      if (d > SKY.reach * 2) { flock.on = false; flock.wait = range(random, SKY.birds.every); wing.count = 0; return; }
+      flock.d += pace(flock.from.x + flock.dir.x * flock.d, flock.from.y, flock.from.z + flock.dir.z * flock.d, SKY.birds.speed, dt);
+      const d = flock.d;
+      if (d > flock.reach * 2) { flock.on = false; flock.wait = range(random, SKY.birds.every); wing.count = 0; return; }
       const heading = Math.atan2(flock.dir.x, flock.dir.z);
       let k = 0;
       for (const o of flock.offs) {

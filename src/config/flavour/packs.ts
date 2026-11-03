@@ -6,7 +6,7 @@ import { t } from '../../i18n';
  * the same with any of them on or off. Each is built the first time it is
  * switched on and costs nothing per frame while it is off.
  */
-export type PackId = 'street' | 'guard' | 'crime' | 'vignettes' | 'lines' | 'service' | 'weather' | 'campus' | 'chaos' | 'users' | 'thieves' | 'visitors' | 'cycling' | 'pets' | 'decor' | 'sky' | 'river' | 'kids' | 'pioneers' | 'squats';
+export type PackId = 'street' | 'guard' | 'crime' | 'vignettes' | 'lines' | 'service' | 'weather' | 'campus' | 'chaos' | 'users' | 'thieves' | 'visitors' | 'cycling' | 'pets' | 'decor' | 'sky' | 'river' | 'kids' | 'pioneers' | 'squats' | 'tourists' | 'clergy' | 'business' | 'crowds';
 
 export interface PackInfo {
   id: PackId;
@@ -34,6 +34,10 @@ export const PACKS: readonly PackInfo[] = [
   { id: 'kids', label: t('Children'), hint: t('Families out in the early evening and children walking to school.') },
   { id: 'pioneers', label: t('Pioneers'), hint: t('Easter eggs: five pioneers of psychedelic research out for a walk.') },
   { id: 'squats', label: t('Squats'), hint: t('Anarchist flags, graffiti and a banner on the squats, a punk by the door.') },
+  { id: 'tourists', label: t('Tourists'), hint: t('Groups of tourists in their national clichés, stopping to photograph the sights.') },
+  { id: 'clergy', label: t('Clergy'), hint: t('A procession with a cross, candles and a canopy, or a priest, a rabbi and an imam out walking together.') },
+  { id: 'business', label: t('Business people'), hint: t('Suits with briefcases and coffee, start-up people with lanyards, at the rush hours.') },
+  { id: 'crowds', label: t('Big-day crowds'), hint: t('Football fans on match days, festival-goers, students on a university weekend off.') },
   { id: 'users', label: t('Who uses what'), hint: t('Small groups along the inner ring: smokers and vapers, opioid users bent over in the fentanyl fold, cannabis smokers on a bench, clubbers after hours, people tripping, people slumped on benzos and stimulant users pacing.') },
 ];
 
@@ -54,7 +58,7 @@ export interface PackSettings {
 }
 
 export const defaultPacks = (): PackSettings => ({
-  on: { street: true, guard: true, crime: true, vignettes: true, lines: true, service: true, weather: true, campus: true, chaos: true, users: true, thieves: true, visitors: true, cycling: true, pets: true, decor: true, sky: true, river: true, kids: true, pioneers: true, squats: true },
+  on: { street: true, guard: true, crime: true, vignettes: true, lines: true, service: true, weather: true, campus: true, chaos: true, users: true, thieves: true, visitors: true, cycling: true, pets: true, decor: true, sky: true, river: true, kids: true, pioneers: true, squats: true, tourists: true, clergy: true, business: true, crowds: true },
   weather: 'auto',
 });
 

@@ -1,3 +1,4 @@
+import { mergeStatic } from './mergeStatic';
 import { Box3, BufferGeometry, CapsuleGeometry, CylinderGeometry, Float32BufferAttribute, Group, LatheGeometry, Mesh, SphereGeometry, Vector2, type Material, type Object3D } from 'three';
 import { PALETTE } from '../config/palette';
 import { glowMat, vehicleMat } from './materials';
@@ -19,7 +20,7 @@ const parkedHead = vehicleMat(0xb8b8b0, 2);
 const parkedTail = vehicleMat(0x6a2422, 2);
 const taxiLight = glowMat(0xd8c050, 0xffd860, 0.9);
 
-export type CarKind = 'hatch' | 'saloon' | 'van' | 'taxi';
+export type CarKind = 'hatch' | 'saloon' | 'van' | 'taxi' | 'delivery';
 type Form = 'hatch' | 'saloon' | 'van';
 
 /**
@@ -292,7 +293,10 @@ export function mouldedVehicle(key: string, p: Profile, paint: Material, lit: bo
       const x = side * (p.width / 2 - 0.16 * k);
       // On the axle: tyre and hub turn together about it.
       part(g, tyreGeo, tyre, x, WHEEL_R * k, z, k, k, k);
-      wheels.push(part(g, hubGeo, hub, x * 1.015, WHEEL_R * k, z, k, k, k));
+      const h = part(g, hubGeo, hub, x * 1.015, WHEEL_R * k, z, k, k, k);
+      // Hubs turn (rollWheels): kept out of the car's own merge.
+      h.userData.dynamic = true;
+      wheels.push(h);
     }
   }
   g.userData.wheels = { meshes: wheels, r: WHEEL_R * k };
@@ -318,16 +322,54 @@ export function mouldedVehicle(key: string, p: Profile, paint: Material, lit: bo
   return g;
 }
 
+/**
+ * Small things that make a car read up close: door seams and handles, a
+ * rubbing strip along each flank, an exhaust tailpipe, sometimes a roof aerial
+ * or a sunroof. A handful of parts on shared geometry, merged with the car.
+ */
+function details(g: Group, p: Profile, paint: Material, trim: Material, random: () => number): void {
+  const hw = p.width / 2;
+  const seam = vehicleMat(0x18181a, 0);
+  for (const side of [-1, 1]) {
+    const x = side * (hw + 0.004);
+    // Door seams below each pillar and at the front of the front door, a handle behind each seam.
+    for (const z of [...p.pillars, p.glass[1] - 0.05]) {
+      part(g, lampGeo, seam, x, (SILL + p.belt) / 2 + 0.06, z, 0.008, (p.belt - SILL) / 2 - 0.08, 0.012);
+      part(g, lampGeo, trim, x * 1.003, p.belt - 0.12, z - 0.22, 0.012, 0.022, 0.07);
+    }
+    // A rubbing strip along the flank, between the wheel arches.
+    part(g, lampGeo, trim, x * 1.004, 0.55, (p.axles[0] + p.axles[1]) / 2, 0.01, 0.025, (p.axles[1] - p.axles[0]) / 2 - 0.45);
+  }
+  // The tailpipe, low under the rear bumper on the left.
+  part(g, hubGeo, vehicleMat(0x5a5a5a, 1), -hw * 0.55, 0.26, -p.length / 2 - 0.02, 0.18, 0.22, 0.22).rotation.y = Math.PI / 2;
+  const r = random();
+  if (r < 0.3) part(g, lampGeo, trim, hw * 0.4, roofAt(p, -p.length * 0.25) + 0.15, -p.length * 0.25, 0.012, 0.18, 0.012);
+  else if (r < 0.45) part(g, lampGeo, vehicleMat(PALETTE.glassDark, 2), 0, roofAt(p, 0) + 0.012, -0.1, hw * 0.45, 0.012, 0.32);
+  void paint;
+}
+
 export function car(color: number, lit: boolean, kind?: CarKind): Group {
   const random = seeded(nextSeed++ * 7919);
-  const type: CarKind = kind ?? (random() < 0.08 ? 'taxi' : (['hatch', 'hatch', 'saloon', 'saloon', 'van'] as const)[Math.floor(random() * 5)]);
-  const form: Form = type === 'taxi' ? 'saloon' : type;
+  const type: CarKind = kind ?? (random() < 0.08 ? 'taxi' : random() < 0.07 ? 'delivery' : (['hatch', 'hatch', 'saloon', 'saloon', 'van'] as const)[Math.floor(random() * 5)]);
+  const form: Form = type === 'taxi' ? 'saloon' : type === 'delivery' ? 'van' : type;
   const p = PROFILES[form];
   const paint = vehicleMat(type === 'taxi' ? 0xd8b84a : color);
   const trim = vehicleMat(0x26262a, 0);
   const g = mouldedVehicle(form, p, paint, lit, random() < 0.5 ? 0x8a8a86 : 0x3a3a3c);
 
-  if (type === 'taxi') part(g, bumperGeo, taxiLight, 0, roofAt(p, -0.1) + 0.09, -0.1, 0.45, 1, 1.3);
+  details(g, p, paint, trim, random);
+  if (type === 'taxi') {
+    part(g, bumperGeo, taxiLight, 0, roofAt(p, -0.1) + 0.09, -0.1, 0.45, 1, 1.3);
+    // A chequered band along each side.
+    for (const x of [-1, 1]) for (let i = 0; i < 8; i++) part(g, lampGeo, i % 2 ? trim : vehicleMat(0xf2f0ea, 1), x * (p.width / 2 + 0.005), 0.72, -1.4 + i * 0.36, 0.01, 0.05, 0.17);
+  } else if (type === 'delivery') {
+    // A parcel van: a tall cargo box behind the cab, a courier's livery along it.
+    const box0 = -p.length / 2 + 0.05, box1 = 0.55;
+    const len = box1 - box0;
+    part(g, lampGeo, vehicleMat(0xf0eee6, 1), 0, 1.55, (box0 + box1) / 2, p.width / 2 + 0.06, 0.62, len / 2);
+    const livery = vehicleMat([0xe0c020, 0xc83a2a, 0x2a6ab8][Math.floor(random() * 3)], 1);
+    for (const x of [-1, 1]) part(g, lampGeo, livery, x * (p.width / 2 + 0.07), 1.35, (box0 + box1) / 2, 0.01, 0.2, len * 0.42);
+  }
   else if (form !== 'van' && random() < 0.22) {
     // Roof rails, sometimes with a box on top.
     const y = roofAt(p, -0.4) + 0.04;
@@ -339,6 +381,8 @@ export function car(color: number, lit: boolean, kind?: CarKind): Group {
   // round it as it moves (agents/crowd.ts). Tagged, a moving car was fixed wherever it stood at build
   // time: for the pooled traffic and emergency fleet that was the middle of the square.
   if (!lit) solid(g, p.width, p.length + 0.3);
+  // One mesh per material for the whole car (the turning hubs apart): a driving car is a few draws, not dozens.
+  mergeStatic(g);
   // Tired suspension: one corner sits a touch low.
   g.rotation.z = (random() - 0.5) * 0.025;
   return g;

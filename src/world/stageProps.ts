@@ -96,8 +96,8 @@ const PIECES: Record<ServiceId, ((g: Group) => void)[]> = {
   shelter: [
     // Dispensing hatch with a sign.
     (g) => { add(g, box(1.4, 1.2, 0.5, mat(0x8a6a3a), 0, 0, 0)); add(g, box(0.8, 0.5, 0.02, warm, 0, 0.6, 0.26)); sign(g, 'DISPENSING', '#fff1d8', '#5a3a28', 0, 1.5, 0, 1.8); },
-    // Checking session: a table, a bench and an instrument.
-    (g) => { table(g, 0, 0, 1.3); add(g, box(0.5, 0.3, 0.4, white, 0, 0.77, 0)); add(g, bench()).position.set(0, 0, 0.9); },
+    // Checking session: a table, a bench beside it in the same row (not out across the pavement) and an instrument.
+    (g) => { table(g, 0, 0, 1.3); add(g, box(0.5, 0.3, 0.4, white, 0, 0.77, 0)); add(g, bench()).position.set(1.55, 0, 0); },
   ],
   clinic: [
     // Medical tent: white with a red cross.

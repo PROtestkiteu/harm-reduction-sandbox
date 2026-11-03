@@ -39,6 +39,12 @@ export interface FlavourContext {
   /** Per shop (config/flavour/crime.ts shoplifting sites): a guard at the door, the shutter down. */
   shopGuard: boolean[];
   shopShut: boolean[];
+  /** The city's big days now (the simulation's happenings): which, at what stage, and how big (0 to 1). */
+  happenings: readonly { id: 'match' | 'festival' | 'uniWeekend'; phase: 'arriving' | 'on' | 'leaving'; crowd: number }[];
+  /** Pavement spots outside the open bars (world.barSpots of the open venues). */
+  bars: { at: { x: number; z: number }; face: number }[];
+  /** Scuffles the simulation reported since the crowds pack last ran (it takes them). */
+  scuffles: number;
   /** The picket, priest or nun at the drop-in now (sim/streetVisitors.ts), if any. */
   visit: { kind: 'picket' | 'priest' | 'nun'; stance: 'support' | 'oppose' } | null;
 }

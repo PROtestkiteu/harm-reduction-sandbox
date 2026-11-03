@@ -4,7 +4,7 @@ import type { Random } from '../sim/random';
 import { advertPillar, busShelter, manhole, postBox, signPost } from './details';
 import { cableBundle, steamVent, utilityPole, type Steam } from './grit';
 import { add, bench, bin, bollard, box, tree } from './kit';
-import { AID_BUS, AMBULANCE_BAY, CAMPER_SPOTS, DISTRICT, HALF, LOTS, MAIN_CROSSINGS, ROAD, SPOTS, STREETS, type Rect } from './layout';
+import { AID_BUS, AMBULANCE_BAY, CAMPER_SPOTS, DISTRICT, HALF, LOTS, MAIN_CROSSINGS, ROAD, SPOTS, STREETS, clearOfWalks, type Rect } from './layout';
 import { glowMat, mat } from './materials';
 import { mergeStatic } from './mergeStatic';
 import { solid } from './solids';
@@ -91,7 +91,8 @@ export function buildStreetscape(scene: Object3D, random: Random): Steam[] {
   // (the other lane carries through-traffic), and in the main street's
   // parking lane outside the centre block.
   const park = (x: number, z: number, rot: number) => {
-    if (blocked(x, z, 3.5)) return;
+    // Its footprint (as vehicles.ts tags it) clear of the walking lines, so none stands on a crossing.
+    if (blocked(x, z, 3.5) || !clearOfWalks(x, z, rot, 1.84, 4.9)) return;
     add(g, car(CAR_COLOURS[Math.floor(random() * CAR_COLOURS.length)], false), rot).position.set(x, 0.02, z);
   };
   for (const s of [STREETS.north, STREETS.south]) {
@@ -115,22 +116,23 @@ export function buildStreetscape(scene: Object3D, random: Random): Steam[] {
     }
   }
 
-  // Bus shelters on the cross streets, a kiosk on a corner, a post box.
+  // Bus shelters on the cross streets, a kiosk on a corner, a post box. The shelters stand at the
+  // back of the 2.5 m pavements, off the walking line down their middle (z -22.75 and 22.75).
   const advert = glowMat(0xe0d2b4, 0xffe0b0, 0.4);
-  add(g, busShelter(advert), Math.PI).position.set(-30, 0.12, -22.4);
-  add(g, busShelter(advert), 0).position.set(36, 0.12, 22.3);
+  add(g, busShelter(advert), Math.PI).position.set(-30, 0.12, -23.75);
+  add(g, busShelter(advert), 0).position.set(36, 0.12, 23.75);
   add(g, busShelter(advert), Math.PI / 2).position.set(30.6, 0.12, -34);
   // A slim news kiosk at the back of the south pavement (2.5 m deep), its counter towards the
-  // passers-by: a deeper one stood across the walking line and people walked through it.
+  // passers-by and its front clear of the walking line at z 22.75: a deeper one stood across it.
   const kiosk = add(g, solid(new Group(), 2.3, 1.05), Math.PI);
-  kiosk.position.set(-12, 0.12, 23.42);
+  kiosk.position.set(-12, 0.12, 23.6);
   add(kiosk, box(2.0, 2.3, 0.9, mat(0x3f5a4a), 0, 0, 0));
   add(kiosk, box(2.3, 0.2, 1.15, mat(0x2a3a30), 0, 2.3, 0.08));
   add(kiosk, box(1.5, 0.9, 0.05, glowMat(0x2c3a44, 0xffd8a0, 0.9), 0, 1.0, 0.47));
   add(kiosk, box(1.8, 0.08, 0.2, mat(PALETTE.concrete), 0, 0.95, 0.56));
   add(g, postBox()).position.set(-9.2, 0.12, 20.0);
   add(g, advertPillar(glowMat(0xe0d2b4, 0xffe0b0, 0.35))).position.set(31.2, 0.12, 12.0);
-  add(g, signPost(0x3f5f9a)).position.set(22.2, 0.12, -27.5);
+  add(g, signPost(0x3f5f9a)).position.set(21.85, 0.12, -27.5);
 
   // Benches and bins along the pavements, facing the road.
   for (const [x, z, r] of [[-26, -23.4, Math.PI], [-36, 23.4, 0], [10, 23.4, 0], [40, -23.4, Math.PI], [31.4, -8, -Math.PI / 2], [31.4, 30, -Math.PI / 2]] as const) {

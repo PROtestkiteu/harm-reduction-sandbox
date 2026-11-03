@@ -37,6 +37,10 @@ const BUILDERS: Record<PackId, () => Promise<PackBuilder>> = {
   kids: () => import('./kids').then((m) => m.buildKids),
   pioneers: () => import('./pioneers').then((m) => m.buildPioneers),
   squats: () => import('./squats').then((m) => m.buildSquats),
+  tourists: () => import('./tourists').then((m) => m.buildTourists),
+  clergy: () => import('./clergy').then((m) => m.buildClergy),
+  business: () => import('./business').then((m) => m.buildBusiness),
+  crowds: () => import('./crowds').then((m) => m.buildCrowds),
 };
 
 export interface FlavourHost {
@@ -88,7 +92,7 @@ export function startFlavour(host: FlavourHost): Flavour {
   }, BUILDERS, Math.max(6, Math.round(QUALITY.figures * 0.5)));
   packs.setMood(settings.weather);
   for (const p of PACKS) if (settings.on[p.id]) void packs.set(p.id, true);
-  const context: FlavourContext = { clock: 1080, night: 0, day: 0, season: host.season(), snowy: false, patrol: 0, market: 0, squat: 0, squatDoors: [], still: false, street: 0, thefts: [], shopGuard: [], shopShut: [], visit: null };
+  const context: FlavourContext = { clock: 1080, night: 0, day: 0, season: host.season(), snowy: false, patrol: 0, market: 0, squat: 0, squatDoors: [], still: false, street: 0, thefts: [], shopGuard: [], shopShut: [], visit: null, happenings: [], bars: [], scuffles: 0 };
   let squatKey = '';
   return {
     packs,

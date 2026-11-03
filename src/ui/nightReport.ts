@@ -1,5 +1,5 @@
 import { GOAL_TEXT } from '../config/goals';
-import type { Scenario } from '../config/scenarios';
+import { scenarioProgress, type Scenario } from '../config/scenarios';
 import type { NightReport } from '../sim/goals';
 import { plural, t, LOCALE } from '../i18n';
 import { price } from './money';
@@ -58,9 +58,7 @@ export class NightReportBox {
     if (scenario) {
       body.push(r.won
         ? p('welcome-lead night-won', t('Scenario won: {title}. The city carries on; play on as long as you like.', { title: scenario.title }))
-        : p('welcome-controls', t('{title}: {nights} of {needNights} nights, {helped} of {needHelped} helped, {stars} of {needStars} stars.', {
-          title: scenario.title, nights: r.night, needNights: scenario.nights, helped: totalHelped, needHelped: scenario.helped, stars: r.starsTotal, needStars: scenario.stars,
-        })));
+        : p('welcome-controls', scenarioProgress(scenario, { nights: r.night, helped: totalHelped, stars: r.starsTotal, deaths: r.deathsTotal ?? 0, won: false, folded: r.folded ?? false })));
     }
     const nextList = document.createElement('ul');
     nextList.className = 'night-goals next';

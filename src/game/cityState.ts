@@ -12,10 +12,13 @@ import { DISTRICT, SQUAT_SPOT, camperSpot } from '../world/layout';
 import { VENUE_KINDS, VITALITY, type VenueKind } from '../sim/vitality';
 import { RESIDENTS } from '../config/residents';
 import { formatClock } from '../sim/clock';
+import { HAPPENINGS } from '../config/happenings';
+import { formatDate } from '../sim/calendar';
 
 /** The new venues' names on their cards. */
 const VENUE_TITLES: Record<VenueKind, string> = { bar: t('New bar'), cafe: t('New café'), club: t('New club'), live: t('Live music venue') };
 import type { ShopKind, World } from '../world/scene';
+import type { FrontState } from '../world/districtLife';
 
 /**
  * What the city around the services shows of the game: the cards for
@@ -105,6 +108,14 @@ function camperBy(world: World, sim: Simulation, building: number): boolean {
   });
 }
 
+/** What a front that has run down or been done up says on its card (nothing for an ordinary one). */
+const FRONT_SAID: Partial<Record<FrontState, string>> = {
+  boarded: t('Boarded up: the street around has run down'),
+  shuttered: t('Shutters down, tagged'),
+  works: t('Scaffolding up: being done up'),
+  smart: t('Done up, as the street picks up'),
+};
+
 /** Cards for an ordinary building (who lives there, the neighbourhood round it) and for a police car or ambulance. */
 export class CityCards {
   constructor(private readonly sim: Simulation, private readonly world: World) {}
@@ -112,6 +123,24 @@ export class CityCards {
   /** The property unit a building is, if it is one of the tracked shops (-1 otherwise). */
   unitOf(buildingId: number): number {
     return this.world.shopUnits.indexOf(buildingId);
+  }
+
+  /** The stadium's or the festival grounds' card: what is on there tonight, else when it is next. */
+  private groundsCard(id: number, happening: 'match' | 'festival', title: string, said: string): BuildingCard {
+    const now = this.sim.happenings().find((h) => h.id === happening);
+    const phase = now && { arriving: t('People arriving'), on: t('On now'), leaving: t('People leaving') }[now.phase];
+    let next: string | null = null;
+    // When nothing is on tonight: the first night within a year that has one.
+    for (let days = 1; !now && days <= 366; days++) {
+      const date = this.sim.calendar.dateAfter(days);
+      if (HAPPENINGS[happening].when(date)) { next = formatDate(date); break; }
+    }
+    return {
+      title: displayName('building', id, title),
+      said,
+      facts: [[t('Tonight'), phase ?? t('Nothing on')], ...(now ? [] : [[t('Next'), next ?? t('Not this year')] as [string, string]])],
+      renamable: true,
+    };
   }
 
   describeBuilding(id: number): BuildingCard {
@@ -126,6 +155,8 @@ export class CityCards {
         renamable: true,
       };
     }
+    if (id === world.landmarks.stadium) return this.groundsCard(id, 'match', t('Football stadium'), t('Home matches on Saturdays and every other Wednesday in the season. Fans and a few groups of hooligans walk through the district before and after.'));
+    if (id === world.landmarks.festival) return this.groundsCard(id, 'festival', t('Festival grounds'), t('Festival weekends every few weeks in summer: thousands pass through the district, and drug checking and the stand are in demand.'));
     const venue = world.nightlife.indexOf(id);
     if (venue >= 0 && venue < sim.vitality.venues) {
       const kind = VENUE_KINDS[venue];
@@ -155,11 +186,23 @@ export class CityCards {
         renamable: true,
       };
     }
+    const faith = world.worship.get(id);
+    if (faith) {
+      const card = {
+        church: { title: t('Parish church'), said: t('Bells on Sunday; the parish runs a soup kitchen in the hall on Thursdays.') },
+        synagogue: { title: t('Synagogue'), said: t('Prayers on Friday evening and Saturday; the community has a food bank for anyone who asks.') },
+        mosque: { title: t('Mosque'), said: t('Friday prayers fill the street; in Ramadan, the iftar table is open to all.') },
+      }[faith];
+      return { title: displayName('building', id, card.title), said: card.said, facts: [], renamable: true };
+    }
     if (id === world.school) {
       return { title: displayName('building', id, t('Primary school')), said: t('Children\'s drawings in the windows. Quiet at night.'), facts: [], renamable: true };
     }
     if (id === world.library) {
       return { title: displayName('building', id, t('Public library')), said: t('Free to all, warm, with toilets: people with nowhere to go spend the day here.'), facts: [], renamable: true };
+    }
+    if (id === world.pizza) {
+      return { title: displayName('building', id, t('Pizza place')), said: t('Slices till late and a scooter for deliveries; club leavers queue here at three.'), facts: [], renamable: true };
     }
     if (id === world.bookshop) {
       return {
@@ -172,7 +215,7 @@ export class CityCards {
     if (world.zabkas.includes(id)) {
       return {
         title: displayName('building', id, t('Żabka')),
-        said: t('Open late: snacks, coffee, a parcel locker.'),
+        said: t('A corner shop open late: snacks, coffee, a parcel locker.'),
         facts: [],
         renamable: true,
       };
@@ -257,6 +300,7 @@ export class CityCards {
       facts: [
         ...(unit.fact ? [unit.fact] : []),
         ...(point.fact ? [point.fact] : []),
+        ...(FRONT_SAID[world.frontState(id)] ? [[t('Street front'), FRONT_SAID[world.frontState(id)]!] as [string, string]] : []),
       ],
       chips: [
         { icon: 'safety', value: percent(n.safety), label: t('Feels safe to residents: {v}', { v: percent(n.safety) }), state: band(n.safety, true) },

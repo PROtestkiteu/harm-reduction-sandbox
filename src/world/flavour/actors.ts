@@ -73,6 +73,8 @@ export interface Actor {
   detailed: boolean;
   /** Set by the pool: squared distance from the middle of the view this frame. */
   d2: number;
+  /** Set by the pool: seconds walked into something (above 0) or passing through it (below 0). */
+  blocked?: number;
 }
 
 export type FigureMaker = (look: ActorLook) => Figure | null;
@@ -195,8 +197,22 @@ export class ActorPool {
     if (solids) {
       for (const a of this.actors) {
         if (a.shown <= 0.01 || a.pose !== 'walk' || a.lift > 0) continue;
+        // Held up for a while (a gap narrower than a body, a waypoint by a post): they squeeze through, as the crowd's people do.
+        const held = a.blocked ?? 0;
+        if (held < 0) { a.blocked = Math.min(0, held + dt); continue; }
         this.push.x = this.push.z = 0;
-        if (solids.push(a.x, a.z, 0.22, this.push)) { a.x += this.push.x; a.z += this.push.z; }
+        if (!solids.push(a.x, a.z, 0.22, this.push)) { a.blocked = 0; continue; }
+        const px = this.push.x, pz = this.push.z;
+        const hx = Math.sin(a.heading), hz = Math.cos(a.heading);
+        a.x += px;
+        a.z += pz;
+        // Pushed back the way they came (walking into a bench end on): slide along it as far, round the side nearer the way on.
+        if (px * hx + pz * hz < 0) {
+          const s = -pz * hx + px * hz >= 0 ? 1 : -1;
+          a.x -= pz * s;
+          a.z += px * s;
+          a.blocked = held + dt > 1.2 ? -1.5 : held + dt;
+        }
       }
     }
     const view = this.view;

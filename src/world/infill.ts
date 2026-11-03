@@ -9,6 +9,7 @@ import { add, bench, box, gableRoof, mansard, tree } from './kit';
 import { BLOCKS, EDGES, HALF, NODES, SIDE_NORMAL, SIDE_ROT, SPARE_CENTRE_LOTS, STREETS, VENUE_RECTS, type Rect, type Side } from './layout';
 import { glowMat, mat } from './materials';
 import { mergeStatic } from './mergeStatic';
+import { CAR_COLOURS, car } from './vehicles';
 import { DOOR_ALONG, registerBuilding, type RoofKind } from './cityBuildings';
 import { dish, flatRoofFeature, pickFeature, pitchedRoofDressing, tvAerial } from './rooftops';
 
@@ -74,18 +75,60 @@ const SIDES: readonly Side[] = ['+z', '+x', '-x', '-z'];
  * side. `gap` measures each side's distance to a street; a lot with no street
  * within reach faces the nearest one there is.
  */
-function frontage(q: Rect, gap: (s: Side) => number, walked: (s: Side) => boolean = () => false): { front: Side; corner: Side | null } {
+function frontage(q: Rect, gap: (s: Side) => number, walked: (s: Side) => boolean = () => false): { front: Side; corner: Side | null; onStreet: boolean } {
   const len = (s: Side) => (s === '+z' || s === '-z' ? q.x1 - q.x0 : q.z1 - q.z0);
   const gaps = SIDES.map((s) => ({ s, g: gap(s), w: walked(s) }));
   const onStreet = gaps.filter(({ g }) => g <= REACH).sort((a, b) => Number(b.w) - Number(a.w) || len(b.s) - len(a.s) || SIDES.indexOf(a.s) - SIDES.indexOf(b.s));
   if (!onStreet.length) {
     const nearest = gaps.sort((a, b) => a.g - b.g || SIDES.indexOf(a.s) - SIDES.indexOf(b.s))[0];
-    return { front: Number.isFinite(nearest.g) ? nearest.s : '+z', corner: null };
+    return { front: Number.isFinite(nearest.g) ? nearest.s : '+z', corner: null, onStreet: false };
   }
   const front = onStreet[0].s;
   const acrossX = (s: Side) => SIDE_NORMAL[s].x !== 0;
   const corner = onStreet.find(({ s }) => acrossX(s) !== acrossX(front))?.s ?? null;
-  return { front, corner };
+  return { front, corner, onStreet: true };
+}
+
+/**
+ * A lot with no street of its own, in the middle of a block: a back yard with
+ * a low workshop, not a street building facing its neighbour's back wall. A
+ * sloping metal roof, a roller door onto the yard, pallets, crates and a skip.
+ * Registered as a fixed business (open ground), so lettings and the like pass it by.
+ */
+/** One lamp material for every yard (a lit material is a draw call of its own). */
+let yardLamp: MeshLambertMaterial | null = null;
+function backLot(g: Object3D, q: Rect, random: Random): void {
+  const w = q.x1 - q.x0;
+  const d = q.z1 - q.z0;
+  const cx = (q.x0 + q.x1) / 2;
+  const cz = (q.z0 + q.z1) / 2;
+  add(g, box(w, 0.14, d, mat(PALETTE.concrete), cx, 0, cz));
+  // The workshop along the lot's longer side, the yard beside it.
+  const alongX = w >= d;
+  const [ww, wd] = alongX ? [w - 1, d * 0.55] : [w * 0.55, d - 1];
+  const wx = alongX ? cx : q.x0 + ww / 2 + 0.5;
+  const wz = alongX ? q.z0 + wd / 2 + 0.5 : cz;
+  const wall = mat([0x6a5a4e, 0x5e5a52, 0x7a6a58][Math.floor(random() * 3)]);
+  add(g, box(ww, 3.4, wd, wall, wx, 0.12, wz));
+  const roof = add(g, box(alongX ? ww + 0.4 : wd + 0.4, 0.12, alongX ? wd + 0.6 : ww + 0.6, mat(0x7a7e82), wx, 3.6, wz), alongX ? 0 : Math.PI / 2);
+  roof.rotation.x = 0.12;
+  // Corrugations: ribs down the roof's slope.
+  const len = alongX ? ww : wd;
+  for (let a = -len / 2 + 0.4; a < len / 2; a += 0.6) {
+    const rib = add(g, box(0.06, 0.06, (alongX ? wd : ww) + 0.6, mat(0x8a8e92), alongX ? wx + a : wx, 3.68, alongX ? wz : wz + a), alongX ? 0 : Math.PI / 2);
+    rib.rotation.x = 0.12;
+  }
+  // The roller door onto the yard, a lamp over it.
+  const [dx, dz, rot] = alongX ? [wx, wz + wd / 2 + 0.02, 0] : [wx + ww / 2 + 0.02, wz, Math.PI / 2];
+  add(g, box(2.6, 2.6, 0.06, mat(0x8a8a86), 0, 0, 0), rot).position.set(dx, 0.12, dz);
+  add(g, box(0.3, 0.2, 0.3, (yardLamp ??= glowMat(0x3a3020, 0xffd8a0, 0.6)), 0, 0, 0)).position.set(dx + (alongX ? 1.8 : 0), 2.9, dz + (alongX ? 0.1 : 1.8));
+  // In the yard: pallets, crates and a skip.
+  const yx = alongX ? cx : (q.x1 + wx + ww / 2) / 2;
+  const yz = alongX ? (q.z1 + wz + wd / 2) / 2 : cz;
+  for (let k = 0; k < 3; k++) add(g, box(1.2, 0.15 * (1 + (k % 2)), 1.0, mat(0x9a7a50), yx - 1.6 + k * 1.3 + (random() - 0.5) * 0.3, 0.14, yz + (random() - 0.5) * 0.6));
+  add(g, box(0.8, 0.8, 0.8, mat(0x7a6a50), yx + 1.6, 0.14, yz - 0.9));
+  if (random() < 0.6) add(g, box(2.2, 1.0, 1.3, mat(0x3a6a8a), yx, 0.14, yz + 1.4));
+  registerBuilding(q.x0, q.x1, q.z0, q.z1, 3.6, true);
 }
 
 /**
@@ -355,7 +398,48 @@ function pocketPark(g: Object3D, q: Rect, random: Random): void {
   }
 }
 
-function fillBlock(scene: Object3D, block: Rect, windows: MeshLambertMaterial[], random: Random, park = false): void {
+/**
+ * A surface car park on one lot: asphalt behind a kerb, white bays in rows
+ * either side of an aisle, most of them taken, a pay machine and a lamp. The
+ * cars are parked (unlit); the lot is where a building would be.
+ */
+function parkingLot(g: Object3D, q: Rect, random: Random): void {
+  PARKING_LOTS.push({ ...q });
+  const cx = (q.x0 + q.x1) / 2;
+  const cz = (q.z0 + q.z1) / 2;
+  const w = q.x1 - q.x0;
+  const d = q.z1 - q.z0;
+  add(g, box(w + 0.3, 0.12, d + 0.3, mat(PALETTE.pavementAlt), cx, 0, cz));
+  add(g, box(w, 0.135, d, mat(PALETTE.asphalt), cx, 0, cz));
+  const paint = mat(0xe8e4da);
+  // Bays run across x, 2.5 m wide, 5 m deep, in a row at each long side of a central aisle.
+  const bayW = 2.5;
+  const n = Math.floor((w - 0.6) / bayW);
+  const x0 = cx - (n * bayW) / 2;
+  const rows: [number, number][] = [[q.z0 + 0.3, 1], [q.z1 - 0.3, -1]];
+  for (const [edge, dir] of rows) {
+    for (let i = 0; i <= n; i++) add(g, box(0.08, 0.01, 4.6, paint, x0 + i * bayW, 0.14, edge + dir * 2.3));
+    add(g, box(n * bayW, 0.01, 0.08, paint, cx, 0.14, edge + dir * 4.6));
+    for (let i = 0; i < n; i++) {
+      if (random() < 0.3 || d < 11) continue;
+      const c = add(g, car(CAR_COLOURS[Math.floor(random() * CAR_COLOURS.length)], false));
+      c.position.set(x0 + (i + 0.5) * bayW, 0.14, edge + dir * 2.4);
+      c.rotation.y = dir > 0 ? 0 : Math.PI;
+    }
+  }
+  // An entry arrow on the aisle, a pay machine and a tall lamp.
+  add(g, box(0.3, 0.01, 1.4, paint, cx, 0.14, cz));
+  add(g, box(0.45, 1.3, 0.35, mat(0x2a5a8a), q.x1 - 0.6, 0.13, cz + 1.2));
+  add(g, box(0.3, 0.2, 0.02, glowMat(0x203040, 0xc8f0ff, 0.6), q.x1 - 0.6, 1.0, cz + 1.39));
+  add(g, box(0.12, 5, 0.12, mat(PALETTE.metal), q.x0 + 0.4, 0.13, cz));
+  add(g, box(0.9, 0.15, 0.35, mat(PALETTE.metal), q.x0 + 0.8, 5.05, cz));
+}
+
+/** Car parks built this launch (they move from launch to launch). */
+export const PARKING_LOTS: Rect[] = [];
+
+function fillBlock(scene: Object3D, block: Rect, windows: MeshLambertMaterial[], random: Random, open: 'park' | 'parking' | null = null): void {
+  const park = open !== null;
   const g = add(scene, new Group());
   const centre: Rect = { x0: -HALF, x1: HALF, z0: -HALF, z1: HALF };
   // Lot widths differ per block and per launch, so the same block is cut into
@@ -395,7 +479,7 @@ function fillBlock(scene: Object3D, block: Rect, windows: MeshLambertMaterial[],
       if (!r) { if (lot === parkLot) parkLot++; continue; }
       q.x0 = r.x0; q.x1 = r.x1; q.z0 = r.z0; q.z1 = r.z1;
       if (lot === parkLot) {
-        if (q.x1 - q.x0 >= 7 && q.z1 - q.z0 >= 7) { pocketPark(g, q, random); continue; }
+        if (q.x1 - q.x0 >= 7 && q.z1 - q.z0 >= 7) { if (open === 'parking') parkingLot(g, q, random); else pocketPark(g, q, random); continue; }
         parkLot++;
       }
       if (random() < 0.07) {
@@ -404,12 +488,13 @@ function fillBlock(scene: Object3D, block: Rect, windows: MeshLambertMaterial[],
         add(g, tree((Math.floor(random() * 3)) as 0 | 1 | 2, 0.9 + random() * 0.3)).position.set((q.x0 + q.x1) / 2, 0.13, (q.z0 + q.z1) / 2);
         continue;
       }
+      const { front, corner, onStreet } = districtFrontage(q);
+      if (!onStreet) { backLot(g, q, random); continue; }
       const low = inFrontOfService(q);
       // Rooflines are ragged: storeys plus a little, never a neat grid of heights.
       const h = low ? 3.2 + random() * 1.4 : 6.2 + Math.floor(random() * 3) * 3 + (random() - 0.3) * 0.8;
       // Each building faces its street, turned a fraction of a degree off
       // the street grid, the way blocks get rebuilt piecemeal.
-      const { front, corner } = districtFrontage(q);
       const yaw = (random() - 0.5) * 0.03;
       const roof = placeBuilding(g, q, front, corner, yaw, [0, 0], h, WALLS[Math.floor(random() * WALLS.length)], windows, random);
       registerBuilding(q.x0, q.x1, q.z0, q.z1, h, false, front, roof);
@@ -452,12 +537,13 @@ export function fillCityBlock(scene: Object3D, block: Rect, windows: MeshLambert
         add(g, tree((Math.floor(random() * 3)) as 0 | 1 | 2, 0.9 + random() * 0.3)).position.set((q.x0 + q.x1) / 2, 0.13, (q.z0 + q.z1) / 2);
         continue;
       }
+      const { front, corner, onStreet } = blockFrontage(q, block);
+      if (!onStreet) { backLot(g, q, random); continue; }
       const storeys = Math.max(1, Math.round((minH + random() * (maxH - minH)) / 3));
       const h = 3.2 + (storeys - 1) * 3 + (random() - 0.3) * 0.6;
       // Out in the city buildings sit a little off the grid and a degree or two askew, each facing its street.
       const nudge: [number, number] = [(random() - 0.5) * 0.8, (random() - 0.5) * 0.8];
       const yaw = (random() - 0.5) * 0.06;
-      const { front, corner } = blockFrontage(q, block);
       const roof = placeBuilding(g, q, front, corner, yaw, nudge, h, WALLS[Math.floor(random() * WALLS.length)], windows, random);
       registerBuilding(q.x0, q.x1, q.z0, q.z1, h, false, front, roof);
     }
@@ -477,7 +563,10 @@ export function buildInfill(scene: Object3D, random: Random): WindowBank[] {
   const parks = new Set<string>();
   const want = random() < 0.5 ? 1 : 2;
   while (parks.size < want) parks.add(names[Math.floor(random() * names.length)]);
-  for (const [name, block] of Object.entries(BLOCKS)) fillBlock(scene, block, windows, random, parks.has(name));
+  // And a parking lot in another block.
+  const rest = names.filter((n) => !parks.has(n));
+  const parking = rest[Math.floor(random() * rest.length)];
+  for (const [name, block] of Object.entries(BLOCKS)) fillBlock(scene, block, windows, random, parks.has(name) ? 'park' : name === parking ? 'parking' : null);
   // A centre site the club or the drop-in left this launch: an ordinary building, never a bare lot.
   for (const { rect: q, face } of SPARE_CENTRE_LOTS) {
     const g = add(scene, new Group());

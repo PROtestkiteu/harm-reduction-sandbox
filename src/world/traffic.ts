@@ -73,8 +73,9 @@ export class Traffic {
       const g = this.blocks(c, o);
       if (g === null) continue;
       const crossing = Math.abs(c.dx * o.dx + c.dz * o.dz) < 0.7;
-      if (crossing && o.waited > STUCK && c.id < o.id) {
-        // A crossing car stuck there gives way to the lower id, moving or not: it goes on.
+      if (crossing && o.waited > STUCK && c.id < o.id && this.toCrossing(o, c) > o.half + HALF_WIDTH) {
+        // A crossing car stuck short of `c`'s line gives way to the lower id, moving or not: it goes on.
+        // One standing across the line (held at a light or a level crossing inside a junction) is never driven through.
         continue;
       } else if (crossing && this.blocks(o, c) !== null) {
         // Both in each other's way: the one nearer the crossing goes on.
@@ -99,6 +100,25 @@ export class Traffic {
       gap = Math.min(gap, toLine - 0.6);
     }
     return gap;
+  }
+
+  /**
+   * The light shown to traffic along `along` at the lit junction nearest
+   * (x, z) within `reach` metres of its box, or null when none is that close.
+   * People on foot read it to cross with the lights.
+   */
+  lightAt(x: number, z: number, along: 'x' | 'z', reach = 3): Light | null {
+    for (const s of this.signals) {
+      if (x < s.x0 - reach || x > s.x1 + reach || z < s.z0 - reach || z > s.z1 + reach) continue;
+      return along === 'x' ? s.x : s.z;
+    }
+    return null;
+  }
+
+  /** No car on the road within `r` metres of (x, z), whichever way it goes: a spot where a car may set out. */
+  clearAround(x: number, z: number, r: number): boolean {
+    for (const o of this.cars) if (o.active && Math.hypot(o.x - x, o.z - z) < r + o.half) return false;
+    return true;
   }
 
   /** No other car in `c`'s lane (going its way) from `back` metres behind it to `ahead` metres in front. */

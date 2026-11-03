@@ -5,7 +5,8 @@
 //   npm run dev                                   (in another terminal)
 //   node scripts/bots/clearance.mjs [--url http://localhost:5199/] [--launches 3]
 //
-// Fails (exit 1) when anything stands in the walking band or inside a building.
+// Fails (exit 1) when anything stands in the walking band or inside a building, or when a solid
+// footprint (bench, bin, shelter, kiosk, parked car, stage piece) stands on a walking line.
 // Reads layout and config modules through the dev server, so restart it after
 // editing src/world/cityBuildings.ts (a hot-reloaded copy would be empty).
 
@@ -18,9 +19,12 @@ const launches = Number(opt('launches', 3));
 
 let failed = false;
 for (let n = 1; n <= launches; n++) {
-  const steps = [...SKIP_WELCOME, { eval: '__sandbox.sim.camp.squat = 0.9; __sandbox.sim.configure({ clock: 1330 }); 1' }, { wait: 5000 }, call('./clearance.js')];
+  const steps = [...SKIP_WELCOME, { eval: '__sandbox.sim.camp.squat = 0.9; __sandbox.sim.configure({ clock: 1330 }); 1' }, { wait: 5000 }, call('./clearance.js'), call('./solids.js')];
   const res = await drive(base, steps, { log: () => {} });
-  const items = JSON.parse(res.at(-1));
+  const items = JSON.parse(res.at(-2));
+  const onLines = JSON.parse(res.at(-1));
+  failed ||= onLines.length > 0;
+  for (const x of onLines) console.log('  PROBLEM solid on a walking line', x);
   const bad = items.filter((x) => (x.clear < 0 && !x.n.includes('line')) || x.inBuilding !== null);
   failed ||= bad.length > 0;
   console.log(`launch ${n}: ${items.length} items, ${bad.length} problems`);

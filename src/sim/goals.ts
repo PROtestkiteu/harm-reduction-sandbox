@@ -22,6 +22,9 @@ export interface NightReport {
   starsTotal: number;
   /** The scenario was won with this night. */
   won: boolean;
+  /** Deaths over the whole run, and whether the project has folded (for a scenario's progress). */
+  deathsTotal?: number;
+  folded?: boolean;
   /** The district at the night's end (sim/growth.ts): its size against the first evening, and its street scene, 0 to 1. */
   district?: { size: number; street: number };
 }
@@ -70,17 +73,18 @@ export class Goals {
   }
 
   /** 08:00: scores the night that just ended (`nights` survived before it) and starts the next one. */
-  end(nights: number, helped: number, turnedAway: number, deaths: number, money: number, totalHelped: number): NightReport {
+  end(nights: number, helped: number, turnedAway: number, deaths: number, money: number, totalHelped: number, folded = false): NightReport {
     const goals = this.progress(helped, money);
     const stars = goals.filter((g) => g.met).length;
     this.stars += stars;
     const s = this.scenario;
-    const won = !!s && !this.won && nights + 1 >= s.nights && totalHelped >= s.helped && this.stars >= s.stars;
+    // Won on the night its goal is met: enough nights, people helped and stars, deaths within the cap, the project standing.
+    const won = !!s && !this.won && !folded && nights + 1 >= s.nights && totalHelped >= s.helped && this.stars >= s.stars && deaths <= s.deaths;
     if (won) this.won = true;
     const report: NightReport = {
       night: nights + 1, helped: helped - this.start.helped, turnedAway: turnedAway - this.start.turnedAway, deaths: deaths - this.start.deaths,
       moneyStart: Math.round(this.start.money), moneyEnd: Math.round(money), redHours: Math.round(this.redMinutes / 6) / 10,
-      goals, stars, starsTotal: this.stars, won,
+      goals, stars, starsTotal: this.stars, won, deathsTotal: deaths, folded,
     };
     this.begin(helped, turnedAway, deaths, money);
     return report;
