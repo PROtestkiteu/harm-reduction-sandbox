@@ -9,7 +9,7 @@ All CC0 (public domain). Attribution is not required; it is given with thanks.
 
 Everything else is synthesised at run time from the Web Audio API and seeded noise (src/audio: noise.ts, recipes.ts, loops.ts, life.ts, ambience.ts, cues.ts). Written for this game, no samples, no third-party sound: it adds nothing to the download.
 
-- Weather: rain hiss and droplets, gusting wind, far thunder; snow muffles the city, traffic and voices.
+- Weather: a soft rain wash, droplets on hard ground and drips into puddles, wind in gusts, far thunder; snow muffles the city, traffic and voices.
 - City: the river against its banks, birds before dawn, an owl and crickets in the park at night, dogs, pigeons, doors, roller shutters, car alarms.
 - Traffic: far and near cars, bus engines and brake hiss, scooters, horns, the train's rumble, joint clacks and brake squeal, barges and their horns, planes, a van reversing at dawn.
 - People: footsteps, talk outside the club and on bar terraces, glasses, a shopping trolley near the camps, bicycle bells, stadium roars and clapping chants, the festival crowd.

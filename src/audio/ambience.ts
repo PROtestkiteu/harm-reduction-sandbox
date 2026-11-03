@@ -26,7 +26,7 @@ export interface AmbienceMood {
  * life in separate events that come and go: far cars overlapping into a
  * wash with gaps, nearer cars passing, footsteps, a bottle, a far siren.
  */
-const LEVEL = { recorded: 0.55, bed: 0.05, far: 0.17, near: 0.32, steps: 0.24, murmur: 0.08, kick: 0.17, bass: 0.055, rain: 0.11, drops: 0.14, siren: 0.024, clink: 0.06 };
+const LEVEL = { recorded: 0.55, bed: 0.05, far: 0.17, near: 0.32, steps: 0.24, murmur: 0.08, kick: 0.17, bass: 0.055, rain: 0.04, drops: 0.08, siren: 0.024, clink: 0.06 };
 /** The club's tempo. */
 const BEAT = 60 / 124;
 /** How far ahead beats are put on the audio clock; longer than the update interval, so none is missed. */
@@ -35,7 +35,7 @@ const LOOKAHEAD = 0.7;
 const BASS = [98, 0, 98, 0, 73.4, 0, 82.4, 0];
 
 /** A slowly wandering value: eases towards a new random target every few seconds, so levels never sit still. */
-class Wander {
+export class Wander {
   value: number;
   private target: number;
   private left = 0;
@@ -118,12 +118,12 @@ export class Ambience {
     // Nearer cars: brighter, quicker, panned across.
     for (let i = 0; i < 2; i++) this.near.push(voice(0.9, bus.traffic));
 
-    // Rain: a hiss that gusts, and droplets on hard ground.
+    // Rain: a soft, dark wash that swells and thins (pink noise, no white sizzle), and droplets on hard ground on top.
     this.rain = silent();
-    loopNoise(ctx, noise.white, random, 1).connect(f('highpass', 900)).connect(f('lowpass', 6500)).connect(this.rain).connect(bus.weather);
+    loopNoise(ctx, noise.pink, random, 1).connect(f('highpass', 450)).connect(f('lowpass', 2600)).connect(this.rain).connect(bus.weather);
     this.drops = silent();
-    loopNoise(ctx, noise.drops, random, 1).connect(f('highpass', 1500)).connect(f('lowpass', 8000)).connect(this.drops).connect(bus.weather);
-    this.rainGust = new Wander(random, 0.3, 1, [2, 7]);
+    loopNoise(ctx, noise.drops, random, 1).connect(f('highpass', 1200)).connect(f('lowpass', 6000)).connect(this.drops).connect(bus.weather);
+    this.rainGust = new Wander(random, 0.15, 1, [3, 9]);
 
     // People talking outside the club: a band of noise whose level flickers at the pace of speech.
     this.murmur = silent();

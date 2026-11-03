@@ -213,6 +213,19 @@ export const radio: Recipe = ({ ctx, white, pink, random }, out, t, pan, level) 
   squelch(t + dur + 0.05);
 };
 
+/** Rain off a gutter or an awning: one to three drops falling into a puddle, each a short falling plink, now and then a splash. */
+export const drip: Recipe = ({ ctx, white, random }, out, t, pan, level) => {
+  const p = panner(ctx, out, pan);
+  const n = 1 + Math.floor(random() * 3);
+  let s = t;
+  for (let i = 0; i < n; i++) {
+    const hz = between(random, 1400, 3200);
+    tone(ctx, p, s, { from: hz, to: hz * between(random, 0.45, 0.7), glide: 0.035, level: level * between(random, 0.5, 1), attack: 0.002, decay: 0.018 });
+    if (random() < 0.3) burst(ctx, p, white, s, { hz: between(random, 2500, 4500), q: 1.5, level: level * 0.5, decay: 0.01 }, random);
+    s += between(random, 0.12, 0.5);
+  }
+};
+
 /** Thunder far off: a rumble of noise that rolls a few times and dies away. */
 export const thunder: Recipe = ({ ctx, pink, random }, out, t, pan, level) => {
   const p = panner(ctx, out, pan);

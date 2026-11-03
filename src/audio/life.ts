@@ -1,3 +1,4 @@
+import { Wander } from './ambience';
 import { Groove, Loop, lfo, noiseSource, type Pattern } from './loops';
 import * as R from './recipes';
 import type { NoiseBank } from './noise';
@@ -67,7 +68,7 @@ export interface LifeState {
 
 /** Levels at full mood, before the channel's volume. */
 const LEVEL = {
-  wind: 0.06, river: 0.05, bird: 0.035, owl: 0.03, dog: 0.03, crickets: 0.01, pigeons: 0.05, door: 0.06, shutter: 0.04,
+  wind: 0.05, drip: 0.024, river: 0.05, bird: 0.035, owl: 0.03, dog: 0.03, crickets: 0.01, pigeons: 0.05, door: 0.06, shutter: 0.04,
   engine: 0.07, hiss: 0.05, siren: 0.05, train: 0.12, clack: 0.1, squeal: 0.012, scooter: 0.05, horn: 0.04, plane: 0.05, reversing: 0.012, barge: 0.06, boatHorn: 0.05,
   stadium: 3, roar: 1.2, chant: 0.8, festivalCrowd: 0.35, terrace: 0.3, cheers: 0.05, trolley: 0.04, bell: 0.025, alarm: 0.03,
   rave: 0.9, stage: 0.8, radio: 0.05, heli: 0.12, thunder: 0.2,
@@ -109,6 +110,7 @@ interface Shot {
 export class CityLife {
   private readonly k: R.Kit;
   private readonly wind: Loop;
+  private readonly gust: Wander;
   private readonly river: Loop;
   private readonly stadium: Loop;
   private readonly festivalCrowd: Loop;
@@ -130,15 +132,14 @@ export class CityLife {
     const r = random;
     this.k = { ctx, white: noise.white, pink: noise.pink, random };
 
-    // Wind: a band of air that gusts and moves in pitch; higher views catch more of it.
+    // Wind: a narrow, low band of air that only blows in gusts (see update), its pitch rising and falling with each.
     this.wind = new Loop(ctx, bus.weather, (into) => {
-      const band = filter(ctx, 'bandpass', 520, 0.9);
-      const gust = ctx.createGain();
-      gust.gain.value = 0.6;
+      const band = filter(ctx, 'bandpass', 380, 2.2);
       const src = noiseSource(ctx, noise.pink, r, 0.8);
-      src.connect(band).connect(filter(ctx, 'highpass', 200)).connect(gust).connect(into);
-      return [src, lfo(ctx, band.frequency, 0.045 + r() * 0.03, 260), lfo(ctx, gust.gain, 0.09 + r() * 0.05, 0.4)];
+      src.connect(band).connect(filter(ctx, 'highpass', 200)).connect(into);
+      return [src, lfo(ctx, band.frequency, 0.07 + r() * 0.04, 150)];
     });
+    this.gust = new Wander(r, 0, 1, [3, 10]);
     // The river against its banks: dull water whose level ripples at the pace of small waves.
     this.river = new Loop(ctx, bus.city, (into) => {
       const lap = ctx.createGain();
@@ -236,7 +237,9 @@ export class CityLife {
 
     // Weather.
     const windy = ({ winter: 0.75, autumn: 0.7, spring: 0.45, summer: 0.2 } as const)[s.season];
-    this.wind.set(on('weather') ? LEVEL.wind * level * (windy * (0.55 + 0.45 * wide) + 0.3 * s.snow + 0.25 * s.rain) : 0, 0, dt, 2);
+    // Gusts with still air between them: only the top of the wandering value blows.
+    const gust = Math.max(0, (this.gust.step(dt) - 0.45) / 0.55) ** 1.5;
+    this.wind.set(on('weather') ? LEVEL.wind * level * gust * (windy * (0.5 + 0.5 * wide) + 0.3 * s.snow) : 0, 0, dt, 1.2);
 
     // The city: the river, nearer as the view comes to it.
     let at = placeLine(l, 'z', p.riverX, 0.8);
@@ -390,6 +393,8 @@ export class CityLife {
       out({ ch: 'people', every: [30, 80], weight: (s, l) => (1 - s.night * 0.7) * s.busy * closeness(l) * (1 - s.rain) * (1 - s.snow),
         play: (t) => R.bell(k, b.people, t, anywhere(), LEVEL.bell) }),
       // Weather and alerts.
+      out({ ch: 'weather', every: [0.4, 1.6], weight: (s, l) => s.rain * (0.25 + 0.75 * closeness(l)),
+        play: (t, w) => R.drip(k, b.weather, t, anywhere(), LEVEL.drip * Math.min(1, 0.3 + w)) }),
       out({ ch: 'weather', every: [40, 120], weight: (s) => (s.rain > 0.55 && s.season !== 'winter' ? s.rain : 0),
         play: (t, w) => R.thunder(k, b.weather, t, anywhere(), LEVEL.thunder * Math.min(1, w)) }),
       out({ ch: 'events', every: [5, 14], weight: (s, l) => {
