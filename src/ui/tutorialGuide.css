@@ -6,9 +6,10 @@
 [data-tutorial-organisation="false"] [data-tutorial-feature="organisation"],
 [data-tutorial-full-ui="false"] [data-tutorial-feature="fullUi"] { display: none !important; }
 .tutorial-guide {
-  position: absolute; left: max(20px, var(--safe-left, 0px)); top: calc(max(12px, var(--safe-top)) + 76px); z-index: 12; width: min(340px, calc(100% - 40px)); box-sizing: border-box;
+  position: absolute; left: max(20px, var(--safe-left, 0px)); top: calc(var(--hud-controls-bottom, 76px) + 12px); z-index: 12; width: min(340px, calc(100% - 40px)); box-sizing: border-box;
   color: var(--text, #e8dec9); background: var(--grain), rgba(var(--fade), .97); border: 1px solid var(--muted, #776a53);
   border-left: 3px solid var(--reply, #c7a663); padding: 14px 16px; box-shadow: 0 8px 22px #0005;
+  max-height: calc(100% - var(--hud-controls-bottom, 76px) - 24px); overflow-y: auto;
   pointer-events: auto; font-family: inherit;
 }
 .tutorial-guide[hidden] { display: none; }

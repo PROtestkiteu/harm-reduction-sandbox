@@ -1024,6 +1024,7 @@ const sandbox = new SandboxPanel(hudRoot, settings, {
   },
   // One panel at a time in the settings' place.
   onOpen: () => orgSheet.setOpen(false),
+  onVisibilityChange: (open) => tutorialGuide?.setCovered(open || orgSheet.isOpen),
 });
 
 sandbox.placeCompactToggle(hudRoot.querySelector<HTMLElement>('.hud-header h1')!);
@@ -1146,7 +1147,7 @@ org.section.insertBefore(stakesSection.root, org.section.querySelector('.org-tea
 // The storm warning and the run's end wait for the pop-up to be free, ahead of other big events.
 const stakesBoxes: MajorEvent[] = [];
 // The organisation has its own sheet, opened from the money in the top bar or the organisation bar.
-const orgSheet = new Sheet(hudRoot, org.section, { label: t('Organisation'), disclosure: () => org.section.classList.contains('org-team-mode') ? org.teamDisclosure : null, onOpen: () => sandbox.setOpen(false), onChange: (open) => tutorialGuide?.setCovered(open) });
+const orgSheet = new Sheet(hudRoot, org.section, { label: t('Organisation'), disclosure: () => org.section.classList.contains('org-team-mode') ? org.teamDisclosure : null, onOpen: () => sandbox.setOpen(false), onChange: (open) => tutorialGuide?.setCovered(open || sandbox.isOpen) });
 function openOrg(teamOnly = false, support?: PersonSupport, service?: ServiceId): void {
   if (teamOnly ? !sim.tutorialCapabilities.staff : !sim.tutorialCapabilities.organisation) return;
   org.setTeamAccess(sim.tutorialCapabilities.services, teamOnly && !sim.tutorialCapabilities.organisation);
@@ -2150,13 +2151,21 @@ const hudLayoutObserver = new ResizeObserver(() => {
   const dock = hudRoot.querySelector<HTMLElement>('.column')!.getBoundingClientRect();
   const guide = tutorialGuide?.root.getBoundingClientRect();
   const viewport = hudRoot.getBoundingClientRect();
+  const headerBottom = hudRoot.querySelector('.hud-header')!.getBoundingClientRect().bottom - viewport.top;
+  const settingsToggle = hudRoot.querySelector('.sandbox-toggle')!;
+  const settingsHeight = settingsToggle.closest('.hud-header') ? 0 : settingsToggle.getBoundingClientRect().height;
+  const controlsBottom = headerBottom + (settingsHeight ? 8 + settingsHeight : 0);
+  for (const [name, value] of [['--hud-header-bottom', headerBottom], ['--hud-controls-bottom', controlsBottom]] as const) {
+    const px = `${value}px`;
+    if (hudRoot.style.getPropertyValue(name) !== px) hudRoot.style.setProperty(name, px);
+  }
   const contextBottom = `${(guide?.height ? guide.bottom : hudRoot.querySelector('.hud-header')!.getBoundingClientRect().bottom) - viewport.top}px`;
   if (hudRoot.style.getPropertyValue('--context-bottom') !== contextBottom) hudRoot.style.setProperty('--context-bottom', contextBottom);
   const bottom = dock.left < viewport.width / 2 && dock.height > 0 ? dock.top : viewport.bottom - 26;
   const room = `${Math.max(80, bottom - (guide?.height ? guide.bottom : viewport.top + 70) - 20)}px`;
   if (portraitBox.style.getPropertyValue('--portrait-room') !== room) portraitBox.style.setProperty('--portrait-room', room);
 });
-for (const element of hudRoot.querySelectorAll<HTMLElement>('.tutorial-guide, .column, .top-bar, .hud-header')) hudLayoutObserver.observe(element);
+for (const element of hudRoot.querySelectorAll<HTMLElement>('.tutorial-guide, .column, .top-bar, .hud-header, .sandbox-toggle')) hudLayoutObserver.observe(element);
 window.visualViewport?.addEventListener('scroll', () => { hud.invalidateLayout(); rig.invalidate(); dirty = true; });
 function syncTutorial(): void {
   if (sim.tutorial && !tutorialArea) tutorialArea = new TutorialArea(world, rig, sim.tutorialCapabilities);

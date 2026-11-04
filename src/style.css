@@ -1937,6 +1937,19 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
 .sandbox.sheet { margin-top: 50px; }
 .sandbox.sheet:not([data-open='true']) { display: none; }
 @media (min-width: 761px) { .sheet .sandbox-body { position: relative; } }
+/* Wide-screen sheets open in the map area beside their action column. */
+@media (min-width: 761px) and (min-height: 521px) {
+  .sandbox { top: calc(var(--hud-header-bottom, 65px) + 8px); }
+  .sandbox.sheet {
+    top: calc(var(--hud-controls-bottom, 112px) + 12px); margin-top: 0;
+    left: calc((100% - var(--window-w) - var(--window-edge) - 24px) / 2); right: auto;
+    transform: translateX(-50%);
+    width: min(560px, calc(100% - var(--window-w) - var(--window-edge) - 48px));
+  }
+  .sandbox:not(.sheet) .sandbox-body { max-height: calc(var(--ui-height, 100dvh) - var(--hud-controls-bottom, 112px) - 18px); }
+  .sheet .sandbox-body { max-height: calc(var(--ui-height, 100dvh) - var(--hud-controls-bottom, 112px) - 24px); }
+}
+
 .sheet-head { position: absolute; top: 8px; right: 8px; }
 .sheet .org-name-row { padding-right: 0; }
 @media (max-width: 760px) {

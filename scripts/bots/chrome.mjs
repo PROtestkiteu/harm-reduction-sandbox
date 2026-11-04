@@ -129,7 +129,16 @@ export async function drive(url, steps, { out = '.', size = '1280x800', dpr = 1,
       if (m.method === 'Runtime.consoleAPICalled' && m.params.type === 'error') console.error('console.error:', m.params.args.map((a) => a.value ?? a.description).join(' '));
       if (m.method === 'Runtime.exceptionThrown') console.error('exception:', m.params.exceptionDetails.exception?.description);
     });
-    const send = (method, params = {}) => new Promise((r) => { const n = ++id; waiting.set(n, r); ws.send(JSON.stringify({ id: n, method, params })); });
+    ws.addEventListener('close', () => {
+      for (const resolve of waiting.values()) resolve({ error: { message: 'Chrome debugging connection closed' } });
+      waiting.clear();
+    });
+    const send = (method, params = {}) => new Promise((resolve, reject) => {
+      const n = ++id;
+      waiting.set(n, message => message.error ? reject(new Error(message.error.message)) : resolve(message));
+      try { ws.send(JSON.stringify({ id: n, method, params })); }
+      catch (error) { waiting.delete(n); reject(error); }
+    });
     await send('Runtime.enable');
     await send('Page.enable');
     if (!menu) await send('Page.addScriptToEvaluateOnNewDocument', { source: "try{localStorage.setItem('hrp-tutorials-hidden', JSON.stringify(['welcome','guides']))}catch{}" });

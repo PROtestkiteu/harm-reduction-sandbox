@@ -9,8 +9,8 @@ export interface SheetOptions {
 }
 
 /**
- * A panel in the settings' place and style (a column on the left, a bottom
- * sheet on phones) for one section opened from elsewhere, such as the
+ * A panel centered in the desktop map area, and a bottom sheet on phones,
+ * for a section opened from elsewhere, such as the
  * organisation from the money in the top bar. It has no toggle of its own:
  * the caller toggles it; Escape also shuts it.
  */

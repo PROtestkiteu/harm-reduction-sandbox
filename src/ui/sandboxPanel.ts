@@ -7,6 +7,7 @@ export interface SandboxPanelCallbacks {
   onReset(): void;
   /** Fires when the panel opens, so other panels in the same place can close. */
   onOpen?(): void;
+  onVisibilityChange?(open: boolean): void;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -269,13 +270,17 @@ export class SandboxPanel {
     place();
   }
 
+  get isOpen(): boolean { return !this.body.hidden; }
+
   setOpen(open: boolean, returnFocus = false): void {
+    const changed = open !== this.isOpen;
     if (open && this.body.hidden) this.cb.onOpen?.();
     this.body.hidden = !open;
     this.toggle.setAttribute('aria-expanded', String(open));
     this.toggle.setAttribute('aria-label', open ? t('Close settings') : t('Settings'));
     this.toggle.dataset.iconHint = open ? t('Close settings') : t('Change the night, the street and the services');
     this.root.dataset.open = String(open);
+    if (changed) this.cb.onVisibilityChange?.(open);
     if (returnFocus) this.toggle.focus();
   }
 
