@@ -1,3 +1,4 @@
+import { resetNames } from '../ui/names';
 import type { SandboxSettings } from '../config/sandboxParams';
 import type { SaveData } from './saveGame';
 import { RESUME_KEY } from './updates';
@@ -12,6 +13,8 @@ export interface LaunchConfiguration {
 
 export let launchConfiguration: LaunchConfiguration | null = null;
 export function setLaunchConfiguration(value: LaunchConfiguration): void {
+  // Reset before scene/UI modules read names; Continue and linked saves keep their state.
+  if (value.kind === 'new') resetNames();
   launchConfiguration = value;
   const seed = value.save?.worldSeed;
   if (typeof seed === 'number' && Number.isInteger(seed) && seed >= 0 && seed <= 0xffffffff) {

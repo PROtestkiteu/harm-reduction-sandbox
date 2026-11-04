@@ -37,3 +37,9 @@ export function rename(kind: Named, id: string | number, name: string): void {
 }
 
 export const NAME_MAX = MAX;
+
+/** A new run starts with default names, including session-only people/buildings. */
+export function resetNames(): void {
+  names = {};
+  try { localStorage.removeItem(KEY); } catch { /* Memory still resets when storage is blocked. */ }
+}
