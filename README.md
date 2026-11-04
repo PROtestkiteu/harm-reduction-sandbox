@@ -22,9 +22,19 @@ Every number in it is illustrative. It shows directions of effect that the resea
 | Move | drag | drag | arrows or WASD |
 | Turn | right drag | two fingers | |
 | Zoom | wheel | pinch | |
-| Back out | | | Esc |
+| Back out | click the selected item again | tap the selected item again | Esc |
 
-The Sandbox button (top left) has every setting. Links keep your settings, so you can share a scenario.
+On touch screens, the Settings gear beside the game title has every setting; tap it again to close.
+Desktop keeps its labelled Settings button. Links keep your settings, so you can share a scenario.
+
+On touch screens, goals, events, the map legend and selection details fold through their own headings.
+Map gestures and taps on empty ground keep your chosen panels open. Tap outside a hint or action menu
+to dismiss it, or tap its original item again. There is no bottom-sheet drag handle.
+
+Informational icon indicators show an explanation on hover or tap; the next tap anywhere closes it.
+Icons inside existing action controls show hints on hover, while taps keep the original action.
+Module headings use one plus/minus control; nested sections and navigation use matching chevrons.
+The team comparison closes through its heading, and Rename is available in the selection's context menu.
 
 ## Run it yourself
 

@@ -30,7 +30,7 @@ import {
 } from './details';
 import { add, bench, bin, bollard, box, cylinder, planter, signBoard, setFoliageSeason, setLampNight, streetLight, tree } from './kit';
 import { setPuddleLight, tickPuddles } from './puddles';
-import { AID_BUS, CAMPER_SPOTS, DISTRICT, SQUAT_SPOT, PARK_CAMP, STATION_CAMP, moveCamper as moveCamperFrame, CROSSING, HALF, HOME_CAMPER, HOME_CLUB, LOTS, NODES, PAVE_E, PAVE_W, ROAD, VENUE_FACE, VENUE_FRAME, VENUES_AT_HOME, PATROL, WALK_BAND, frontLineGap, toWorld, walkDistance, type Frame, type P2, type PlaceLot } from './layout';
+import { AID_BUS, CAMPER_SPOTS, TUTORIAL_LAYOUT, DISTRICT, SQUAT_SPOT, PARK_CAMP, STATION_CAMP, moveCamper as moveCamperFrame, CROSSING, HALF, HOME_CAMPER, HOME_CLUB, LOTS, NODES, PAVE_E, PAVE_W, ROAD, VENUE_FACE, VENUE_FRAME, VENUES_AT_HOME, PATROL, WALK_BAND, frontLineGap, toWorld, walkDistance, type Frame, type P2, type PlaceLot } from './layout';
 import { StageProps } from './stageProps';
 import type { ServiceId } from '../sim/types';
 import { buildBlockGround, buildOutskirts, buildStreets } from './district';
@@ -84,6 +84,8 @@ export interface World {
   /** Moves the sun's shadow frustum to cover the area in view. */
   setViewFocus(x: number, z: number, radius: number): void;
   update(dt: number, time: number): void;
+  /** Dormant districts do not advance ambient traffic or locked service animation. */
+  setTutorialActivity(services: readonly ServiceId[], fullCity: boolean): void;
   /** 0 at dusk, 1 in deep night: dims the low sun and cools the ambient light. */
   setNight(night: number, day?: number): void;
   /** The haze colour at the horizon now, as CSS hex: the page around the scene takes it. */
@@ -470,7 +472,11 @@ export function buildWorld(random: Random): World {
   const traffic = new Traffic();
   const lights = new TrafficLights(scene, traffic, beyond.trainSpan);
   const puffs = new Puffs(scene);
-  const ambient = buildAmbient(scene, mulberry(31), traffic, puffs, beyond.streets);
+  const ambientRoot = TUTORIAL_LAYOUT ? dynamic(new Group()) : new Group();
+  scene.add(ambientRoot);
+  const ambient = buildAmbient(ambientRoot, mulberry(31), traffic, puffs, beyond.streets);
+  let tutorialServices: ReadonlySet<string> | null = null;
+  let tutorialFullCity = true;
   const teamBus = new TeamBus(scene, traffic);
   const parkActivities = new ParkActivities(scene);
   let detail = 0.2;
@@ -989,9 +995,14 @@ export function buildWorld(random: Random): World {
       }
       return out;
     },
+    setTutorialActivity(services, fullCity) {
+      tutorialServices = fullCity ? null : new Set(services.map((id) => id === 'clubHr' ? 'club' : id));
+      tutorialFullCity = fullCity;
+      ambientRoot.visible = fullCity;
+    },
     update(dt, time) {
-      for (const id in expansions) expansions[id as LocationId].update(dt);
-      for (const id in stageProps) stageProps[id as ServiceId].update(dt, still);
+      for (const id in expansions) if (!tutorialServices || tutorialServices.has(id)) expansions[id as LocationId].update(dt);
+      for (const id in stageProps) if (!tutorialServices || tutorialServices.has(id === 'clubHr' ? 'club' : id)) stageProps[id as ServiceId].update(dt, still);
       for (const l of lettings) l.update(dt, still);
       for (const l of shopSigns) l.update(dt, still);
       opening.update(dt);
@@ -1005,22 +1016,26 @@ export function buildWorld(random: Random): World {
         const back = (1 - k) * 30;
         c.pivot.position.set(s.x - Math.sin(s.rot) * back, 0, s.z - Math.cos(s.rot) * back);
       }
-      dropIn.update(dt, time);
-      club.update(dt, time);
-      outreach.update(dt, time);
-      for (const p of places) p.update(dt, time);
-      residentialWindows.update(dt, 0.55);
-      outskirts.update(dt, 0.35);
-      beyond.update(dt);
+      if (!tutorialServices || tutorialServices.has('dropIn')) dropIn.update(dt, time);
+      if (!tutorialServices || tutorialServices.has('club')) club.update(dt, time);
+      if (!tutorialServices || tutorialServices.has('outreach')) outreach.update(dt, time);
+      for (const p of places) if (!tutorialServices || tutorialServices.has(p.root.name)) p.update(dt, time);
+      if (tutorialFullCity) {
+        residentialWindows.update(dt, 0.55);
+        outskirts.update(dt, 0.35);
+      }
+      if (tutorialFullCity) beyond.update(dt);
       lights.update(dt);
-      ambient.update(dt);
-      teamBus.update(dt);
+      if (tutorialFullCity) ambient.update(dt);
+      if (tutorialFullCity) teamBus.update(dt);
       puffs.update(dt);
-      for (const w of beyond.windows) w.update(dt, 0.4);
-      for (const w of infill) w.update(dt, 0.45);
+      if (tutorialFullCity) {
+        for (const w of beyond.windows) w.update(dt, 0.4);
+        for (const w of infill) w.update(dt, 0.45);
+      }
       updateNeon(time, neonLevel);
       for (const s of steam) s.update(dt);
-      for (const b of blocks) b.update(dt);
+      if (tutorialFullCity) for (const b of blocks) b.update(dt);
       weather.update(dt, still);
       if (!still) tickPuddles(dt);
     },

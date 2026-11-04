@@ -9,7 +9,13 @@ export const NEED_ICONS: Record<Need, string> = {
   district: '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 1.5l6.5 5.5H13v7.5H9.5V10h-3v4.5H3V7H1.5z"/></svg>',
 };
 
-const NEED_NAME: Record<Need, string> = { police: t('Police'), medics: t('Medics'), sobering: t('Sobering'), district: t('District') };
+export const NEED_NAME: Record<Need, string> = { police: t('Police'), medics: t('Medics'), sobering: t('Sobering'), district: t('District') };
+export const NEED_HINT: Record<Need, string> = {
+  police: t('Incidents, stops, the camp and people turned away from a bed keep police busy; an overstretched force makes the council lean on funders.'),
+  medics: t('Overdoses nobody reached, people harmed outdoors and people turned away from services fill ambulances and A&E; overstretched, fewer survive.'),
+  district: t('How well the district is doing: harm reduction that works brings more people out and new venues.'),
+  sobering: t('Drunk club leavers taken to the sobering-up centre (izba wytrzeźwień), more of them when the club service turns people away.'),
+};
 
 /**
  * A meter's state for its colour: green, amber, red. Pressure on a city service is bad high;
@@ -43,6 +49,8 @@ export function setNeeds(tag: HTMLElement, needs: readonly Need[] = []): void {
     const icon = document.createElement('span');
     icon.className = 'need';
     icon.dataset.need = n;
+    icon.dataset.iconHint = t('Eases: {needs}', { needs: NEED_NAME[n] });
+    icon.setAttribute('aria-label', icon.dataset.iconHint);
     icon.innerHTML = NEED_ICONS[n];
     return icon;
   }));

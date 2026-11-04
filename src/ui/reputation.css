@@ -1,0 +1,10 @@
+/* Keep the existing empty-counter appearance while allowing it to open the sheet. */
+.favour-count[data-state='none'], .favour-count[data-state='owed'] { color: var(--muted); }
+.reputation-disclosure { margin-top: 12px; }
+.reputation-disclosure summary { min-height: 44px; padding: 10px 0; box-sizing: border-box; cursor: pointer; overflow-wrap: anywhere; }
+.reputation-tree { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.reputation-tree > details { min-width: 0; border: 1px solid var(--muted); padding: 0 8px; }
+.reputation-tree > details:first-child, .reputation-tree > details:nth-last-child(-n+2) { grid-column: 1 / -1; }
+.reputation-tree p, .reputation-disclosure p { overflow-wrap: anywhere; }
+.org-favour-box .org-action { min-height: 44px; white-space: normal; overflow-wrap: anywhere; }
+@media (max-width: 380px) { .reputation-tree { grid-template-columns: minmax(0, 1fr); } }

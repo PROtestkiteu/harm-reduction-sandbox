@@ -70,8 +70,9 @@ const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 export class MapLayers {
   readonly button: HTMLButtonElement;
   private readonly legend: HTMLElement;
-  private readonly title: HTMLElement;
+  private readonly title: HTMLButtonElement;
   private readonly rows: HTMLUListElement;
+  private legendOpen = true;
   private rowsKey = '';
   kind: OverlayKind = 'off';
 
@@ -108,10 +109,14 @@ export class MapLayers {
     this.legend.setAttribute('aria-live', 'polite');
     const head = document.createElement('div');
     head.className = 'map-legend-head';
-    this.title = document.createElement('h3');
+    this.title = document.createElement('button');
+    this.title.type = 'button';
+    this.title.className = 'legend-heading';
+    this.title.addEventListener('click', () => this.setLegendOpen(!this.legendOpen));
     head.append(this.title);
     this.rows = document.createElement('ul');
     this.legend.append(head, this.rows);
+    this.setLegendOpen(!window.matchMedia('(hover: none)').matches);
     parent.append(this.legend);
 
     let kept: string | null = null;
@@ -123,6 +128,7 @@ export class MapLayers {
   set(kind: OverlayKind): void {
     try { localStorage.setItem(KEY, kind); } catch { /* storage blocked */ }
     this.show(kind);
+    this.setLegendOpen(true);
     this.onChange(kind);
   }
 
@@ -134,10 +140,17 @@ export class MapLayers {
     this.label();
   }
 
+  /** The existing heading is the disclosure; the chosen overlay stays active. */
+  private setLegendOpen(open: boolean): void {
+    this.legendOpen = open;
+    this.rows.hidden = !open;
+    this.title.setAttribute('aria-expanded', String(open));
+  }
+
   private label(): void {
     this.button.dataset.on = String(this.kind !== 'off');
     this.button.setAttribute('aria-label', this.kind === 'off' ? t('Map overlay: off. Press to choose one.') : t('Map overlay: {name}. Press to choose another or turn it off.', { name: LABEL[this.kind] }));
-    this.button.title = this.button.getAttribute('aria-label') ?? '';
+    this.button.dataset.iconHint = this.button.getAttribute('aria-label') ?? '';
   }
 
   /** The legend's lines; the DOM is touched only when they changed. */
@@ -149,9 +162,11 @@ export class MapLayers {
       const li = document.createElement('li');
       if (r.minor) li.className = 'minor';
       // A line with a place becomes a button that shows it, as the place may be off screen.
-      const box = r.at ? Object.assign(document.createElement('button'), { type: 'button', className: 'legend-go', title: t('Show on the map') }) : li;
+      const box = r.at ? Object.assign(document.createElement('button'), { type: 'button', className: 'legend-go' }) : li;
+      if (r.at) box.dataset.iconHint = t('Show on the map');
       if (r.color !== undefined) {
         const sw = document.createElement('span');
+        sw.dataset.iconHint = r.text;
         sw.className = r.ring ? 'swatch ring' : 'swatch';
         sw.style.setProperty('--c', hex(r.color));
         box.append(sw);

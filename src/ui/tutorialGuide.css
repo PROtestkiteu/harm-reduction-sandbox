@@ -1,0 +1,29 @@
+[data-tutorial-locked="true"],
+[data-tutorial-budget="false"] [data-tutorial-feature="budget"],
+[data-tutorial-staff="false"] [data-tutorial-feature="staff"],
+[data-tutorial-maintenance="false"] [data-tutorial-feature="maintenance"],
+[data-tutorial-stress="false"] [data-tutorial-feature="stress"],
+[data-tutorial-organisation="false"] [data-tutorial-feature="organisation"],
+[data-tutorial-full-ui="false"] [data-tutorial-feature="fullUi"] { display: none !important; }
+.tutorial-guide {
+  position: fixed; left: 20px; top: 88px; z-index: 12; width: min(340px, calc(100vw - 40px));
+  color: var(--text, #e8dec9); background: var(--grain), rgba(var(--fade), .97); border: 1px solid var(--muted, #776a53);
+  border-left: 3px solid var(--reply, #c7a663); padding: 14px 16px; box-shadow: 0 8px 22px #0005;
+  pointer-events: auto; font-family: inherit;
+}
+.tutorial-guide[hidden] { display: none; }
+.tutorial-guide h2 { font-size: 1.05rem; margin: 4px 0 8px; }
+.tutorial-guide p { font-size: .9rem; line-height: 1.45; margin: 6px 0; }
+.tutorial-guide .tutorial-step { font-size: .72rem; text-transform: uppercase; letter-spacing: .09em; color: var(--reply, #c7a663); }
+.tutorial-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.tutorial-actions button { min-height: 44px; padding: 8px 12px; border: 1px solid var(--line, #776a53); background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.tutorial-actions button:focus-visible { outline: 2px solid var(--focus, #e6be62); outline-offset: 3px; }
+.tutorial-counter { font-variant-numeric: tabular-nums; color: var(--reply, #c7a663); }
+@media (max-width: 760px) {
+  .tutorial-guide { top: calc(max(12px, var(--safe-top, 12px)) + max(76px, var(--topbar-h, 44px)) + 10px); left: 10px; width: min(340px, calc(100vw - 20px)); padding: 10px 12px; max-height: 35vh; overflow-y: auto; }
+  .tutorial-guide p { font-size: .83rem; }
+  .tutorial-actions button { min-height: 44px; }
+}
+@media (max-height: 500px) and (min-width: 761px) { .tutorial-guide { top: 88px; left: 12px; max-height: calc(100vh - 100px); overflow: auto; } }
+
+[data-tutorial-restricted="true"] .column[data-mode="idle"] .line { display: none; }

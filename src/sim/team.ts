@@ -2,6 +2,7 @@ import { createRandom, pick, type Random } from './random';
 import { SERVICE_IDS, type ServiceId } from './types';
 import { t } from '../i18n';
 import { GROWTH_IN_JOB, MORALE } from '../config/morale';
+import { SKILL_IDS, SKILL_MAX, SKILL_NEUTRAL, SKILL_CAPACITY_PER_POINT, SKILL_PRACTICE_HOURS, SKILL_PRACTICE_GAIN_MAX, SERVICE_SKILL_WEIGHTS, type SkillId, type SkillValues } from '../config/employeeSkills';
 
 /**
  * The people behind the staff numbers. Rendering-free.
@@ -47,6 +48,8 @@ export interface Member {
   readonly paid: boolean;
   /** Qualities; "new to the work" wears off with hours on shift (config/morale.ts). */
   traits: TraitId[];
+  /** Starting proficiencies. Practice gains are derived from hours, so they survive save/load. */
+  skills: SkillValues;
   /** 0 exhausted, 1 fresh. */
   energy: number;
   /** 0 ready to quit, 1 full of heart (config/morale.ts). */
@@ -96,9 +99,50 @@ export class Team {
     return Math.max(0.4, f);
   }
 
+  /** Personal variation uses a name hash, never extra simulation or recruitment random draws. */
+  static initialSkills(name: string, traits: readonly TraitId[]): SkillValues {
+    let hash = 2166136261;
+    for (const char of name) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);
+    const skills = {} as SkillValues;
+    for (const id of SKILL_IDS) {
+      hash = Math.imul(hash ^ id.charCodeAt(0), 16777619);
+      skills[id] = 6 + ((hash >>> 0) % 5);
+    }
+    const strengths: Partial<Record<TraitId, Partial<SkillValues>>> = {
+      peer: { outreach: 5, coordination: 1 }, nurse: { care: 5 }, chemist: { analysis: 6 },
+      social: { coordination: 5, outreach: 1 }, languages: { outreach: 2 }, calm: { care: 2, coordination: 1 },
+    };
+    for (const trait of traits) for (const id of SKILL_IDS) skills[id] += strengths[trait]?.[id] ?? 0;
+    for (const id of SKILL_IDS) skills[id] = Math.min(SKILL_MAX - SKILL_PRACTICE_GAIN_MAX, Math.max(0, skills[id] - (traits.includes('new') ? 2 : 0)));
+    return skills;
+  }
+
+  /** Current skill on the 0 to 20 scale. Every shift develops its relevant skills automatically. */
+  static skill(m: Member, id: SkillId): number {
+    let practice = 0;
+    for (const service of SERVICE_IDS) practice += (m.hours[service] ?? 0) * (SERVICE_SKILL_WEIGHTS[service][id] ?? 0);
+    return Math.min(SKILL_MAX, m.skills[id] + Math.min(SKILL_PRACTICE_GAIN_MAX, practice / SKILL_PRACTICE_HOURS));
+  }
+
+  static skillProfile(m: Member): { id: SkillId; value: number }[] {
+    return SKILL_IDS.map((id) => ({ id, value: Team.skill(m, id) }));
+  }
+
+  /** Additive capacity bonus, bounded from -12% to +18%, with no required skill threshold. */
+  static skillFit(m: Member, service: ServiceId): number {
+    let weighted = 0;
+    for (const id of SKILL_IDS) weighted += Team.skill(m, id) * (SERVICE_SKILL_WEIGHTS[service][id] ?? 0);
+    return (weighted - SKILL_NEUTRAL) * SKILL_CAPACITY_PER_POINT;
+  }
+
+  /** Useful for comparing roles before fatigue and morale affect today's performance. */
+  static potentialFit(m: Member, service: ServiceId): number {
+    return Math.max(0.4, Team.traitFit(m, service) + Team.skillFit(m, service));
+  }
+
   /** How good `m` is at `service` right now: their qualities, dragged down by tiredness and low morale. */
   static fit(m: Member, service: ServiceId): number {
-    return Math.max(0.4, Team.traitFit(m, service) - (m.energy < 0.35 ? 0.25 : 0) - (m.morale < MORALE.shakenBelow ? MORALE.shakenFit : 0));
+    return Math.max(0.4, Team.potentialFit(m, service) - (m.energy < 0.35 ? 0.25 : 0) - (m.morale < MORALE.shakenBelow ? MORALE.shakenFit : 0));
   }
 
   /** Whether `m` is shaken: low morale, working slower. */
@@ -133,7 +177,7 @@ export class Team {
       if (second !== first && !(second === 'new' && paid)) traits.push(second);
     }
     const morale = MORALE.start + (this.random() * 2 - 1) * MORALE.startSpread;
-    return { id: this.nextId++, name, paid, traits, energy: 0.75 + this.random() * 0.25, morale, hours: {}, special: null, blows: Team.noBlows(), warned: false, assignment: 'auto', workingAt: null, worn: false };
+    return { id: this.nextId++, name, paid, traits, skills: Team.initialSkills(name, traits), energy: 0.75 + this.random() * 0.25, morale, hours: {}, special: null, blows: Team.noBlows(), warned: false, assignment: 'auto', workingAt: null, worn: false };
   }
 
   static noBlows(): Record<Blow, number> {

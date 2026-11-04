@@ -1,3 +1,6 @@
+import { PersonSupportView, type StaffingAdvice } from './personSupport';
+import type { TutorialCapabilities } from '../game/tutorial';
+import './tutorialGuide.css';
 import type { GuideAct, GuideStep } from '../game/guide';
 import { CAMPER_PATH, CAMPER_PATH_IDS, type CamperPath } from '../config/camperPaths';
 import { MOOD_HUES } from '../agents/moodIcons';
@@ -5,7 +8,7 @@ import { ACTIVITY, type Activity } from '../config/serviceMix';
 import type { FavourId } from '../config/favours';
 import { ORG, RECRUIT, recruitChance } from '../config/organisation';
 import { ACTIVITY_NEEDS, AID_NEEDS, PATH_NEEDS, serviceNeeds, type Need } from '../config/needs';
-import { NEED_ICONS, meterState, needTag, needsFor, setNeeds } from './needIcons';
+import { METER_ORDER, NEED_NAME, NEED_HINT, NEED_ICONS, meterState, needTag, needsFor, setNeeds } from './needIcons';
 import { price } from './money';
 import type { ServiceStage } from '../config/serviceStages';
 import { SERVICE_TEXT } from '../config/places';
@@ -38,8 +41,10 @@ export interface HudCallbacks {
   onTitle(): void;
   /** The money figure was pressed: open the organisation and budget page. */
   onMoney(): void;
+  onFavours(): void;
   /** Send a camper to the kerb nearest the selected person. */
   onPersonCamper(): void;
+  onPersonTeam(): void;
   /** Changes how much a place spends on one activity. */
   /** One activity's share of the place's visits, in percent; the others keep their proportions. */
   onMix(service: ServiceId, activity: Activity, percent: number): void;
@@ -47,8 +52,6 @@ export interface HudCallbacks {
   onMixSetUp(service: ServiceId, activity: Activity): void;
   /** Specialise the outreach camper (or change its path). */
   onCamperPath(path: CamperPath): void;
-  /** Opens the Settings menu (phones reach it from the replies). */
-  onSettings(): void;
   /** Start or stop this season's aid: the warming bus, or water and shade. */
   onAid(kind: 'cold' | 'heat'): void;
   /** The coordinator's next step was chosen (the services list opens here; the rest is the app's). */
@@ -263,7 +266,8 @@ export class Hud {
   private readonly metrics = {} as Record<MetricKey, MetricRow>;
   private readonly personNote: HTMLElement;
   private readonly profileView: HTMLElement;
-  private readonly foldBtn: HTMLButtonElement;
+  private readonly personSupportView: PersonSupportView;
+  private readonly selectionWindow: HTMLElement;
   private folded = false;
   /** Where the replies started when last unfolded, so framing holds still while folded. */
   private optionsTopUnfolded = 0;
@@ -274,6 +278,7 @@ export class Hud {
   private readonly workRows: { root: HTMLElement; text: HTMLElement; fill: HTMLElement }[] = [];
   private readonly speedBtn: HTMLButtonElement;
   private readonly money: HTMLElement;
+  private readonly moneyButton: HTMLButtonElement;
   /** City hall favours held, beside the money: a small icon and the count. */
   private readonly favourCount: HTMLButtonElement;
   private readonly favourNum: HTMLElement;
@@ -293,7 +298,6 @@ export class Hud {
   private readonly switchOpts = {} as Record<ServiceId, HTMLElement>;
   private readonly reviewOpt: HTMLElement;
   private readonly aidOpt: HTMLElement;
-  private readonly configureOpt: HTMLElement;
   private readonly aidBtn: HTMLButtonElement;
   private readonly staffGroupNeeds: HTMLElement;
   private readonly aidLong: HTMLElement;
@@ -327,7 +331,7 @@ export class Hud {
   private readonly focusLong: HTMLElement;
   private readonly focusShort: HTMLElement;
   private readonly leaveOpt: HTMLElement;
-  private readonly renameBtn: HTMLButtonElement;
+  private readonly renameAction: () => void;
   /** Whether the open building card's subject can be renamed. */
   private renamable = true;
   private renameInput: HTMLInputElement | null = null;
@@ -344,6 +348,7 @@ export class Hud {
 
   constructor(root: HTMLElement, cb: HudCallbacks) {
     this.root = root;
+    this.renameAction = () => { if (this.canRename()) this.startRename(cb); };
     for (const id of LOCATION_IDS) this.trends[id] = new MetricTrend();
 
     this.header = el('header', 'hud-header');
@@ -351,7 +356,7 @@ export class Hud {
     const subtitle = el('p', 'subtitle', t('Help people stay alive without going bankrupt.'));
     // The title opens the settings, like the Settings link under it.
     const titleBtn = button('hud-title', t('Harm reduction project'));
-    titleBtn.title = t('Change the night, the street and the services');
+    titleBtn.dataset.iconHint = t('Change the night, the street and the services');
     titleBtn.addEventListener('click', () => cb.onTitle());
     const h1 = el('h1');
     h1.append(titleBtn);
@@ -380,8 +385,8 @@ export class Hud {
     this.unmet.append(el('strong', 'crisis-title', t('Crisis')), this.crisisLine);
     const right = el('div', 'column-right');
     // Pressing the money opens the organisation and budget page; the figure inside stays a live status.
-    const moneyBtn = button('money-btn');
-    moneyBtn.title = t('Organisation: money and staff.');
+    const moneyBtn = this.moneyButton = button('money-btn');
+    moneyBtn.dataset.iconHint = t('Organisation: money and staff.');
     moneyBtn.addEventListener('click', () => cb.onMoney());
     moneyBtn.append(this.money);
     // Favours with city hall beside the money: pressing it opens the favours on offer.
@@ -391,46 +396,9 @@ export class Hud {
     this.favourNum = el('span', 'favour-num', '0');
     this.favourCount.append(hall, this.favourNum);
     // The favours are listed in the organisation sheet: pressing the count opens it there.
-    this.favourCount.addEventListener('click', () => cb.onMoney());
+    this.favourCount.addEventListener('click', () => cb.onFavours());
     right.append(moneyBtn, this.favourCount);
     top.append(time, right);
-    // Phones: a handle folds the sheet down to the clock and the Pause bar.
-    this.foldBtn = button('sheet-handle');
-    this.foldBtn.setAttribute('aria-expanded', 'true');
-    this.foldBtn.setAttribute('aria-label', t('Fold the panel away'));
-    // The handle is a swipe: down folds the sheet, up opens it; the sheet follows the finger. A short tap toggles.
-    let drag: { id: number; y: number; dy: number } | null = null;
-    let swiped = false;
-    this.foldBtn.addEventListener('pointerdown', (e) => {
-      drag = { id: e.pointerId, y: e.clientY, dy: 0 };
-      swiped = false;
-      this.foldBtn.setPointerCapture(e.pointerId);
-    });
-    this.foldBtn.addEventListener('pointermove', (e) => {
-      if (!drag || e.pointerId !== drag.id) return;
-      drag.dy = e.clientY - drag.y;
-      // Only the open sheet slides with the finger (downwards); a folded one just waits for the release.
-      if (!this.folded && drag.dy > 0) {
-        this.column.style.transition = 'none';
-        this.column.style.transform = `translateY(${Math.min(drag.dy, this.column.offsetHeight * 0.8)}px)`;
-      }
-    });
-    const release = (e: PointerEvent) => {
-      if (!drag || e.pointerId !== drag.id) return;
-      const dy = drag.dy;
-      drag = null;
-      this.column.style.transition = '';
-      this.column.style.transform = '';
-      if (Math.abs(dy) < 24) return;
-      swiped = true;
-      this.setFolded(dy > 0);
-    };
-    this.foldBtn.addEventListener('pointerup', release);
-    this.foldBtn.addEventListener('pointercancel', release);
-    this.foldBtn.addEventListener('click', () => {
-      if (swiped) { swiped = false; return; }
-      this.setFolded(!this.folded);
-    });
     this.eventsSlot = el('div', 'column-events');
 
     // The conversation: who or what is selected, speaking in plain sentences.
@@ -438,13 +406,12 @@ export class Hud {
     this.log.setAttribute('aria-live', 'polite');
     this.idle = el('p', 'idle', t('Or pick a place or a person on the map.'));
     const line = el('p', 'line');
-    this.speaker = el('span', 'speaker');
+    this.speaker = button('speaker selection-heading');
+    this.speaker.setAttribute('aria-expanded', 'true');
+    this.speaker.dataset.iconHint = t('Fold the panel away');
+    this.speaker.addEventListener('click', () => this.setFolded(!this.folded));
     this.said = el('span', 'said');
-    this.renameBtn = button('rename-pencil');
-    this.renameBtn.setAttribute('aria-label', t('Rename'));
-    this.renameBtn.title = t('Rename');
-    this.renameBtn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M3 17.25V21h3.75L17.8 9.94l-3.75-3.75L3 17.25zm17.7-10.2a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>';
-    line.append(this.speaker, this.renameBtn, this.said);
+    line.append(this.speaker, this.said);
     this.aside = el('p', 'aside');
     this.locationView = el('div', 'location-view');
     this.chips = el('ul', 'chips');
@@ -452,9 +419,12 @@ export class Hud {
     this.facts = el('dl', 'facts place-facts');
     this.metricsLabel = el('p', 'check');
     const metrics = el('dl', 'metrics');
+    metrics.dataset.tutorialFeature = 'maintenance';
+    this.metricsLabel.dataset.tutorialFeature = 'maintenance';
     for (const key of METRIC_KEYS) {
       const row = el('div', `metric metric-${key}`);
-      row.title = METRIC_LABELS[key].hint;
+      row.dataset.iconHint = METRIC_LABELS[key].hint;
+      row.tabIndex = 0;
       const value = el('dd', 'metric-value', '0');
       const svg = document.createElementNS(SVG_NS, 'svg');
       svg.setAttribute('viewBox', `0 0 ${SPARK_W} ${SPARK_H}`);
@@ -473,12 +443,14 @@ export class Hud {
       metrics,
       el('p', 'note metrics-note', t('Lines: last {min} min. Illustrative counts.', { min: TREND_BUCKET_MINUTES * TREND_BUCKETS })),
     );
+    this.locationView.querySelector<HTMLElement>('.metrics-note')!.dataset.tutorialFeature = 'maintenance';
+    this.personSupportView = new PersonSupportView(() => cb.onPersonTeam());
     this.profileView = el('div', 'profile');
     this.personNote = el('p', 'note', t('People here are archetypes drawn from research on people who use drugs. Each figure is illustrative, not a real person.'));
     this.buildingView = el('dl', 'facts building-facts');
     this.buildingChips = el('ul', 'chips building-chips');
     this.buildingChips.setAttribute('role', 'list');
-    this.log.append(line, this.idle, this.aside, this.locationView, this.buildingChips, this.buildingView, this.profileView, this.personNote);
+    this.log.append(line, this.idle, this.aside, this.locationView, this.buildingChips, this.buildingView, this.personSupportView.root, this.profileView, this.personNote);
 
     // Replies: every control is a numbered option; number keys choose them.
     this.options = el('ol', 'options');
@@ -541,6 +513,7 @@ export class Hud {
         if (levers) cb.onAction(levers.service, action);
       });
       this.actionOpts[action] = { li: opt(b), button: b, label: long, short, needs };
+      this.actionOpts[action].li.dataset.tutorialFeature = STAFF_ACTIONS.includes(action) ? 'staff' : action === 'invest' || action === 'relaunch' ? 'maintenance' : action === 'mix' ? 'stress' : 'organisation';
       if (STAFF_ACTIONS.includes(action)) this.actionOpts[action].li.classList.add('nested');
     }
     // The selected building's own actions, filled per card.
@@ -582,7 +555,7 @@ export class Hud {
       const short = el('span', 'short', `${CAMPER_PATH[id].short}.`);
       short.setAttribute('aria-hidden', 'true');
       b.append(long, short, needsFor(PATH_NEEDS[id]));
-      b.title = CAMPER_PATH[id].does;
+      b.dataset.iconHint = CAMPER_PATH[id].does;
       b.addEventListener('click', () => { cb.onCamperPath(id); this.pathOpen = false; });
       const li = opt(b);
       li.classList.add('nested', 'nested-2');
@@ -640,7 +613,6 @@ export class Hud {
     this.leaveOpt.classList.add('zero');
     this.options.prepend(this.leaveOpt);
     // A pencil beside the name renames whatever is selected: place, building or person.
-    this.renameBtn.addEventListener('click', () => this.startRename(cb));
     // Services sit behind one reply so the list stays short; the selected
     // place's own switch is offered directly.
     // Nothing selected: the coordinator's next step leads the replies, then the organisation itself.
@@ -678,11 +650,6 @@ export class Hud {
     this.aidBtn.addEventListener('click', () => { const k = this.lastSnapshot?.aid?.kind; if (k) cb.onAid(k); });
     this.aidOpt = opt(this.aidBtn);
 
-    // Phones: Settings is the last reply here (with a gear, not a number) instead of a button over the scene.
-    const configure = button('opt configure-opt', t('Settings'));
-    configure.addEventListener('click', () => cb.onSettings());
-    this.configureOpt = opt(configure);
-    this.configureOpt.classList.add('phone-only');
     const back = button('opt', t('Back.'));
     back.addEventListener('click', () => this.setServicesOpen(false));
     this.backOpt = opt(back);
@@ -727,7 +694,7 @@ export class Hud {
     resetShort.setAttribute('aria-hidden', 'true');
     reset.append(el('span', 'long', t('Back to the overview.')), resetShort);
     reset.setAttribute('aria-label', t('Back to the overview'));
-    reset.title = t('R. Right-drag or two-finger drag to orbit.');
+    reset.dataset.iconHint = t('R. Right-drag or two-finger drag to orbit.');
     reset.addEventListener('click', () => cb.onResetView());
     this.resetOpt = opt(reset);
     this.resetOpt.hidden = true;
@@ -744,15 +711,11 @@ export class Hud {
     meters.setAttribute('role', 'group');
     meters.setAttribute('aria-label', t('City services under pressure'));
     this.stressRow.append(meters);
-    for (const [key, name, hint] of [
-      ['police', t('Police'), t('Incidents, stops, the camp and people turned away from a bed keep police busy; an overstretched force makes the council lean on funders.')],
-      ['medics', t('Medics'), t('Overdoses nobody reached, people harmed outdoors and people turned away from services fill ambulances and A&E; overstretched, fewer survive.')],
-      ['district', t('District'), t('How well the district is doing: harm reduction that works brings more people out and new venues.')],
-      ['sobering', t('Sobering'), t('Drunk club leavers taken to the sobering-up centre (izba wytrzeźwień), more of them when the club service turns people away.')],
-    ] as const) {
+    for (const key of METER_ORDER) {
+      const name = NEED_NAME[key], hint = NEED_HINT[key];
       const m = el('span', 'stress');
       m.dataset.key = key;
-      m.title = `${name}: ${hint}`;
+      m.dataset.iconHint = `${name}: ${hint}`;
       m.setAttribute('aria-label', name);
       const bar = el('span', 'stress-bar');
       const fill = el('span', 'stress-fill');
@@ -769,13 +732,9 @@ export class Hud {
     // the overview (tonight's goals, the news, the event feed) and the selection with its replies.
     const outliner = el('div', 'outliner');
     outliner.append(this.eventsSlot);
-    const selection = el('div', 'window');
-    const close = button('window-close', '×');
-    close.setAttribute('aria-label', t('Close'));
-    close.title = t('Close');
-    close.addEventListener('click', () => cb.onSelect(null));
-    selection.append(close, this.log, this.options, this.works);
-    this.column.append(this.foldBtn, top, this.stressRow, this.unmet, outliner, selection);
+    const selection = this.selectionWindow = el('div', 'window');
+    selection.append(this.log, this.options, this.works);
+    this.column.append(top, this.stressRow, this.unmet, outliner, selection);
     // Phones and wide screens: the clock, money and meters live in a block at the top of the screen
     // (wide screens add the crisis line to it); the column keeps the rest. Phones on their side keep
     // everything in the side column.
@@ -787,7 +746,7 @@ export class Hud {
       } else if (window.matchMedia(WINDOWED).matches) {
         if (this.unmet.parentElement !== this.topBar) this.topBar.append(top, this.stressRow, this.unmet);
       } else if (top.parentElement !== this.column) {
-        this.foldBtn.after(top, this.stressRow, this.unmet);
+        this.column.prepend(top, this.stressRow, this.unmet);
       }
       this.headerBottom = 0;
     };
@@ -821,6 +780,20 @@ export class Hud {
       labelLayer.append(b);
     }
 
+    this.staffGroupOpt.dataset.tutorialFeature = 'staff';
+    this.personCamperOpt.dataset.tutorialFeature = 'organisation';
+    for (const option of this.buildingOpts) option.li.dataset.tutorialFeature = 'organisation';
+    this.orgOpt.dataset.tutorialFeature = 'organisation';
+    this.aidOpt.dataset.tutorialFeature = 'organisation';
+    this.favourCount.dataset.tutorialFeature = 'organisation';
+    this.unmet.dataset.tutorialFeature = 'maintenance';
+    this.stressRow.dataset.tutorialFeature = 'stress';
+    this.eventsSlot.dataset.tutorialFeature = 'organisation';
+    moneyBtn.dataset.tutorialFeature = 'budget';
+    this.guideOpt.dataset.tutorialFeature = 'fullUi';
+    this.facts.dataset.tutorialFeature = 'maintenance';
+    this.chips.dataset.tutorialFeature = 'maintenance';
+    for (const id of SERVICE_IDS) this.switchOpts[id].dataset.tutorialService = id;
     root.append(labelLayer, this.header, this.topBar, this.column);
     // Label widths depend on the web fonts, which arrive after first layout.
     void document.fonts.ready.then(() => {
@@ -838,7 +811,7 @@ export class Hud {
   private onKey(e: KeyboardEvent): void {
     if (e.altKey || e.ctrlKey || e.metaKey || !/^[0-9]$/.test(e.key)) return;
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement) return;
-    const visible = [...this.options.children].filter((li) => !(li as HTMLElement).hidden);
+    const visible = [...this.options.children].filter((li) => !(li as HTMLElement).hidden && (li as HTMLElement).getClientRects().length > 0);
     // 0 is Back; the numbers count the other replies.
     const li = e.key === '0' ? visible.find((v) => v.classList.contains('zero')) : visible.filter((v) => !v.classList.contains('zero'))[Number(e.key) - 1];
     const target = li?.querySelector<HTMLButtonElement>('button.opt') ?? null;
@@ -931,6 +904,26 @@ export class Hud {
   }
 
 
+  /** Shared domain capabilities govern presentation without fighting render-time hidden flags. */
+  private tutorialCapabilities: TutorialCapabilities | null = null;
+
+  setTutorialCapabilities(capabilities: TutorialCapabilities): void {
+    if (this.tutorialCapabilities === capabilities) return;
+    this.tutorialCapabilities = capabilities;
+    this.root.dataset.tutorialRestricted = String(!capabilities.fullUi);
+    if (this.moneyButton.disabled === capabilities.organisation) this.moneyButton.disabled = !capabilities.organisation;
+    for (const feature of ['budget', 'staff', 'maintenance', 'stress', 'organisation', 'fullUi'] as const) {
+      const value = String(capabilities[feature]);
+      const key = `tutorial${feature[0].toUpperCase()}${feature.slice(1)}`;
+      if (this.root.dataset[key] !== value) this.root.dataset[key] = value;
+    }
+    for (const id of LOCATION_IDS) {
+      const available = capabilities.services.includes(serviceAt(id));
+      this.labels[id].dataset.tutorialLocked = String(!available);
+      this.switchOpts[serviceAt(id)].dataset.tutorialLocked = String(!available);
+    }
+  }
+
   /** Label button for a location, for keyboard focus moves. */
   labelFor(id: LocationId): HTMLButtonElement {
     return this.labels[id];
@@ -987,7 +980,6 @@ export class Hud {
     const renamable = card.renamable !== false;
     if (this.renamable !== renamable) {
       this.renamable = renamable;
-      if (!this.renameInput) this.renameBtn.hidden = !renamable;
     }
     if (this.mode?.kind !== 'building') {
       this.mode = { kind: 'building' };
@@ -1016,6 +1008,7 @@ export class Hud {
       this.buildingChips.replaceChildren(...chips.map((c) => {
         const li = el('li', 'chip');
         li.dataset.icon = c.icon;
+        li.tabIndex = 0;
         const icon = el('span', 'chip-icon');
         icon.innerHTML = CHIP_ICONS[c.icon];
         li.append(icon, el('span', 'chip-value'));
@@ -1026,7 +1019,7 @@ export class Hud {
     chips.forEach((c, i) => {
       const li = this.buildingChips.children[i] as HTMLElement;
       setText(li.lastElementChild as HTMLElement, c.value);
-      if (li.title !== c.label) li.title = c.label;
+      if (li.dataset.iconHint !== c.label) li.dataset.iconHint = c.label;
       setAttr(li, 'aria-label', c.label);
       const state = c.state ?? '';
       if ((li.dataset.state ?? '') !== state) li.dataset.state = state;
@@ -1039,11 +1032,11 @@ export class Hud {
   }
 
   /** Shows the person. `card` null means they have left the scene. */
-  showPerson(card: PersonCard | null, following: boolean, lastTitle?: string, camper: PersonCamperOffer | null = null, place: string | null = null): void {
+  showPerson(card: PersonCard | null, following: boolean, lastTitle?: string, camper: PersonCamperOffer | null = null, place: string | null = null, staffing: StaffingAdvice | null = null): void {
     this.personCamper = card ? camper : null;
     if (this.personCamper) {
       setText(this.personCamperLong, this.personCamper.label);
-      if (this.personCamperBtn.title !== this.personCamper.hint) this.personCamperBtn.title = this.personCamper.hint;
+      if (this.personCamperBtn.dataset.iconHint !== this.personCamper.hint) this.personCamperBtn.dataset.iconHint = this.personCamper.hint;
       if (this.personCamperBtn.disabled === this.personCamper.enabled) this.personCamperBtn.disabled = !this.personCamper.enabled;
     }
     if (this.mode?.kind !== 'person') {
@@ -1077,6 +1070,7 @@ export class Hud {
       setAttr(this.focusBtn, 'aria-label', text);
     }
     this.focusOpt.hidden = !card || !place;
+    this.personSupportView.set(card?.support, staffing, card?.worker);
     const pr = card?.profile;
     const key = pr?.name ?? '';
     if (this.profileView.dataset.key !== key) {
@@ -1085,7 +1079,9 @@ export class Hud {
       if (pr) {
         const facts = el('dl', 'facts');
         facts.append(el('dt', undefined, t('Often uses')), el('dd', undefined, pr.uses), el('dt', undefined, t('Main risks')), el('dd', undefined, pr.risks));
-        this.profileView.replaceChildren(el('h3', 'profile-name', pr.name), el('p', 'profile-blurb', pr.blurb), facts, el('p', 'note', pr.source));
+        const reference = el('details', 'profile-reference');
+        reference.append(el('summary', undefined, t('Research background')), el('p', 'note', t('An illustrative research pattern, not a diagnosis or this person’s biography.')), el('h3', 'profile-name', pr.name), el('p', 'profile-blurb', pr.blurb), facts, el('p', 'note', pr.source), this.personNote);
+        this.profileView.replaceChildren(reference);
       } else this.profileView.replaceChildren();
     }
   }
@@ -1141,7 +1137,7 @@ export class Hud {
     if (opened) { this.staffOpen = true; this.renderActions(loc); }
     const items = [...this.options.children]
       .filter((li) => li !== this.staffGroupOpt)
-      .filter((li): li is HTMLLIElement => li instanceof HTMLLIElement && !li.hidden)
+      .filter((li): li is HTMLLIElement => li instanceof HTMLLIElement && !li.hidden && li.getClientRects().length > 0)
       .map((li) => li.querySelectorAll('button'))
       .filter((buttons) => buttons.length === 1)
       .map(([b]) => ({
@@ -1152,8 +1148,13 @@ export class Hud {
         run: () => b.click(),
       }))
       .filter((i) => i.label);
+    if (this.canRename()) items.push({ label: t('Rename'), disabled: false, run: this.renameAction });
     if (opened) { this.staffOpen = false; this.renderActions(loc); }
     return { title: this.mode ? this.speaker.textContent ?? '' : t('The neighbourhood'), items };
+  }
+
+  private canRename(): boolean {
+    return !!this.mode && this.tutorialCapabilities?.fullUi !== false && (this.mode.kind !== 'building' || this.renamable);
   }
 
   /** Swaps the speaker's name for a text field; Enter or leaving it saves, Escape cancels. */
@@ -1168,7 +1169,6 @@ export class Hud {
     input.setAttribute('aria-label', t('New name (leave empty for the original)'));
     this.renameInput = input;
     this.speaker.hidden = true;
-    this.renameBtn.hidden = true;
     this.speaker.after(input);
     let done = false;
     const finish = (save: boolean) => {
@@ -1178,7 +1178,6 @@ export class Hud {
       input.remove();
       this.renameInput = null;
       this.speaker.hidden = false;
-      this.renameBtn.hidden = !this.mode || (this.mode.kind === 'building' && !this.renamable);
     };
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); finish(true); }
@@ -1189,27 +1188,13 @@ export class Hud {
     input.select();
   }
 
-  /**
-   * A layer opened over the replies (tonight's goals, the event feed): on small
-   * screens it shows alone, the conversation and replies stepping aside until
-   * it is folded again.
-   */
-  /** Told when a selection drops the open layer, so its owner can fold it. */
-  onLayerDrop: ((layer: string) => void) | null = null;
-
-  setLayer(layer: 'goals' | 'events', open: boolean): void {
-    if (open) this.column.dataset.layer = layer;
-    else if (this.column.dataset.layer === layer) delete this.column.dataset.layer;
-  }
-
-  /** Folds the phone sheet down to the clock and Pause bar, or opens it again. */
+  /** Fold only the selected module; its heading and other chosen modules remain available. */
   setFolded(folded: boolean): void {
     if (this.folded === folded) return;
     this.folded = folded;
-    if (folded) this.column.dataset.folded = 'true';
-    else delete this.column.dataset.folded;
-    setAttr(this.foldBtn, 'aria-expanded', String(!folded));
-    setAttr(this.foldBtn, 'aria-label', folded ? t('Open the panel') : t('Fold the panel away'));
+    this.selectionWindow.dataset.collapsed = String(folded);
+    setAttr(this.speaker, 'aria-expanded', String(!folded));
+    this.speaker.dataset.iconHint = folded ? t('Open the panel') : t('Fold the panel away');
   }
 
   /** CSS-pixel areas the HUD covers; the camera frames the scene around them. */
@@ -1276,18 +1261,18 @@ export class Hud {
       const perHour = price(aid.perHour);
       setText(this.aidLong, aid.kind === 'cold' ? (aid.on ? t('Warming bus out: stop') : t('Warming bus {price}/h', { price: perHour })) : (aid.on ? t('Water and shade out: stop') : t('Water and shade {price}/h', { price: perHour })));
       setText(this.aidShort, aid.kind === 'cold' ? (aid.on ? t('Stop the warming bus.') : t('Send the warming bus.')) : (aid.on ? t('Stop water and shade.') : t('Put out water and shade.')));
-      this.aidBtn.title = aid.kind === 'cold' ? t('A warming bus on cold nights: fewer people harmed outdoors.') : t('Water and shade on hot days: fewer people harmed outdoors.');
+      this.aidBtn.dataset.iconHint = aid.kind === 'cold' ? t('A warming bus on cold nights: fewer people harmed outdoors.') : t('Water and shade on hot days: fewer people harmed outdoors.');
       setAttr(this.aidBtn, 'aria-pressed', String(aid.on));
     }
     const f = s.favours;
     if (f) {
       setText(this.favourNum, String(f.held));
-      const label = f.held ? t('City hall favours: {n}. Press to use one.', { n: f.held }) : f.owed ? t('No favour now: city hall is owed one.') : t("No favour now: agree to city hall's next request to earn one.");
-      if (this.favourCount.title !== label) this.favourCount.title = label;
+      const label = f.held ? t('City hall favours: {n}. Press to use one.', { n: f.held }) : f.owed ? t('No favour now: city hall is owed one.') : t('Reputation earns your next favour.');
+      if (this.favourCount.dataset.iconHint !== label) this.favourCount.dataset.iconHint = label;
       setAttr(this.favourCount, 'aria-label', label);
       const state = f.held ? 'held' : f.owed ? 'owed' : 'none';
       if (this.favourCount.dataset.state !== state) this.favourCount.dataset.state = state;
-      if (this.favourCount.disabled === !!f.held) this.favourCount.disabled = !f.held;
+      this.favourCount.disabled = false;
     }
     const aidHidden = !aid || this.servicesOpen || this.mode !== null;
     if (this.aidOpt.hidden !== aidHidden) this.aidOpt.hidden = aidHidden;
@@ -1310,6 +1295,11 @@ export class Hud {
         name.textContent = loc.name;
         this.labelWidths[id] = 0;
         renamed = true;
+      }
+      const hint = this.tooltipFor(id);
+      if (hint) {
+        const text = `${hint.title}: ${hint.body}`;
+        if (label.dataset.iconHint !== text) label.dataset.iconHint = text;
       }
       if (label.dataset.status !== loc.status) label.dataset.status = loc.status;
       const lasting = String(!!loc.closed?.lasting);
@@ -1354,7 +1344,7 @@ export class Hud {
     // Labels stay short; the detail (times, rates, why) is in the tooltip.
     const show = (action: PlaceAction, visible: boolean, text: string, enabled = true, hint = '') => {
       const o = this.actionOpts[action];
-      if (o.button.title !== hint) o.button.title = hint;
+      if (o.button.dataset.iconHint !== hint) o.button.dataset.iconHint = hint;
       const hidden = !visible || this.servicesOpen || (STAFF_ACTIONS.includes(action) && !this.staffOpen);
       if (o.li.hidden !== hidden) o.li.hidden = hidden;
       setText(o.label, text);
@@ -1439,7 +1429,7 @@ export class Hud {
       r.id = m.id;
       setText(r.labelText, m.label);
       setNeeds(r.labelNeeds, ACTIVITY_NEEDS[m.id]);
-      r.input.title = m.does;
+      r.input.dataset.iconHint = m.does;
       r.input.disabled = m.lock !== null;
       const pct = String(shown[i]);
       if (now > r.editingUntil && r.input.value !== pct) r.input.value = pct;
@@ -1489,13 +1479,8 @@ export class Hud {
   private render(): void {
     queueMicrotask(() => this.syncDrill());
     const m = this.mode;
-    // Picking something on the map opens a folded sheet to show it, over any layer of the overview.
-    if (m) this.setFolded(false);
-    const layer = this.column.dataset.layer;
-    if (m && layer) {
-      delete this.column.dataset.layer;
-      this.onLayerDrop?.(layer);
-    }
+    // A new selection opens its own module; overview modules keep their chosen state.
+    if (this.column.dataset.mode !== (m?.kind ?? 'idle')) this.setFolded(false);
     this.column.dataset.mode = m ? m.kind : 'idle';
     if (m?.kind !== 'person') { delete this.column.dataset.role; delete this.column.dataset.mood; this.column.style.removeProperty('--mood'); }
     if (m?.kind !== 'location') delete this.column.dataset.status;
@@ -1508,6 +1493,7 @@ export class Hud {
     this.buildingChips.hidden = m?.kind !== 'building' || !this.buildingChips.childElementCount;
     this.locationView.hidden = m?.kind !== 'location';
     this.personNote.hidden = m?.kind !== 'person';
+    if (m?.kind !== 'person') this.personSupportView.root.hidden = true;
     if (m?.kind !== 'person') this.profileView.hidden = true;
     else this.profileView.hidden = !this.profileView.dataset.key;
     const open = this.servicesOpen;
@@ -1524,7 +1510,6 @@ export class Hud {
     else this.renderActions(this.lastSnapshot?.locations[m.id].actions);
     // Back to the overview: also a click elsewhere or Escape.
     this.leaveOpt.hidden = open || m === null;
-    this.renameBtn.hidden = !m || (m.kind === 'building' && !this.renamable);
     // The services review is for when nothing is selected. The guide's reply stands in for the
     // standing one it would repeat (My organisation, Services).
     const act = this.guide?.step.act?.kind;
@@ -1532,7 +1517,6 @@ export class Hud {
     this.orgOpt.hidden = open || m !== null || act === 'org';
     this.guideOpt.hidden = open || m !== null || !this.guide?.step.act;
     this.aidOpt.hidden = open || m !== null || !this.lastSnapshot?.aid;
-    this.configureOpt.hidden = open || m !== null;
     this.backOpt.hidden = !open;
     const own = m?.kind === 'location' ? serviceAt(m.id) : null;
     for (const id of SERVICE_IDS) {
@@ -1547,7 +1531,8 @@ export class Hud {
   private setServicesOpen(open: boolean): void {
     this.servicesOpen = open;
     this.render();
-    const target = open ? this.switches[SERVICE_IDS[0]] : this.reviewOpt.querySelector('button');
+    const first = SERVICE_IDS.find((id) => this.switchOpts[id].dataset.tutorialLocked !== 'true') ?? SERVICE_IDS[0];
+    const target = open ? this.switches[first] : this.reviewOpt.querySelector('button');
     target?.focus({ preventScroll: true });
   }
 
@@ -1558,6 +1543,7 @@ export class Hud {
       this.chips.replaceChildren(...loc.chips.map((c) => {
         const li = el('li', 'chip');
         li.dataset.icon = c.icon;
+        li.tabIndex = 0;
         const icon = el('span', 'chip-icon');
         icon.innerHTML = CHIP_ICONS[c.icon];
         li.append(icon, el('span', 'chip-value'));
@@ -1567,7 +1553,7 @@ export class Hud {
     loc.chips.forEach((c, i) => {
       const li = this.chips.children[i] as HTMLElement;
       setText(li.lastElementChild as HTMLElement, c.value);
-      if (li.title !== c.label) li.title = c.label;
+      if (li.dataset.iconHint !== c.label) li.dataset.iconHint = c.label;
       setAttr(li, 'aria-label', c.label);
     });
     // Rebuild the fact rows only when their set changes; otherwise update text in place.

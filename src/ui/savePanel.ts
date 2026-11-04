@@ -6,6 +6,7 @@ const helpedText = (n: number) => plural(n, ['{n} helped', '{n} helped'], ['{n} 
 const nightsText = (n: number) => plural(n, ['{n} night', '{n} nights'], ['{n} noc', '{n} noce', '{n} nocy']);
 
 export interface SavePanelCallbacks {
+  allowLoad?: boolean;
   saveHere(): void;
   loadHere(): void;
   hasSaved(): boolean;
@@ -44,13 +45,13 @@ export class SavePanel {
   constructor(private readonly cb: SavePanelCallbacks) {
     this.section = el('fieldset', 'sandbox-group save-panel');
     this.section.id = 'save-section';
-    this.section.append(el('legend', undefined, t('Save or load game')));
+    this.section.append(el('legend', undefined, cb.allowLoad === false ? t('Save game') : t('Save or load game')));
 
     const live = el('p', 'note', t("The game saves itself as you play, and this page's address is its link: share the address to show someone your city as it is now."));
     const actions = el('div', 'save-actions');
     const save = el('button', 'btn save-btn', t('Save here'));
     save.type = 'button';
-    save.title = t('Keep this game in this browser');
+    save.dataset.iconHint = t('Keep this game in this browser');
     save.addEventListener('click', () => {
       cb.saveHere();
       this.say(t('Saved in this browser.'));
@@ -62,7 +63,8 @@ export class SavePanel {
       cb.loadHere();
       this.say(t('Loaded your saved game.'));
     });
-    actions.append(save, this.loadBtn);
+    actions.append(save);
+    if (cb.allowLoad !== false) actions.append(this.loadBtn);
     this.status = el('p', 'save-status');
     this.status.setAttribute('role', 'status');
 

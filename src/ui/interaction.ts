@@ -1,3 +1,5 @@
+import type { StaffingAdvice } from './personSupport';
+import { registerTransient } from './transientSurfaces';
 import { Vector3, type Object3D, type OrthographicCamera } from 'three';
 import type { Crowd, PersonState } from '../agents/crowd';
 import type { CameraRig } from '../render/cameraRig';
@@ -14,6 +16,9 @@ import type { SelectionMarker } from './selection';
 import { t } from '../i18n';
 
 export interface InteractionDeps {
+  /** Tutorial and other authored maps reject unavailable targets at every input entry. */
+  allowsTarget?(target: Target): boolean;
+  onSelection?(target: Target | null): void;
   canvas: HTMLCanvasElement;
   overlay: HTMLElement;
   camera: OrthographicCamera;
@@ -35,6 +40,7 @@ export interface InteractionDeps {
   personCamper(p: PersonState): PersonCamperOffer | null;
   /** The place a person belongs to (their service, the club, the police station), by name; null if none. */
   personPlace(p: PersonState): string | null;
+  personStaff(p: PersonState): StaffingAdvice | null;
 }
 
 const PERSON_ZOOM = 2.6;
@@ -101,6 +107,15 @@ export class Interaction {
     this.tipBody.className = 'tip-body';
     this.tooltip.append(this.tipTitle, this.tipBody);
     d.overlay.append(this.tooltip);
+    registerTransient({
+      contains: (target) => this.tooltip.contains(target),
+      dismiss: () => {
+        this.pointer = null;
+        this.hoverPending = false;
+        this.setHover(null);
+        this.updateTooltip();
+      },
+    });
     this.bindPointer();
     this.bindKeys();
     this.bindLabels();
@@ -109,6 +124,11 @@ export class Interaction {
   /** Flags for the render pipeline's highlight mask. */
   get highlightFlags(): { hover: boolean; select: boolean } {
     return { hover: this.d.highlight.hoverTarget !== null, select: this.d.highlight.selectTarget !== null };
+  }
+
+  private pick(x: number, y: number, camera: OrthographicCamera, frame: RenderFrame, coarse: boolean): Target | null {
+    const target = this.picker.pick(x, y, camera, frame, coarse);
+    return target && this.d.allowsTarget && !this.d.allowsTarget(target) ? null : target;
   }
 
   // Selection
@@ -123,10 +143,13 @@ export class Interaction {
   }
 
   select(target: Target | null): void {
+    if (target && this.d.allowsTarget && !this.d.allowsTarget(target)) return;
+    this.d.onSelection?.(target);
     const { hud, marker, highlight, rig, world, crowd } = this.d;
     this.leftTitle = null;
     if (target?.kind === 'location') target = { kind: 'location', id: target.id };
     if (target?.kind === 'person' && !crowd.person(target.id)) target = null;
+    if (target) hud.setFolded(false);
     const wasFocused = rig.focused;
     this.selection = target;
     this.following = false;
@@ -194,7 +217,7 @@ export class Interaction {
     if (this.selection?.kind !== 'person') return;
     const p = this.d.crowd.person(this.selection.id);
     const card = p ? describePerson(p) : null;
-    this.d.hud.showPerson(card, this.following, this.leftTitle ?? undefined, p ? this.d.personCamper(p) : null, p ? this.d.personPlace(p) : null);
+    this.d.hud.showPerson(card, this.following, this.leftTitle ?? undefined, p ? this.d.personCamper(p) : null, p ? this.d.personPlace(p) : null, p ? this.d.personStaff(p) : null);
   }
 
   // Per-frame work, called by the main loop after the crowd moved.
@@ -258,7 +281,7 @@ export class Interaction {
 
   private updateHover(): void {
     const ptr = this.pointer;
-    const target = ptr ? this.picker.pick(ptr.x, ptr.y, this.d.camera, this.d.frame(), ptr.coarse) : null;
+    const target = ptr ? this.pick(ptr.x, ptr.y, this.d.camera, this.d.frame(), ptr.coarse) : null;
     this.setHover(target);
     this.updateTooltip();
   }
@@ -331,7 +354,7 @@ export class Interaction {
 
   /** Selects what is under a point and opens its action menu there. */
   private menuAt(x: number, y: number, coarse: boolean): void {
-    const target = this.picker.pick(x, y, this.d.camera, this.d.frame(), coarse);
+    const target = this.pick(x, y, this.d.camera, this.d.frame(), coarse);
     this.select(target?.kind === 'location' ? { kind: 'location', id: target.id } : target);
     this.d.openMenu(x, y);
   }
@@ -459,7 +482,7 @@ export class Interaction {
     };
     // Some input paths report a double-click without two separate pointer taps.
     c.addEventListener('dblclick', (e) => {
-      const target = this.picker.pick(e.clientX, e.clientY, this.d.camera, this.d.frame(), false);
+      const target = this.pick(e.clientX, e.clientY, this.d.camera, this.d.frame(), false);
       if (target?.kind !== 'location') return;
       if (this.selection?.kind !== 'location' || this.selection.id !== target.id) this.select(target);
       if (!this.d.rig.focused) this.focusLocation(target.id);
@@ -540,18 +563,20 @@ export class Interaction {
       if (id !== null) pick(id);
       return;
     }
-    const target = this.picker.pick(x, y, this.d.camera, this.d.frame(), coarse);
+    const target = this.pick(x, y, this.d.camera, this.d.frame(), coarse);
     const now = performance.now();
     const last = this.lastTap;
     const normal = target?.kind === 'location' ? { kind: 'location' as const, id: target.id } : target;
     const double = !!last && !!normal && now - last.time < DOUBLE_MS && Math.hypot(x - last.x, y - last.y) < DOUBLE_SLOP && sameTarget(normal, last.target);
     this.lastTap = double ? null : { time: now, x, y, target: normal };
     if (double && normal?.kind === 'location') {
+      if (!sameTarget(normal, this.selection)) this.select(normal);
       if (!this.d.rig.focused) this.focusLocation(normal.id);
       return;
     }
     if (double) return; // Double on a person: the first tap already follows them.
-    this.select(normal);
+    // Empty map is a browsing action; only an explicit close clears the chosen panel.
+    if (normal) this.select(sameTarget(normal, this.selection) ? null : normal);
   }
 
   private startOrbit(at: { x: number; y: number }, pointer: number | 'touch'): void {
@@ -655,7 +680,8 @@ export class Interaction {
       };
       label.addEventListener('focus', on);
       label.addEventListener('blur', off);
-      label.addEventListener('pointerenter', () => {
+      label.addEventListener('pointerenter', (e) => {
+        if (e.pointerType !== 'mouse') return;
         this.pointer = null;
         on();
       });

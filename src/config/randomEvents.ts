@@ -4,8 +4,8 @@
  * way services push, not how often or how much.
  *
  * People carry a substance profile so a supply event reaches only the people
- * who use that substance. Profiles stay inside the model; nobody is labelled
- * by what they use on screen.
+ * who use that substance. Selected person cards can disclose the modelled
+ * context; appearance never determines their support needs.
  */
 import type { Citation, FactorId } from './contextFactors';
 import type { ParamId } from './sandboxParams';

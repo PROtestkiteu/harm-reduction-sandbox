@@ -1,10 +1,13 @@
+import { TutorialProgress, FULL_TUTORIAL_CAPABILITIES, type TutorialCapabilities } from '../game/tutorial';
 import { Exposure, EXPOSURE, exposureNow, type ExposureHarm } from './exposure';
 import { ServiceMix } from './serviceMix';
 import { CRISIS } from '../config/crisis';
 import { HUSTLE } from '../config/hustles';
 import { RESIDENTS } from '../config/residents';
 import { BASE_STAGE, NEW_STAGE, stageCount, stageOf } from '../config/serviceStages';
-import { CONCESSIONS, FAVOUR, FAVOURS, type ConcessionId, type FavourId } from '../config/favours';
+import { Reputation } from './reputation';
+import { favourView } from './favourView';
+import { CONCESSIONS, FAVOUR, type ConcessionId, type FavourId } from '../config/favours';
 import { CAMP, Camp } from './camp';
 import { ParkLife } from './parkLife';
 import { QUESTS, type InstitutionId } from '../config/institutionQuests';
@@ -59,6 +62,7 @@ import { ILLUSTRATIVE, type ServiceParams } from '../config/illustrative';
 import type { SandboxSettings } from '../config/sandboxParams';
 import { CHECKING, NEUTRAL_EFFECTS, type ContextEffects } from '../config/contextFactors';
 import { CLUB_CLOSES, CLUB_OPENS, DAY_END, DAY_START, MORNING } from './clock';
+import { personSupport, supportFit, type PersonSupport } from './personSupport';
 import { ACUTE, EVENTS, INJECTING_SHARE, PROFILE_MIX, type EventId, type Profile, type Substance } from '../config/randomEvents';
 import { EventEngine, combineEventEffects, type ActiveEvent, type EventMods } from './eventEngine';
 import { ORG, type ApplicationContext, type GrantId, type RecruitId } from '../config/organisation';
@@ -109,6 +113,7 @@ export type SimEvent =
   | { type: 'alert'; service: ServiceId; word: string }
   | { type: 'spawnCar' }
   | { type: 'admitted'; service: ServiceId; visitor: VisitorId }
+  | { type: 'staffRota' }
   | { type: 'served'; service: ServiceId; visitor: VisitorId }
   | { type: 'leftUnserved'; service: ServiceId; visitor: VisitorId }
   /** Staff for posts `first` .. `first + count - 1` set out. */
@@ -328,6 +333,7 @@ export class Simulation {
   readonly events: EventEngine;
   private mods: EventMods = combineEventEffects([]);
   private readonly profiles = new Map<VisitorId, Profile>();
+  private readonly supportProfiles = new Map<VisitorId, PersonSupport>();
   readonly health: HealthCounts = { acuteHarms: 0, helped: 0, alone: 0, sterileKits: 0, unsafeInjecting: 0 };
   readonly org: Organisation;
   private policy: PolicyInfo = { council: 1, policeAgreement: false, criminalPossession: true, funding: 'project', neighbourhood: 1, anonymous: true };
@@ -340,8 +346,26 @@ export class Simulation {
   readonly exposure: Exposure;
   warmingBus = false;
   coolingPoint = false;
-  /** Favours with city hall: at most one held; using it means a concession is asked later. */
+  /** Reputation earns favours; spending schedules one pending concession. */
   favours = 1;
+  readonly reputation = new Reputation();
+  private favourViewRevision = -1;
+  private favourViewTutorial = false;
+  private favourViewCache?: ReturnType<typeof favourView>;
+  get favourView() {
+    const r = this.reputation;
+    const cached = this.favourViewCache;
+    const tutorial = !!this.tutorial?.active;
+    if (!cached || cached.score !== Math.floor(r.score) || cached.progress !== Math.floor(r.progress * 100)
+      || cached.held !== this.favours || cached.owed !== (this.concessionAt !== null)
+      || this.favourViewRevision !== r.revision || this.favourViewTutorial !== tutorial) {
+      this.favourViewRevision = r.revision;
+      this.favourViewTutorial = tutorial;
+      this.favourViewCache = favourView(r, this.favours, this.concessionAt !== null, tutorial);
+    }
+    return this.favourViewCache!;
+  }
+
   /** When city hall will ask for its concession (`org.now` minutes), or null when nothing is owed. */
   concessionAt: number | null = null;
   /** Police keep away from the services until this time. */
@@ -431,6 +455,7 @@ export class Simulation {
   private movingWasOn = true;
   /** The people behind the staff numbers: qualities, energy, morale and who works where. */
   readonly team: Team;
+  private readonly previousRota = new Map<Member, ServiceId | null>();
   /** Morale's consequences, standing, supplies, the big crisis, matching and the run's end (sim/stakes.ts). */
   readonly stakes: Stakes;
   /** The foot patrol at its table or out at a spot (sim/patrol.ts). */
@@ -560,12 +585,113 @@ export class Simulation {
     this.syncExtraPlaces();
   }
 
+  tutorial: TutorialProgress | null = null;
+
+  get tutorialCapabilities(): TutorialCapabilities { return this.tutorial?.capabilities ?? FULL_TUTORIAL_CAPABILITIES; }
+  tutorialAllowsService(id: ServiceId): boolean { return this.tutorial?.allowsService(id) ?? true; }
+
+  startTutorial(): void {
+    this.tutorial = new TutorialProgress();
+    this.stakes.hardcore = false;
+    this.stakes.runOver = null;
+    this.goals.scenario = null;
+    this.org.paid = 2;
+    this.org.volunteers = 0;
+    this.org.budget = 400;
+    this.camp.size = Math.max(0.2, this.camp.size);
+    this.club.inside = 0;
+    for (const id of SERVICE_IDS) {
+      const service = this.services[id];
+      service.switchedOn = service.everRun = id === 'footPatrol';
+      service.params.staff = id === 'footPatrol' ? 2 : 1;
+    }
+    this.applyTutorialReward();
+    this.reallocate();
+  }
+
+  tutorialInspectCamp(): void { this.tutorial?.inspectCamp(); this.applyTutorialReward(); }
+  tutorialOpenPatrol(): void { this.tutorial?.openPatrol(); this.applyTutorialReward(); }
+  tutorialReviewSkills(): void { this.tutorial?.reviewSkills(); this.applyTutorialReward(); }
+
+  private applyTutorialReward(): void {
+    const tutorial = this.tutorial;
+    if (!tutorial?.claimReward()) return;
+    if (tutorial.active) {
+      this.org.budget += 300;
+      this.org.paid = Math.max(this.org.paid, tutorial.capabilities.services.length + 1);
+      this.org.equipment = true;
+      if (tutorial.stage === 'nightlife' && (this.clockMinutes >= CLUB_CLOSES && this.clockMinutes < CLUB_OPENS)) this.clockMinutes = CLUB_OPENS;
+      for (const id of tutorial.capabilities.services) this.timers[id === 'clubHr' ? 'club' : id] = nextArrival(this.random, this.rate(id === 'clubHr' ? 'club' : id));
+      this.org.broke = false;
+      for (const id of ['naloxone', 'kits', 'leaflets', 'blankets'] as const) this.stakes.supplies.stock[id] = Math.max(60, this.stakes.supplies.stock[id]);
+    } else {
+      for (const id of Object.keys(this.timers) as RateId[]) this.timers[id] = nextArrival(this.random, this.rate(id));
+    }
+    this.reallocate();
+  }
+
+  /** The tutorial advances only the active neighbourhood's services, not an unseen full city. */
+  private tickTutorial(dt: number): void {
+    const tutorial = this.tutorial!;
+    const minutes = dt * this.minuteRate;
+    const before = this.clockMinutes;
+    this.clockMinutes += minutes;
+    this.org.now += minutes;
+    if (!this.goalsBegun) {
+      this.goalsBegun = true;
+      this.goals.begin(this.totals.helped, this.turnedAwayTotal, this.deaths, this.org.budget);
+    }
+    this.goals.tick(minutes, false);
+    if (before < MORNING && this.clockMinutes >= MORNING) {
+      const report = this.goals.end(this.totals.nights, this.totals.helped, this.turnedAwayTotal, this.deaths, this.org.budget, this.totals.helped, false);
+      this.totals.nights++;
+      // Check before notifying UI; a report must occur after entering the final stage.
+      tutorial.night((['outreach', 'dropIn', 'clubHr'] as const).every((id) => {
+        const service = this.services[id];
+        // The club closes naturally at 06:00; remember its staffed evening at the 08:00 report.
+        return tutorial.nightServices.includes(id) && service.switchedOn && !this.org.closedDown.has(id);
+      }));
+      this.applyTutorialReward();
+      this.emit({ type: 'nightReport', report });
+    }
+    if (this.clockMinutes >= DAY_END) {
+      this.clockMinutes -= DAY_END - DAY_START;
+      this.calendar.nextNight();
+    }
+    this.tickPatrol(minutes);
+    this.org.budget = Math.max(0, this.org.budget - (this.payroll + this.runningPerHour) * minutes / 60);
+    const exhausted = this.team.members.every((m) => m.energy < 0.15 || m.morale < 0.15);
+    if ((this.org.budget < 50 || exhausted || this.org.closedDown.size > 0 || this.org.paid < tutorial.capabilities.services.length + 1) && tutorial.recover(this.org.now)) {
+      this.org.budget = Math.max(300, this.org.budget);
+      this.org.notice(this.clockMinutes, t('Tutorial support: emergency funds and a rested team keep the next lesson within reach.'));
+      this.org.paid = Math.max(tutorial.capabilities.services.length + 1, this.org.paid);
+      this.team.sync(this.org.paid, this.org.volunteers);
+      for (const member of this.team.members) {
+        member.energy = Math.max(0.65, member.energy);
+        member.morale = Math.max(0.65, member.morale);
+        if (member.assignment === 'rest') member.assignment = 'auto';
+      }
+      for (const id of tutorial.capabilities.services) this.org.closedDown.delete(id);
+      this.reallocate();
+    }
+    const rota = this.team.tick(minutes / 60, false, { unpaid: false, steadier: true, drain: 1 });
+    if (rota || this.openingChanged()) this.reallocate();
+    else this.updateSkill();
+    const paced = dt * this.timeScale;
+    this.tickArrivals(paced);
+    for (const id of tutorial.capabilities.services) this.tickService(this.services[id], paced);
+    if (tutorial.capabilities.stress) this.tickClub(paced);
+    tutorial.observeOperational((['outreach', 'dropIn', 'clubHr'] as const).filter((id) => this.services[id].status === 'open' && this.services[id].assigned > 0));
+    this.applyTutorialReward();
+  }
+
   on(listener: (e: SimEvent) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   }
 
   private emit(e: SimEvent): void {
+    if (e.type === 'served' && this.tutorial?.active) { this.tutorial.served(e.service); this.applyTutorialReward(); }
     this.cityStress.note(e);
     for (const l of this.listeners) l(e);
   }
@@ -584,6 +710,12 @@ export class Simulation {
    */
   configure(changes: Partial<SandboxSettings>): void {
     for (const [key, value] of Object.entries(changes) as [keyof SandboxSettings, number][]) {
+      if (this.tutorial?.active) {
+        const service = key.slice(0, key.indexOf('.')) as ServiceId;
+        const staffing = key.endsWith('.staff') && this.tutorialCapabilities.staff && this.tutorialAllowsService(service);
+        const capacity = key.endsWith('.waiting') && this.tutorialCapabilities.maintenance && this.tutorialAllowsService(service);
+        if (key !== 'clockSpeed' && !staffing && !capacity) continue;
+      }
       switch (key) {
         case 'clock': this.clockMinutes = value; break;
         case 'clockSpeed': this.clockRate = value; break;
@@ -636,6 +768,11 @@ export class Simulation {
 
   /** Live rate including event boosts (a cold night, a big night at the club). */
   private rate(id: RateId): number {
+    if (this.tutorial?.active) {
+      if ((SERVICE_IDS as readonly string[]).includes(id) && !this.tutorialAllowsService(id as ServiceId)) return 0;
+      if (['passerby', 'car', 'party', 'leaver'].includes(id)) return 0;
+      if (id === 'club' && !this.tutorialCapabilities.services.includes('clubHr')) return 0;
+    }
     // The club is shut from six in the morning until the evening.
     if (id === 'club' && this.clockMinutes >= CLUB_CLOSES && this.clockMinutes < CLUB_OPENS) return 0;
     // Party arrivals follow whichever party is on (illustrative per minute).
@@ -709,8 +846,14 @@ export class Simulation {
     for (const id of SERVICE_IDS) {
       if (!crewed(id)) continue;
       const s = this.services[id];
+      if (!free.length || crew[id].length >= s.requested) continue;
+      // A small sample of today's actual queues refines the ordinary best-fit rota.
+      const demand = [...s.queue.slice(0, 8).map((waiting) => waiting.visitor), ...[...s.inService.keys()].slice(0, 4)]
+        .map((visitor) => this.supportOf(visitor)).filter((support): support is PersonSupport => !!support);
+      const fit = new Map(free.map((member) => [member, Team.fit(member, id) + (demand.length
+        ? .15 * demand.reduce((sum, support) => sum + supportFit(member, support), 0) / demand.length : 0)]));
       while (crew[id].length < s.requested && free.length) {
-        free.sort((a, b) => Number(b.paid) - Number(a.paid) || Team.fit(b, id) - Team.fit(a, id));
+        free.sort((a, b) => Number(b.paid) - Number(a.paid) || fit.get(b)! - fit.get(a)!);
         crew[id].push(free.shift()!);
       }
     }
@@ -722,6 +865,13 @@ export class Simulation {
       this.applyPlan(id, { reason, assigned: c.length, paid });
     }
     this.updateSkill();
+    const changed = this.previousRota.size !== this.team.members.length || this.team.members.some((member) =>
+      !this.previousRota.has(member) || this.previousRota.get(member) !== member.workingAt);
+    if (changed) {
+      this.previousRota.clear();
+      for (const member of this.team.members) this.previousRota.set(member, member.workingAt);
+      if (this.started) this.emit({ type: 'staffRota' });
+    }
   }
 
   /** Each service's crew quality, from who works there and how tired they are. */
@@ -736,6 +886,7 @@ export class Simulation {
 
   /** Sends a named worker to a service, to rest, or back to automatic placement. */
   assignMember(id: number, to: Assignment): void {
+    if (to !== 'auto' && to !== 'rest' && !this.tutorialAllowsService(to)) return;
     if (this.team.assign(id, to)) this.reallocate();
   }
 
@@ -767,16 +918,19 @@ export class Simulation {
   }
 
   recruit(id: RecruitId): void {
+    if (this.tutorial?.active && !this.tutorialCapabilities.staff) return;
     if (this.org.recruit(id, this.clockMinutes)) this.reallocate();
   }
 
   letGo(): void {
+    if (this.tutorial?.active && !this.tutorialCapabilities.staff) return;
     this.org.letGo(this.clockMinutes);
     this.reallocate();
   }
 
   /** Closes a place down by choice to save money: no running costs or staff there until relaunched. */
   closeDownPlace(id: ServiceId): void {
+    if (!this.tutorialAllowsService(id) || (this.tutorial?.active && !this.tutorialCapabilities.maintenance)) return;
     if (this.org.closedDown.has(id)) return;
     this.org.closedDown.add(id);
     this.reallocate();
@@ -785,6 +939,7 @@ export class Simulation {
 
   /** Takes a place down one level of investment: less upkeep, fewer places. */
   downgrade(id: ServiceId): void {
+    if (!this.tutorialAllowsService(id) || (this.tutorial?.active && !this.tutorialCapabilities.maintenance)) return;
     const u = this.upgrades[id];
     if (u.level <= this.stageFloor[id]) return;
     u.level--;
@@ -795,6 +950,7 @@ export class Simulation {
 
   /** Rents a vacant shop unit and opens a satellite of `service` in it. */
   rentUnit(unit: number, service: SatelliteService): boolean {
+    if (this.tutorial?.active) return false;
     if (this.property.units[unit]?.kind !== 'vacant' || !this.services[service].switchedOn) return false;
     if (!this.unlocked('rentUnit')) return false;
     if (!this.org.spend(PROPERTY.fitOut, false)) {
@@ -809,6 +965,7 @@ export class Simulation {
 
   /** Fits a rented unit out one level further: more places, a little more rent, and from level 2 its service's extra. */
   upgradeUnit(unit: number): boolean {
+    if (this.tutorial?.active) return false;
     const u = this.property.units[unit];
     if (u?.kind !== 'rented' || u.level >= PROPERTY.unit.maxLevel || !this.services[u.service].switchedOn) return false;
     if (!this.org.spend(PROPERTY.unit.upgrade, false)) {
@@ -823,12 +980,14 @@ export class Simulation {
 
   /** Gives a rented unit back. */
   releaseUnit(unit: number): void {
+    if (this.tutorial?.active) return;
     this.property.release(unit, this.org.now);
     this.syncExtraPlaces();
   }
 
   /** Opens a harm reduction point in an ordinary building (level 0); checking only where the law allows it. */
   openPoint(building: number, service: SatelliteService): boolean {
+    if (this.tutorial?.active) return false;
     // A point adds places to a service; while that service is switched off they would stand empty.
     if (!this.services[service].switchedOn) return false;
     if (!this.unlocked('openPoint')) return false;
@@ -847,6 +1006,7 @@ export class Simulation {
   }
 
   upgradePoint(building: number): boolean {
+    if (this.tutorial?.active) return false;
     const q = this.property.pointAt(building);
     if (!q || q.level >= PROPERTY.point.maxLevel || !this.services[q.service].switchedOn) return false;
     if (!this.org.spend(PROPERTY.point.upgrade, false)) {
@@ -859,6 +1019,7 @@ export class Simulation {
   }
 
   closePoint(building: number): void {
+    if (this.tutorial?.active) return;
     const q = this.property.closePoint(building);
     if (q) this.org.notice(this.clockMinutes, t('The {name} point has closed.', { name: SATELLITE_NAME[q.service].replace(/ point$/, '') }));
     this.syncExtraPlaces();
@@ -866,6 +1027,7 @@ export class Simulation {
 
   /** Whether the project's standing opens `u`; says what is needed when it does not. */
   unlocked(u: Unlock): boolean {
+    if (this.tutorial?.active && !this.tutorialCapabilities.organisation) return false;
     if (this.stakes.allows(u)) return true;
     this.org.notice(this.clockMinutes, t('Not yet: {what} needs a standing of {tier}.', { what: UNLOCK_NAMES[u], tier: TIER_NAMES[UNLOCK_TIER[u]] }));
     return false;
@@ -873,6 +1035,7 @@ export class Simulation {
 
   /** Where the foot patrol can go now (config/patrol.ts): a camp, a party, the club's exit, the longest queue, the person in crisis. */
   patrolSpots(): PatrolSpot[] {
+    if (this.tutorial?.active) return this.tutorialCapabilities.dispatch ? ['camp'] : [];
     const out: PatrolSpot[] = [];
     if (this.camp.size > 0.05) out.push('camp');
     if (this.mods.party) out.push('party');
@@ -913,7 +1076,7 @@ export class Simulation {
     if (!this.patrol.out) return;
     const spot = this.patrol.spot!;
     const workers = this.team.members.filter((m) => m.workingAt === 'footPatrol').length;
-    const { contacts, back } = this.patrol.tick(dtMinutes, this.org.now, workers);
+    const { contacts, back } = this.patrol.tick(dtMinutes, this.org.now, workers * this.services.footPatrol.skill);
     for (let i = 0; i < contacts; i++) {
       this.totals.helped++;
       this.funders.helped();
@@ -925,6 +1088,7 @@ export class Simulation {
     }
     const eases = PATROL.spots[spot].eases as Partial<Record<'police' | 'medics' | 'sobering', number>>;
     for (const meter of ['police', 'medics', 'sobering'] as const) this.cityStress.relieve(meter, (eases[meter] ?? 0) * (dtMinutes / 60));
+    if (spot === 'camp' && this.tutorial?.active) { this.tutorial.patrol(contacts, back); this.applyTutorialReward(); }
     if (back) {
       this.org.notice(this.clockMinutes, plural(this.patrol.reached, ['The foot patrol is back at its table: it reached {n} person out there.', 'The foot patrol is back at its table: it reached {n} people out there.'], ['Patrol pieszy wrócił do stolika: dotarł do {n} osoby.', 'Patrol pieszy wrócił do stolika: dotarł do {n} osób.', 'Patrol pieszy wrócił do stolika: dotarł do {n} osób.']));
       this.reallocate();
@@ -933,6 +1097,7 @@ export class Simulation {
 
   /** Prepares for the coming storm (config/storm.ts). */
   prepareStorm(p: StormPrep): boolean {
+    if (this.tutorial?.active) return false;
     const ok = this.stakes.prepare(p);
     if (ok && p === 'standby' && this.stakes.storm.phase === 'peak') this.reallocate();
     return ok;
@@ -940,10 +1105,12 @@ export class Simulation {
 
   /** Orders a batch of supplies. */
   orderSupply(id: SupplyId): boolean {
+    if (this.tutorial?.active && !this.tutorialCapabilities.organisation) return false;
     return this.stakes.order(id);
   }
 
   setStandingOrder(id: SupplyId, on: boolean): void {
+    if (this.tutorial?.active && !this.tutorialCapabilities.organisation) return;
     this.stakes.supplies.standing[id] = on;
   }
 
@@ -954,6 +1121,7 @@ export class Simulation {
 
   /** Sends another outreach camper out to spot `spot` (an index the world defines). */
   sendCamper(spot: number): boolean {
+    if (this.tutorial?.active) return false;
     if (this.property.extraCampers >= PROPERTY.maxExtraCampers || this.property.campers.includes(spot)) return false;
     if (!this.services.outreach.switchedOn) return false;
     if (!this.unlocked('extraCamper')) return false;
@@ -987,6 +1155,7 @@ export class Simulation {
 
   /** Puts money into a service: fills its level bar, and at 100% it goes up a level. */
   invest(id: ServiceId): boolean {
+    if (!this.tutorialAllowsService(id) || (this.tutorial?.active && !this.tutorialCapabilities.maintenance)) return false;
     const u = this.upgrades[id];
     const last = stageCount(id);
     if (u.level >= last && u.progress >= 1) return false;
@@ -1061,6 +1230,7 @@ export class Simulation {
 
   /** Sets one activity's share of a place's visits (percent); the rest keep their proportions. */
   setMix(id: ServiceId, a: Activity, percent: number): void {
+    if (!this.tutorialAllowsService(id) || (this.tutorial?.active && !this.tutorialCapabilities.stress)) return;
     // A service switched off spends nothing, so there is nothing to divide.
     if (!this.services[id].switchedOn) return;
     this.mix.setShare(id, a, percent, this.context.checkingAllowed);
@@ -1068,6 +1238,7 @@ export class Simulation {
 
   /** Pays a place's one-off set-up for an activity (checking equipment). */
   setUpMix(id: ServiceId, a: Activity): boolean {
+    if (!this.tutorialAllowsService(id) || (this.tutorial?.active && !this.tutorialCapabilities.stress)) return false;
     const cost = ACTIVITY[a].setup ?? 0;
     if (this.mix.isSetUp(id, a)) return true;
     if (!this.services[id].switchedOn) return false;
@@ -1127,14 +1298,15 @@ export class Simulation {
 
   /** Uses the favour held: done now, and city hall will ask for a concession later. */
   askFavour(id: FavourId): boolean {
-    if (this.favours < 1) return false;
+    if (this.tutorial?.active && !this.tutorialCapabilities.organisation) return false;
+    if (!this.favourView.items.find(item => item.id === id)?.available) return false;
     this.favours--;
     const [lo, hi] = FAVOUR.askAfterHours;
     this.concessionAt = this.org.now + (lo + this.random() * (hi - lo)) * 60;
-    if (id === 'funding') this.org.budget += FAVOUR.emergencyFunding;
-    else if (id === 'police') { this.policeAwayUntil = this.org.now + FAVOUR.policeHours * 60; this.applyContext(); }
-    else this.campHoldUntil = this.org.now + FAVOUR.campHoldHours * 60;
-    this.org.notice(this.clockMinutes, t('{done} City hall will want something back.', { done: FAVOURS[id].done }));
+    if (id === 'funding') this.org.budget += this.reputation.funding;
+    else if (id === 'police') { this.policeAwayUntil = this.org.now + this.reputation.policeHours * 60; this.applyContext(); }
+    else this.campHoldUntil = this.org.now + this.reputation.campHours * 60;
+    this.org.notice(this.clockMinutes, t('{done} City hall will want something back.', { done: this.favourView.items.find(item => item.id === id)!.label }));
     return true;
   }
 
@@ -1143,22 +1315,23 @@ export class Simulation {
     return this.concessionAt !== null && this.org.now >= this.concessionAt;
   }
 
-  /** Agreeing earns the next favour; refusing leaves funders cooler for a while. */
+  /** Settle the pending request once; new favours come only from reputation. */
   answerConcession(id: ConcessionId, agree: boolean): string {
+    if (this.concessionAt === null) return '';
     this.concessionAt = null;
     if (!agree) {
       Object.assign(this.mediaHit, { factor: 0.8, until: this.org.now + 2 * 24 * 60 });
-      return t('City hall will remember: no favours for now, and funders are a little cooler for two days.');
+      return t('City hall remembers your refusal. Funders are a little cooler for two days.');
     }
     if (id === 'postedOfficer') { this.policePostedUntil = this.org.now + FAVOUR.policeHours * 60; this.applyContext(); }
     else if (id === 'cleanUp') this.org.spend(FAVOUR.cleanUpCost, false);
     else this.moveOutreach(FAVOUR.camperOffHours * 60);
-    this.favours = 1;
-    return t('{agree} You have earned a favour with city hall.', { agree: CONCESSIONS[id].agree });
+    return t('{agree} Reputation earns your next favour.', { agree: CONCESSIONS[id].agree });
   }
 
   /** Partners with a new venue: harm reduction info and water there; the venue pays by the hour. */
   partnerVenue(i: number): boolean {
+    if (this.tutorial?.active) return false;
     if (i >= this.vitality.venues || this.vitality.partners.has(i)) return false;
     if (!this.unlocked('partnerVenue')) return false;
     if (!this.org.spend(VITALITY.partnerCost, false)) {
@@ -1208,6 +1381,7 @@ export class Simulation {
 
   /** A team sweeps the blocks' courtyards and stairwells for used needles and kit. */
   sweepForKit(): boolean {
+    if (this.tutorial?.active && !this.tutorialCapabilities.organisation) return false;
     if (this.org.now < this.sweepAgainAt) return false;
     if (!this.org.spend(RESIDENTS.sweepCost, false)) {
       this.org.notice(this.clockMinutes, t('Not enough money for a sweep.'));
@@ -1222,6 +1396,7 @@ export class Simulation {
 
   /** Door-knocking in the blocks: who the project is and a number to call. */
   meetResidents(): boolean {
+    if (this.tutorial?.active && !this.tutorialCapabilities.organisation) return false;
     if (this.org.now < this.meetAgainAt) return false;
     if (!this.org.spend(RESIDENTS.meetCost, false)) {
       this.org.notice(this.clockMinutes, t('Not enough money to meet the residents.'));
@@ -1236,6 +1411,7 @@ export class Simulation {
 
   /** A donation drive: staff and volunteers collect for a few hours; donation boxes bring in more meanwhile. */
   startDonationDrive(): boolean {
+    if (this.tutorial?.active && !this.tutorialCapabilities.organisation) return false;
     if (this.driveUntil !== null || this.org.now < this.driveAgainAt) return false;
     if (!this.org.spend(HUSTLE.driveCost, false)) {
       this.org.notice(this.clockMinutes, t('Not enough money to run a donation drive.'));
@@ -1260,6 +1436,7 @@ export class Simulation {
 
   /** The camper drives to a new spot: outreach closes for `minutes`, then opens again if it was on. */
   moveOutreach(minutes = 20): void {
+    if (this.tutorial?.active) return;
     if (this.movingUntil === null) this.movingWasOn = this.services.outreach.switchedOn;
     this.movingUntil = this.org.now + minutes;
     this.setEnabled('outreach', false);
@@ -1352,10 +1529,12 @@ export class Simulation {
   }
 
   reopen(id: ServiceId): void {
+    if (!this.tutorialAllowsService(id)) return;
     this.org.reopen(id, this.clockMinutes);
   }
 
   applyFor(id: GrantId): boolean {
+    if (this.tutorial?.active && !this.tutorialCapabilities.organisation) return false;
     const tier = GRANT_TIER[id] ?? 0;
     if (this.stakes.needsTier(tier)) {
       this.org.notice(this.clockMinutes, t('Funders will not read this application yet: it needs a standing of {tier}.', { tier: TIER_NAMES[tier] }));
@@ -1435,7 +1614,7 @@ export class Simulation {
     const surplus = Math.max(0, this.footfallNow - 1);
     let total = 0;
     for (const id of SERVICE_IDS) {
-      if (this.org.closedDown.has(id)) continue;
+      if (!this.tutorialAllowsService(id) || this.org.closedDown.has(id)) continue;
       total += ORG.runningPerPlace * (1 + (this.services[id].status === 'open' ? ORG.footfallStrain * surplus : 0));
     }
     return total;
@@ -1474,6 +1653,7 @@ export class Simulation {
    * `finished` is true on the last step.
    */
   questStep(id: InstitutionId): { lesson: string; finished: boolean } | null {
+    if (this.tutorial?.active && !this.tutorialCapabilities.organisation) return null;
     const q = QUESTS[id];
     const done = this.quests[id];
     const step = q.steps[done];
@@ -1514,6 +1694,15 @@ export class Simulation {
     return this.profiles.get(visitor)?.substance;
   }
 
+  /** The same live support priorities are shown on the person card and used on admission. */
+  supportOf(visitor: VisitorId): PersonSupport | undefined {
+    const profile = this.profiles.get(visitor);
+    if (!profile) return undefined;
+    let support = this.supportProfiles.get(visitor);
+    if (!support) { support = personSupport(visitor, profile); this.supportProfiles.set(visitor, support); }
+    return support;
+  }
+
   /** Whether the club is open now (its door staff are out). */
   get clubOpen(): boolean {
     return !(this.clockMinutes >= CLUB_CLOSES && this.clockMinutes < CLUB_OPENS);
@@ -1527,6 +1716,7 @@ export class Simulation {
 
   /** Specialises the camper (or changes its path): pays for the kit and training. False if it cannot pay. */
   setCamperPath(path: CamperPath): boolean {
+    if (!this.tutorialAllowsService('outreach') || (this.tutorial?.active && !this.tutorialCapabilities.organisation)) return false;
     if (this.camperPath === path || !this.services.outreach.switchedOn) return false;
     if (!this.org.spend(CAMPER_PATH[path].cost, false)) return false;
     this.camperPath = path;
@@ -1559,6 +1749,7 @@ export class Simulation {
 
   /** Starts an event now, from the event feed. */
   triggerEvent(id: EventId): void {
+    if (this.tutorial?.active) return;
     if (this.events.isActive(id)) return;
     const e = this.events.start(id, this.clockMinutes);
     this.eventsChanged();
@@ -1624,6 +1815,7 @@ export class Simulation {
   /** Clears a person's profile once they have left the scene. */
   forget(visitor: VisitorId): void {
     this.profiles.delete(visitor);
+    this.supportProfiles.delete(visitor);
   }
 
   private drawProfile(mix: Partial<Record<Substance, number>>): Profile {
@@ -1667,6 +1859,7 @@ export class Simulation {
 
   /** The HUD switch. The service opens only if hours and permissions allow it too. */
   setEnabled(id: ServiceId, on: boolean): void {
+    if (!this.tutorialAllowsService(id)) return;
     this.services[id].switchedOn = on;
     if (on) this.services[id].everRun = true;
     this.reallocate();
@@ -1679,8 +1872,14 @@ export class Simulation {
   }
 
   private closedReason(id: ServiceId): ClosedReason | null {
+    if (!this.tutorialAllowsService(id)) return 'switchedOff';
     const c = this.context;
     if (!this.services[id].switchedOn) return 'switchedOff';
+    if (this.tutorial?.active) {
+      if (this.org.closedDown.has(id)) return 'closedDown';
+      if (id === 'footPatrol' && this.patrol.out) return 'onPatrol';
+      return id === 'clubHr' && this.outsideHours(id) ? 'hours' : null;
+    }
     if (this.org.closedDown.has(id)) return 'closedDown';
     if (this.mods.outOfService.has(id)) return 'outOfService';
     // Out on the street: the table is shut, the same people are at work elsewhere.
@@ -1693,7 +1892,7 @@ export class Simulation {
 
   /** Closing time means closed overnight, until the morning; the club stand works the club's hours. */
   private outsideHours(id: ServiceId): boolean {
-    const closesAt = this.context.closesAt;
+    const closesAt = this.tutorial?.active ? null : this.context.closesAt;
     if (closesAt !== null && this.clockMinutes >= closesAt && this.clockMinutes < MORNING) return true;
     return id === 'clubHr' && this.clockMinutes >= CLUB_CLOSES && this.clockMinutes < CLUB_OPENS;
   }
@@ -1703,7 +1902,7 @@ export class Simulation {
    * within its opening hours. People know the hours; they do not queue at a door that opens at 08:00.
    */
   private expected(id: ServiceId): boolean {
-    return this.services[id].everRun && !this.outsideHours(id);
+    return this.tutorialAllowsService(id) && this.services[id].everRun && !this.outsideHours(id);
   }
 
   /** True when hours, permissions or switches changed what can open since the last allocation. */
@@ -1717,6 +1916,7 @@ export class Simulation {
   }
 
   staffArrived(id: ServiceId): void {
+    if (!this.tutorialAllowsService(id)) return;
     this.services[id].staffOnSite++;
   }
 
@@ -1730,6 +1930,7 @@ export class Simulation {
    * Their need still goes unmet, but the service never saw them: it does not count toward the crisis.
    */
   turnBack(id: ServiceId, visitor: VisitorId): void {
+    if (!this.tutorialAllowsService(id)) return;
     const s = this.services[id];
     s.metrics.demand++;
     s.turnedBack++;
@@ -1744,6 +1945,7 @@ export class Simulation {
 
   /** A person physically reached the service point. */
   arrive(id: ServiceId, visitor: VisitorId): ArrivalResult {
+    if (!this.tutorialAllowsService(id)) return 'turnedAway';
     const s = this.services[id];
     s.metrics.demand++;
     if (s.status !== 'open') {
@@ -1764,6 +1966,7 @@ export class Simulation {
 
   /** A club-goer reached the end of the door queue. Returns false if the queue is full. */
   joinClubQueue(visitor: VisitorId): boolean {
+    if (this.tutorial?.active && !this.tutorialCapabilities.stress) return false;
     this.club.arrivals++;
     if (this.club.queue.length >= ILLUSTRATIVE.club.queueSlots) return false;
     this.club.queue.push(visitor);
@@ -1771,6 +1974,7 @@ export class Simulation {
   }
 
   tick(dt: number): void {
+    if (this.tutorial?.active) { this.tickTutorial(dt); return; }
     const before = this.clockMinutes;
     this.clockMinutes += dt * this.minuteRate;
     // A night is done in the morning: it counts for the leaderboard then, not at the next evening.
@@ -1993,6 +2197,7 @@ export class Simulation {
     if (rota) this.reallocate();
     else this.updateSkill();
     if (this.openingChanged()) this.reallocate();
+    if (!this.tutorial?.active) this.favours = this.reputation.tick(dt * this.minuteRate, this.neighbourhood.state.reputation, this.funders.trust, this.favours);
     const band = this.funders.tick(dt * this.minuteRate, this.neighbourhood.state.reputation, this.servicesClosedByPlayer, this.growth.size);
     if (band) this.org.notice(this.clockMinutes, band === 'wary'
       ? t('Funders are getting wary: fewer people helped this past day. Project money and grant chances are down until results pick up.')
@@ -2025,6 +2230,10 @@ export class Simulation {
   private tickArrivals(dt: number): void {
     const t = this.timers;
     const spawn = (intent: Intent, wantsStand = false) => {
+      if (this.tutorial?.active) {
+        if ((SERVICE_IDS as readonly string[]).includes(intent) && !this.tutorialAllowsService(intent as ServiceId)) return;
+        if (intent === 'passerby' || intent === 'party' || (intent === 'club' && !this.tutorialCapabilities.stress)) return;
+      }
       const seeksService = intent === 'dropIn' || intent === 'outreach' || wantsStand || (WALK_IN_SERVICE_IDS as readonly string[]).includes(intent);
       const local = seeksService ? this.localDeter(intent === 'party' || intent === 'club' || intent === 'passerby' ? 'clubHr' : wantsStand ? 'clubHr' : (intent as ServiceId)) : 0;
       const turnsBack = seeksService && this.random() < 1 - (1 - this.context.deterrence) * (1 - local);
@@ -2047,8 +2256,8 @@ export class Simulation {
     if ((t.passerby -= dt) <= 0) { spawn('passerby'); t.passerby = nextArrival(this.random, this.rate('passerby')); }
     if ((t.party -= dt) <= 0) { spawn('party'); t.party = nextArrival(this.random, this.rate('party')); }
     if (this.partyBurst > 0) { this.partyBurst--; spawn('party'); }
-    if ((t.car -= dt) <= 0) { this.emit({ type: 'spawnCar' }); t.car = nextArrival(this.random, this.rate('car')); }
-    if ((t.leaver -= dt) <= 0) {
+    if ((t.car -= dt) <= 0 && !this.tutorial?.active) { this.emit({ type: 'spawnCar' }); t.car = nextArrival(this.random, this.rate('car')); }
+    if ((t.leaver -= dt) <= 0 && !this.tutorial?.active) {
       if (this.club.inside > 0) {
         this.club.inside--;
         const intoxicated = this.random() < intoxicationShare(this.clockMinutes);
@@ -2175,7 +2384,7 @@ export class Simulation {
       this.neighbourhood.note('demand');
     }
     // Someone who needs a particular skill is quicker with the right worker, much slower without.
-    const match = this.stakes.admitted(s.id, this.crisis);
+    const match = this.stakes.admitted(s.id, this.crisis, this.supportOf(visitor));
     s.inService.set(visitor, range(this.random, s.params.serviceSeconds) * this.mods.serviceTime[s.id] * mix.time * match);
     if (notify) this.emit({ type: 'admitted', service: s.id, visitor });
   }

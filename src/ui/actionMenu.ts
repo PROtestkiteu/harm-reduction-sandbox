@@ -1,3 +1,5 @@
+import { registerTransient } from './transientSurfaces';
+
 /** One entry: its label, whether it can be used now, and what it does. */
 export interface MenuItem {
   label: string;
@@ -43,11 +45,10 @@ export class ActionMenu {
       else if (e.key === 'ArrowUp') { e.preventDefault(); items[(i - 1 + items.length) % items.length]?.focus(); }
       else if (e.key === 'Tab') this.close();
     });
-    // Anything outside closes it; capture so it closes before the canvas reacts.
-    window.addEventListener('pointerdown', (e) => {
-      if (!this.root.hidden && !this.root.contains(e.target as Node) && !this.owner?.contains(e.target as Node)) this.close();
-    }, true);
-    window.addEventListener('resize', () => this.close());
+    registerTransient({
+      contains: (target) => this.root.contains(target) || !!this.owner?.contains(target),
+      dismiss: () => this.close(false),
+    });
   }
 
   get open(): boolean {
@@ -101,13 +102,13 @@ export class ActionMenu {
     (this.list.querySelector<HTMLButtonElement>('[aria-checked="true"]:not(:disabled)') ?? this.list.querySelector<HTMLButtonElement>('button:not(:disabled)'))?.focus({ preventScroll: true });
   }
 
-  close(): void {
+  close(returnFocus = true): void {
     if (this.root.hidden) return;
     this.root.hidden = true;
     this.owner?.setAttribute('aria-expanded', 'false');
     this.owner = null;
     const back = this.returnFocus;
     this.returnFocus = null;
-    if (back && document.contains(back)) back.focus({ preventScroll: true });
+    if (returnFocus && back && document.contains(back)) back.focus({ preventScroll: true });
   }
 }

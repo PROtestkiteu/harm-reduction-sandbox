@@ -1,3 +1,4 @@
+import { registerTransient } from './transientSurfaces';
 import type { StressCause, StressMeter } from '../sim/cityStress';
 import type { ServiceId } from '../sim/types';
 import { t } from '../i18n';
@@ -96,8 +97,9 @@ export class MeterCauses {
       if (m && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); this.toggle(m); }
     });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && this.open) { e.stopPropagation(); this.close(true); } }, true);
-    document.addEventListener('pointerdown', (e) => {
-      if (this.open && !this.card.contains(e.target as Node) && !row.contains(e.target as Node)) this.close(false);
+    registerTransient({
+      contains: (target) => this.card.contains(target) || !!this.open?.anchor.contains(target),
+      dismiss: () => this.close(false),
     });
   }
 

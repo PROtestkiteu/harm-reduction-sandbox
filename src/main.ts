@@ -1,12 +1,18 @@
+import { installIconHints } from './ui/iconHints';
+import { supportFit, type PersonSupport } from './sim/personSupport';
+import type { StaffingAdvice } from './ui/personSupport';
+import { trackUiViewport } from './ui/viewportBounds';
+import './ui/panelControls.css';
+import { TutorialArea } from './world/tutorialArea';
+import { TutorialGuide } from './ui/tutorialGuide';
 import { PATROL, type PatrolSpot } from './config/patrol';
 import type { MenuItem } from './ui/actionMenu';
 import { clientToNdc } from './render/camera';
-import { TIRED } from './sim/team';
+import { Team, TIRED } from './sim/team';
 import { locationOf, nextStep, type GuideView } from './game/guide';
 import { QUALITY } from './render/quality';
 import { DirectionalLight, Plane, Raycaster, Vector3, WebGLRenderer, type Object3D } from 'three';
 import { DaemonFigure } from './agents/daemonFigure';
-import { FAVOUR } from './config/favours';
 import { QUESTS } from './config/institutionQuests';
 import { setPoliceLine } from './ui/personInfo';
 import type { PersonRole } from './agents/crowd';
@@ -20,7 +26,7 @@ import { ILLUSTRATIVE } from './config/illustrative';
 import { combineEffects, decodeContext, defaultContext, encodeContext, type ContextSelection } from './config/contextFactors';
 import { NATIONAL_MODELS, selectionFor } from './config/nationalModels';
 import { GRANTS, RECRUIT } from './config/organisation';
-import { FAVOURS, type FavourId } from './config/favours';
+import { type FavourId } from './config/favours';
 import { CAMPER_SPOTS, camperSpot } from './world/layout';
 import { exposureNow } from './sim/exposure';
 import { PARAM_BY_ID, decodeSettings, defaultSettings, encodeSettings, type ParamId, type SandboxSettings } from './config/sandboxParams';
@@ -75,7 +81,7 @@ import { GUIDE_AGAIN_MINUTES, needGuide } from './game/needGuides';
 import { METER_ORDER, meterState } from './ui/needIcons';
 import type { Need } from './config/needs';
 import { currentRun, ensureRun, setRun, submitScore, topRuns } from './game/leaderboard';
-import { LOCATION_NAMES } from './config/places';
+import { LOCATION_NAMES, SERVICE_TEXT } from './config/places';
 import { PROPERTY, type SatelliteService } from './sim/property';
 import { price } from './ui/money';
 import { Interaction } from './ui/interaction';
@@ -87,7 +93,7 @@ import type { PolicyInfo } from './sim/simulation';
 import { EVENTS, type EventId } from './config/randomEvents';
 import { SandboxPanel } from './ui/sandboxPanel';
 import { buildSnapshot, driveView } from './ui/snapshot';
-import { aboutSection, homeScreenNote, languageSection, randomSection, startDateClock } from './ui/sandboxTopics';
+import { aboutSection, homeScreenNote, languageSection, startDateClock } from './ui/sandboxTopics';
 import { CityCards, PropertyView, SHOPS_FOR } from './game/cityState';
 import { SelectionMarker } from './ui/selection';
 import { Ghosts } from './world/ghosts';
@@ -106,7 +112,7 @@ import { NoticeStrip } from './ui/noticeStrip';
 import { GoalsStrip } from './ui/goalsStrip';
 import { MeterCauses, type MeterAction, type MeterKey } from './ui/meterCauses';
 import { NightReportBox } from './ui/nightReport';
-import { scenariosSection } from './ui/scenariosSection';
+import { launchConfiguration, rememberMenuRun } from './game/launch';
 import { scenarioById, scenarioProgress } from './config/scenarios';
 import type { NightReport } from './sim/goals';
 import { Sound, type SoundState } from './audio';
@@ -120,11 +126,14 @@ import { StakesSection } from './ui/stakesSection';
 import { tutorialHidden } from './ui/tutorials';
 import { runOver, stormWarning } from './game/stakesEvents';
 import type { MajorEvent } from './game/majorEvents';
+import './ui/uiIndicators.css';
 
 document.documentElement.lang = LANG;
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
 canvas.setAttribute('aria-label', t('Isometric neighbourhood with a drop-in centre, an outreach camper and a music club. Select a location for details.'));
 const hudRoot = document.getElementById('hud') as HTMLElement;
+trackUiViewport();
+installIconHints();
 // Portrait of the selection, bottom left: a framed live close-up with a caption.
 const portraitBox = document.createElement('figure');
 portraitBox.className = 'portrait';
@@ -197,6 +206,8 @@ reducedMotion.addEventListener('change', () => { crowd.setStill(reducedMotion.ma
 const hazeDir = new Vector3();
 const hazePoint = new Vector3();
 const rig = new CameraRig(world.frame.full.getCenter(new Vector3()), DISTRICT - 4);
+let tutorialArea: TutorialArea | null = null;
+let tutorialGuide: TutorialGuide | null = null;
 // Phones (narrow, or short in landscape) see less at once: zoomed out no further than about the
 // inner blocks, so the screen never fills with a tiny far city. (Closer haze was tried: in portrait
 // the top of the screen is the far distance, and it fogged a tall band.)
@@ -478,12 +489,19 @@ const hud = new Hud(hudRoot, {
   onAction: (service, action) => confirmSpend(placeDecision(service, action), () => queuePlaceAction(service, action)),
   onBuildingAction: (action) => confirmSpend(buildingDecision(action), () => queueBuildingAction(action)),
   onTitle: () => sandbox.setOpen(true),
-  onMoney: () => openOrg(),
+  onMoney: () => orgSheet.isOpen ? orgSheet.setOpen(false, true) : openOrg(),
+  onFavours: () => { openOrg(); if (sim.tutorialCapabilities.organisation) org.focusFavours(); },
   // Moving the first camper is free; with it switched off or on the move, a new one is bought.
+  onPersonTeam: () => {
+    const selected = interaction.selected;
+    const person = selected?.kind === 'person' ? crowd.person(selected.id) : undefined;
+    const target = person ? personStaffTarget(person) : null;
+    if (person?.support && target) openOrg(true, person.support, target);
+    else if (person?.worker) openOrg(true);
+  },
   onPersonCamper: () => confirmSpend(!sim.outreachMoving && sim.services.outreach.switchedOn ? null : camperDecision(), () => queueOrg(() => sendCamperToSelected())),
   onMix: (service, activity, weight) => queueOrg(() => { sim.setMix(service, activity, weight); refreshHud(); }),
   onMixSetUp: (service, activity) => confirmSpend(setupDecision(activity), () => queueOrg(() => { sim.setUpMix(service, activity); refreshHud(); })),
-  onSettings: () => sandbox.setOpen(true),
   onCamperPath: (path) => confirmSpend(pathDecision(path), () => { if (sim.setCamperPath(path)) { refreshOrg(); refreshHud(); } }),
   onAid: (kind) => queueOrg(() => {
     if (kind === 'cold') sim.warmingBus = !sim.warmingBus;
@@ -607,7 +625,7 @@ const continuingGame = ((): boolean => {
   let resumed = false;
   try { resumed = !!sessionStorage.getItem(RESUME_KEY); } catch { /* storage blocked: not a reload */ }
   const gid = linkedGame();
-  return resumed || (gid !== null && LiveGame.owns(gid)) || location.hash.startsWith('#g=');
+  return (launchConfiguration?.kind === 'resume' && !!launchConfiguration.save) || resumed || (gid !== null && LiveGame.owns(gid)) || location.hash.startsWith('#g=');
 })();
 const welcome = new Welcome(document.body, (open) => {
   if (open) { pausedBeforeWelcome = paused; setPaused(true); }
@@ -624,8 +642,13 @@ const welcome = new Welcome(document.body, (open) => {
     portraitKey = '';
   },
   picture: () => playerPortraitUrl(),
-});
+}, new URLSearchParams(location.search).get('scenario') === 'tutorial');
 const interaction = new Interaction({
+  allowsTarget: (target) => tutorialArea?.allowsTarget(target, crowd) ?? true,
+  onSelection: (target) => {
+    if (target?.kind === 'building' && target.id === world.camps.park) sim.tutorialInspectCamp();
+    if (target?.kind === 'location' && target.id === 'footPatrol') sim.tutorialOpenPatrol();
+  },
   canvas,
   overlay: hudRoot,
   camera,
@@ -640,6 +663,7 @@ const interaction = new Interaction({
   buildingCard: (id) => cards.describeBuilding(id),
   personCamper: (p) => personCamperOffer(p),
   personPlace: (p) => placeOf(p)?.name ?? null,
+  personStaff: personStaffAdvice,
   vehicleCard: (id) => cards.describeVehicle(id),
   openMenu: (x, y) => {
     // Let the column catch up with the new selection first, so the menu lists its actions.
@@ -679,7 +703,8 @@ setPoliceLine(() => {
   if (s.reason === 'away' || s.reason === 'agreement') return why.replace(/\.$/, '');
   const steps = QUESTS.police.steps.length;
   const done = sim.quests.police;
-  const favour = sim.favours > 0 ? t('A city hall favour sends them off for {h} hours (you hold {n}).', { h: FAVOUR.policeHours, n: sim.favours }) : t('A city hall favour would send them off for {h} hours (you hold none).', { h: FAVOUR.policeHours });
+  const policeFavour = sim.favourView.items.find(i => i.id === 'police')!;
+  const favour = [policeFavour.label, policeFavour.reason].filter(Boolean).join('. ');
   const ally = t('The police agreement keeps them off your doors for good: {done} of {steps} steps done, at the police station.', { done, steps });
   return `${why} ${favour} ${ally}`.replace(/\.$/, '');
 });
@@ -778,6 +803,22 @@ function placeOf(p: PersonState): { name: string; location?: LocationId; buildin
   return null;
 }
 
+function personStaffTarget(p: PersonState): ServiceId | null {
+  if (!p.support || !sim.tutorialCapabilities.staff) return null;
+  const goal = (SERVICE_IDS as readonly string[]).includes(p.goal ?? '') ? p.goal as ServiceId : p.goal === 'club' || p.goal === 'party' ? 'clubHr' : null;
+  const target = p.crowding ?? p.service ?? goal ?? 'outreach';
+  return sim.tutorialAllowsService(target) ? target : null;
+}
+function personStaffAdvice(p: PersonState): StaffingAdvice | null {
+  const target = personStaffTarget(p);
+  if (!p.support || !target) return null;
+  const support = p.support;
+  const candidates = sim.team.available(!sim.org.broke).filter(member => member.energy >= .35 && !Team.shaken(member)).sort((a, b) => supportFit(b, support) - supportFit(a, support));
+  const matches = candidates.slice(0, 2).map(m => t('{name} ({fit}%)', { name: m.name, fit: Math.round(supportFit(m, support) * 100) })).join(', ') || t('No rested staff available');
+  const crew = sim.team.members.filter(m => m.workingAt === target).map(m => m.name).join(', ') || t('Nobody on shift');
+  return { service: SERVICE_TEXT[target].label, matches, crew };
+}
+
 function personCamperOffer(p: PersonState): PersonCamperOffer | null {
   if (p.role !== 'sleeper' && !describePerson(p).profile) return null;
   const spot = camperSpotNear(p.root.position.x, p.root.position.z);
@@ -837,7 +878,7 @@ function meterActions(key: MeterKey): MeterAction[] {
     const why = !sim.services.footPatrol.switchedOn ? t('not running') : sim.patrol.spot ? t('out now') : !sim.patrolReady ? t('not ready') : !sim.patrolSpots().includes(spot) ? t('nothing there now') : budget < PATROL.cost ? t('not enough money') : null;
     out.push({ label: t('Send the foot patrol to {spot}', { spot: PATROL.spots[spot].label }), note: why ?? price(PATROL.cost), disabled: why !== null, run: () => queueOrg(() => { sim.sendPatrol(spot, patrolPoint(spot)); refreshHud(); }) });
   };
-  const favour = (id: FavourId) => out.push({ label: FAVOURS[id].label, note: sim.favours ? t('{n} held', { n: sim.favours }) : t('none'), disabled: sim.favours <= 0, run: () => queueOrg(() => { sim.askFavour(id); syncContextProps(); refreshOrg(); refreshHud(); }) });
+  const favour = (id: FavourId) => out.push({ label: sim.favourView.items.find(i => i.id === id)!.label, note: sim.favourView.items.find(i => i.id === id)!.reason, disabled: !sim.favourView.items.find(i => i.id === id)!.available, run: () => queueOrg(() => { sim.askFavour(id); syncContextProps(); refreshOrg(); refreshHud(); }) });
   const order = (id: SupplyId) => {
     const arriving = sim.stakes.supplies.arriving[id] !== undefined;
     out.push({ label: t('Order {item}', { item: SUPPLIES[id].label.toLowerCase() }), note: arriving ? t('on its way') : t('{n} on the shelf, {price}', { n: sim.stakes.supplies.stock[id], price: price(SUPPLIES[id].price) }), disabled: arriving || budget < SUPPLIES[id].price, run: () => queueOrg(() => { sim.orderSupply(id); refreshOrg(); }) });
@@ -936,6 +977,7 @@ function refreshHud(): void {
   world.setNightlife(sim.vitality.venues, sim.vitality.partners);
   syncProperty();
   hud.update(buildSnapshot(sim, crowd.population));
+  syncTutorial();
   hud.setWorks(underWay());
   const sel = interaction.selected;
   if (sel?.kind === 'building') hud.showBuilding(cards.describeBuilding(sel.id));
@@ -982,6 +1024,8 @@ const sandbox = new SandboxPanel(hudRoot, settings, {
   // One panel at a time in the settings' place.
   onOpen: () => orgSheet.setOpen(false),
 });
+
+sandbox.placeCompactToggle(hudRoot.querySelector<HTMLElement>('.hud-header h1')!);
 
 // Context factors (national law down to service design) follow the same path:
 // input records the selection, the next frame applies the combined effects.
@@ -1050,11 +1094,6 @@ const feed = new EventFeed(hud.eventsSlot, {
     if (open) { pausedBeforeDetail = paused; setPaused(true); }
     else if (!pausedBeforeDetail) setPaused(false);
   },
-  // One layer at a time: the feed and tonight's goals never stand open together.
-  onToggle: (open) => {
-    if (open) goalsStrip.setOpen(false);
-    hud.setLayer('events', open);
-  },
   onHint: (hint) => {
     const input = document.getElementById(hintInputId(hint));
     const row = input?.closest(HINT_ROW) as HTMLElement | null;
@@ -1093,7 +1132,7 @@ const org = new OrgPanel({
   onAssign: (member, to) => queueOrg(() => sim.assignMember(member, to)),
   onFavour: (id) => queueOrg(() => { sim.askFavour(id); syncContextProps(); refreshOrg(); refreshHud(); }),
   onDrive: () => confirmSpend(driveDecision(), () => queueOrg(() => { sim.startDonationDrive(); refreshOrg(); refreshHud(); })),
-  onOpen: () => openOrg(),
+  onOpen: () => orgSheet.isOpen ? orgSheet.setOpen(false, true) : openOrg(),
 });
 // What is at stake (the storm, standing, morale, supplies), inside the organisation's sheet before the team.
 const stakesSection = new StakesSection({
@@ -1106,8 +1145,13 @@ org.section.insertBefore(stakesSection.root, org.section.querySelector('.org-tea
 // The storm warning and the run's end wait for the pop-up to be free, ahead of other big events.
 const stakesBoxes: MajorEvent[] = [];
 // The organisation has its own sheet, opened from the money in the top bar or the organisation bar.
-const orgSheet = new Sheet(hudRoot, org.section, { label: t('Organisation'), onOpen: () => sandbox.setOpen(false) });
-function openOrg(): void {
+const orgSheet = new Sheet(hudRoot, org.section, { label: t('Organisation'), disclosure: () => org.section.classList.contains('org-team-mode') ? org.teamDisclosure : null, onOpen: () => sandbox.setOpen(false), onChange: (open) => tutorialGuide?.setCovered(open) });
+function openOrg(teamOnly = false, support?: PersonSupport, service?: ServiceId): void {
+  if (teamOnly ? !sim.tutorialCapabilities.staff : !sim.tutorialCapabilities.organisation) return;
+  org.setTeamAccess(sim.tutorialCapabilities.services, teamOnly && !sim.tutorialCapabilities.organisation);
+  org.setStaffingContext(support, service);
+  if (teamOnly) { org.showTeam(); sim.tutorialReviewSkills(); }
+  refreshOrg();
   orgSheet.setOpen(true);
   markTried('org');
 }
@@ -1116,8 +1160,9 @@ function openOrg(): void {
 const SAVE_KEY = 'hrp-save';
 const orgName = () => displayName('org', 'name', t('Your organisation'));
 const savePanel = new SavePanel({
+  allowLoad: false,
   saveHere: () => {
-    try { localStorage.setItem(SAVE_KEY, JSON.stringify(captureSave(sim, orgName(), currentRun()))); } catch { /* storage blocked */ }
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify(captureSave(sim, orgName(), currentRun()))); localStorage.setItem('hrp-save-context', location.search); } catch { /* storage blocked */ }
   },
   hasSaved: () => {
     try { return !!localStorage.getItem(SAVE_KEY); } catch { return false; }
@@ -1149,8 +1194,14 @@ const setDateClock = (v: { date: number; clock: number }) => {
   sandbox.setAll(settings);
 };
 sandbox.addAction(t('How it works'), () => welcome.show());
-sandbox.mount(randomSection((v) => { markSandboxed(); setDateClock(v); }));
-sandbox.mount(scenariosSection(new URLSearchParams(location.search).get('scenario')));
+sandbox.addAction(t('Main menu'), () => {
+  setPaused(true);
+  live?.flush();
+  if (!rememberMenuRun(captureSave(sim, orgName(), currentRun()))) {
+    sim.org.notice(sim.clockMinutes, t('Could not save this game. Please try again.'));
+    refreshHud();
+  }
+});
 // Sound (src/audio): a recorded street under generated city life, in seven channels the player mixes.
 // Nothing is made before the first press, nothing runs while muted, and the state is filled only when due.
 const sound = new Sound();
@@ -1429,6 +1480,10 @@ let boxWasOpen = false;
 let runOverShown = false;
 let quietUntil = 0;
 function checkBigEvent(): void {
+  if (sim.tutorial?.active) {
+    nextBigEvent = sim.org.now + 2 * 60;
+    return;
+  }
   // Any box counts: a big event, the morning report, the welcome.
   if (eventPopup.open || document.querySelector('dialog[open]')) { boxWasOpen = true; return; }
   if (boxWasOpen) { boxWasOpen = false; quietUntil = sim.org.now + QUIET_AFTER_BOX; }
@@ -1508,9 +1563,9 @@ async function startGame(): Promise<void> {
   const own = gid !== null && LiveGame.owns(gid);
   if (!own) setRun(undefined);
   // Back from an update reload: the same run, as it was a moment ago.
-  let resume: SaveData | null = null;
+  let resume: SaveData | null = launchConfiguration?.kind === 'resume' ? parseSave(launchConfiguration.save) : null;
   try {
-    resume = parseSave(JSON.parse(sessionStorage.getItem(RESUME_KEY) ?? 'null'));
+    resume ??= parseSave(JSON.parse(sessionStorage.getItem(RESUME_KEY) ?? 'null'));
     sessionStorage.removeItem(RESUME_KEY);
   } catch { /* storage blocked or unreadable: a fresh start */ }
   if (resume) {
@@ -1523,7 +1578,7 @@ async function startGame(): Promise<void> {
     });
   }
   // The address's game, as it was last saved (an update reload already has a newer state).
-  const linked = !resume && gid ? await fetchGame(gid) : null;
+  const linked = !resume ? launchConfiguration?.kind === 'link' ? parseSave(launchConfiguration.save) : gid ? await fetchGame(gid) : null : null;
   // Our game did not load: this is a fresh start, so a fresh leaderboard run too.
   if (own && !linked && !resume) setRun(undefined);
   // A fresh run under free-lever settings from the address is a sandboxed run.
@@ -1544,10 +1599,14 @@ async function startGame(): Promise<void> {
   // Carry on writing to our own game only when it loaded (or an update reload resumed it): a
   // fresh start must never overwrite it, so a game that did not load gets a new address.
   live = new LiveGame(own && (linked || resume) ? gid : null, () => captureSave(sim, orgName()));
-  window.setInterval(() => live?.save(), LIVE_SAVE_SECONDS * 1000);
-  document.addEventListener('visibilitychange', () => { if (document.hidden) live?.flush(); });
-  window.addEventListener('pagehide', () => live?.flush());
-  const code = location.hash.startsWith('#g=') ? location.hash.slice(3) : '';
+  const keepContinue = () => {
+    try { localStorage.setItem('hrp-continue', JSON.stringify(captureSave(sim, orgName(), currentRun()))); localStorage.setItem('hrp-continue-context', location.search); } catch { /* storage unavailable */ }
+  };
+  window.setInterval(() => { live?.save(); keepContinue(); }, LIVE_SAVE_SECONDS * 1000);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { live?.flush(); keepContinue(); } });
+  window.addEventListener('pagehide', () => { live?.flush(); keepContinue(); });
+  const code = !linked && location.hash.startsWith('#g=') ? location.hash.slice(3) : '';
+  if (linked && location.hash.startsWith('#g=')) history.replaceState(history.state, '', `${location.pathname}${location.search}`);
   // A fresh game: a date and evening of its own (unless the address or a New game click chose them).
   // What it starts with is said by the welcome; the guide says when to open more.
   if (!resume && !linked && !code) {
@@ -1571,19 +1630,13 @@ async function startGame(): Promise<void> {
       });
     }
   }
-  try { await ensureRun(); } catch { /* leaderboard offline: the game plays the same */ }
+  void ensureRun().catch(() => { /* leaderboard offline: the game plays the same */ });
 }
 feed.prependBar(org.bar);
 // Goals, news and why the meters move, where the player looks (above the event feed and on the meters).
 // Folded to its line of stars on every screen: the goals open on a press, the rest of the time they take one line.
-const goalsStrip = new GoalsStrip(false, (open) => {
-  if (open) feed.setOpen(false);
-  hud.setLayer('goals', open);
-});
-hud.onLayerDrop = (layer) => {
-  if (layer === 'goals') goalsStrip.setOpen(false);
-  else feed.setOpen(false);
-};
+const goalsStrip = new GoalsStrip(false);
+
 const notices = new NoticeStrip();
 hud.eventsSlot.before(goalsStrip.root, notices.root);
 const stressRow = document.querySelector<HTMLElement>('.stress-row');
@@ -1592,7 +1645,7 @@ const meterCauses = stressRow ? new MeterCauses(stressRow, (m) => sim.cityStress
 {
   const q = new URLSearchParams(location.search);
   const s = scenarioById(q.get('scenario'));
-  if (s && !sim.goals.scenario) sim.goals.scenario = s;
+  if (s && s.id !== 'tutorial' && s.id !== 'sandbox' && !sim.goals.scenario) sim.goals.scenario = s;
   // Hardcore (the project can fold): a Hardcore game's address, any scenario, or the loaded game's own.
   if (q.get('mode') === 'hardcore' || sim.goals.scenario) sim.stakes.hardcore = true;
 }
@@ -1632,6 +1685,7 @@ function markTried(k: keyof GuideView['tried']): void {
 
 /** The organisation, selected whenever nothing else is: it names your next step (src/game/guide). */
 function refreshGuide(): void {
+  if (sim.tutorial?.active) return;
   const sel = interaction.selected;
   if (sel?.kind === 'location') markTried('place');
   else if (sel?.kind === 'person') markTried('person');
@@ -1663,6 +1717,10 @@ function refreshGuide(): void {
 }
 
 function refreshGoals(): void {
+  const showGoals = sim.tutorialCapabilities.organisation;
+  goalsStrip.root.hidden = !showGoals;
+  notices.root.hidden = !sim.tutorialCapabilities.maintenance;
+  if (!showGoals) { pendingReport = null; return; }
   const s = sim.goals.scenario;
   goalsStrip.set(sim.goals.progress(sim.totals.helped, sim.org.budget), s
     ? scenarioProgress(s, { nights: sim.totals.nights, helped: sim.totals.helped, stars: sim.goals.stars, deaths: sim.deaths, won: sim.goals.won, folded: sim.stakes.runOver !== null })
@@ -1694,7 +1752,8 @@ function refreshOrg(): void {
     stakes: sim.stakes, team: sim.team, budget: sim.org.budget, now: sim.org.now, clock: sim.clockMinutes, nights: sim.totals.nights,
     patrol: { running: sim.services.footPatrol.switchedOn, ready: sim.patrolReady, spots: sim.patrolSpots(), out: sim.patrol.spot, until: sim.patrol.until, reached: sim.patrol.reached },
   });
-  org.update({ org: sim.org, stress: { police: sim.cityStress.police, medics: sim.cityStress.medics, sobering: sim.cityStress.sobering, district: sim.vitality.level }, services: sim.services, clock: sim.clockMinutes, incomePerHour: sim.fundingIncome, runningPerHour: sim.runningPerHour, payroll: sim.payroll, applicationContext: sim.applicationContext(), team: sim.team, drive: driveView(sim), favours: { held: sim.favours, owed: sim.concessionAt !== null, items: (Object.keys(FAVOURS) as FavourId[]).map((id) => ({ id, label: FAVOURS[id].label })) } });
+  org.setTeamAccess(sim.tutorialCapabilities.services, !!sim.tutorial?.active && !sim.tutorialCapabilities.organisation);
+  org.update({ org: sim.org, stress: { police: sim.cityStress.police, medics: sim.cityStress.medics, sobering: sim.cityStress.sobering, district: sim.vitality.level }, services: sim.services, clock: sim.clockMinutes, incomePerHour: sim.fundingIncome, runningPerHour: sim.runningPerHour, payroll: sim.payroll, applicationContext: sim.applicationContext(), team: sim.team, drive: driveView(sim), favours: sim.favourView });
 }
 
 function syncEvents(): void {
@@ -1804,7 +1863,7 @@ function syncPortrait(): boolean {
   const key = person ? `person:${sel!.id}` : sel ? '' : `player:${playerPortraitId()}`;
   const you = key.startsWith('player:');
   const card = person ? describePerson(person) : null;
-  const caption = card ? card.profile?.name ?? card.title : key ? t('You') : '';
+  const caption = card ? card.title : key ? t('You') : '';
   const sub = card ? card.subtitle : key ? t('Coordinator, {org}', { org: orgName() }) : '';
   if (portraitCaption.dataset.text !== caption + sub) {
     portraitCaption.dataset.text = caption + sub;
@@ -1913,7 +1972,7 @@ function applyView(): void {
   const frame = pipeline.frame;
   // Portrait screens start a little closer so people stay legible.
   const zoom = frame.cssW / frame.cssH < 0.8 ? 1.3 : 1;
-  const framing = frameCamera(camera, world.frame.full, frame, hud.insets(), zoom * rig.zoom, rig.view, rig.focus, world.frame.bounds);
+  const framing = frameCamera(camera, tutorialArea && sim.tutorialCapabilities.district !== 'city' ? tutorialArea.frame : world.frame.full, frame, hud.insets(), zoom * rig.zoom, rig.view, rig.focus, world.frame.bounds);
   quality.setZoom(zoom * rig.zoom);
   // Shadows only need to cover what is on screen.
   world.setDetail(framing.worldPerPixel);
@@ -1945,7 +2004,7 @@ function applyView(): void {
 
 // Pointer, touch and keyboard interaction lives in `ui/interaction.ts`; only Space is global here.
 window.addEventListener('keydown', (e) => {
-  if (e.target instanceof HTMLButtonElement || e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
+  if (e.target instanceof Element && e.target.closest('button, input, select, textarea, summary, [contenteditable="true"]')) return;
   if (e.code === 'Space') { e.preventDefault(); setPaused(!paused); }
 });
 
@@ -2048,7 +2107,7 @@ function frame(now: number): void {
     // The rings and the tag over a moving police car follow it every frame, not in quarter-second steps.
     if (marks.update(realDt) && threats.some((t) => t.follow)) placeThreatTags();
     seasonProps.update(realDt * speed);
-    if (flavour.packs.running) updateFlavour(realDt * speed);
+    if (flavour.packs.running && (!sim.tutorial?.active || sim.tutorialCapabilities.district === 'city')) updateFlavour(realDt * speed);
     // The person in crisis keeps a walking pace at any clock speed: at 16x they would only flicker past.
     updateDaemon(realDt * Math.min(speed, 4));
     updatePeopleOverlay();
@@ -2077,6 +2136,23 @@ function frame(now: number): void {
   requestAnimationFrame(frame);
 }
 
+tutorialGuide = new TutorialGuide(hudRoot, {
+  inspectCamp: () => { interaction.select({ kind: 'building', id: world.camps.park }); rig.lookAt(new Vector3(CAMP_AT.x, 0, CAMP_AT.z)); sim.tutorialInspectCamp(); refreshHud(); },
+  openPatrol: () => { interaction.selectLocation('footPatrol'); sim.tutorialOpenPatrol(); refreshHud(); },
+  dispatchCamp: () => queueOrg(() => { sim.sendPatrol('camp', patrolPoint('camp')); refreshHud(); }),
+  selectService: (id) => { interaction.selectLocation(locationOf(id)); refreshHud(); },
+  reviewTeam: () => { openOrg(true); refreshHud(); },
+  continueCity: () => { refreshHud(); },
+});
+function syncTutorial(): void {
+  if (sim.tutorial && !tutorialArea) tutorialArea = new TutorialArea(world, rig, sim.tutorialCapabilities);
+  if (tutorialArea?.set(sim.tutorialCapabilities)) { applyView(); dirty = true; }
+  hud.setTutorialCapabilities(sim.tutorialCapabilities);
+  sandbox.setWorldLocked(!!sim.tutorial?.active);
+  mapLayers.button.hidden = !sim.tutorialCapabilities.fullUi;
+  tutorialGuide?.set(sim.tutorial);
+}
+
 hud.setPaused(false);
 hud.setSpeed(speed);
 // `?off=dropIn,outreach,clubHr` starts with those services switched off (shareable scenarios).
@@ -2087,7 +2163,9 @@ for (const id of SERVICE_IDS) if (off.includes(id)) sim.services[id].switchedOn 
 const [az, el] = (params.get('view') ?? '').split(',').map(Number);
 if (Number.isFinite(az) && Number.isFinite(el)) rig.setView({ azimuthDeg: az, elevationDeg: el });
 // `?set=cars:4,dropIn.staff:3` starts with sandbox settings (see src/config/sandboxParams.ts).
-const fromUrl = decodeSettings(params.get('set'));
+const tutorialRequested = params.get('scenario') === 'tutorial';
+const fromUrl: Partial<SandboxSettings> = tutorialRequested ? { date: 259, clock: 1080 } : { ...decodeSettings(params.get('set')), ...launchConfiguration?.settings };
+if (launchConfiguration?.custom || params.get('scenario') === 'sandbox' || params.get('scenario') === 'tutorial') markSandboxed();
 Object.assign(settings, fromUrl);
 sandbox.setAll(settings);
 sim.configure(fromUrl);
@@ -2095,8 +2173,8 @@ syncSeason();
 world.setStill(reducedMotion.matches);
 reducedMotion.addEventListener('change', () => world.setStill(reducedMotion.matches));
 // `?model=nl` starts from a national model; `?ctx=law:criminal,policing:visible` sets factors directly.
-const urlModel = NATIONAL_MODELS.find((m) => m.id === params.get('model'));
-contextSelection = urlModel ? selectionFor(urlModel) : decodeContext(params.get('ctx'));
+const urlModel = tutorialRequested ? undefined : NATIONAL_MODELS.find((m) => m.id === params.get('model'));
+contextSelection = tutorialRequested ? defaultContext() : urlModel ? selectionFor(urlModel) : decodeContext(params.get('ctx'));
 modelId = urlModel?.id ?? null;
 context.setAll(contextSelection, modelId);
 sim.setPolicy(policyFor(contextSelection));
@@ -2105,12 +2183,17 @@ syncContextProps();
 // Settle props (for example a camper without a permit) before the first frame.
 props.update(10);
 syncStreet();
+// Restore before any clock or crowd step, including startup settling.
+await startGame();
+applyPending();
+if (!continuingGame && !sim.tutorial && params.get('scenario') === 'tutorial') sim.startTutorial();
 sim.start();
+syncTutorial();
 layout();
 rig.step(0, true);
 applyView();
 // Warm the scene briefly so the first frame already shows staff at work.
-for (let i = 0; i < 90 * 30; i++) {
+for (let i = 0; !continuingGame && !launchConfiguration?.save && !sim.tutorial?.active && i < 90 * 30; i++) {
   sim.tick(STEP);
   for (let i = 0, parts = Math.max(1, Math.ceil(sim.pace)); i < parts; i++) crowd.update((STEP * sim.pace) / parts);
   syncServiceVisuals();
@@ -2119,7 +2202,7 @@ for (let i = 0; i < 90 * 30; i++) {
 }
 // Every game starts with something mild going on, so the first night is never empty.
 const STARTING_TROUBLE = ['staffIllness', 'kitShortage', 'busyNight', 'withdrawalWave', 'streetMarketForms', 'equipmentComplaints'] as const;
-sim.triggerEvent(sim.season === 'winter' && eventRandom() < 0.5 ? 'coldNight' : STARTING_TROUBLE[Math.floor(eventRandom() * STARTING_TROUBLE.length)]);
+if (!continuingGame && !launchConfiguration?.save && !sim.tutorial?.active) sim.triggerEvent(sim.season === 'winter' && eventRandom() < 0.5 ? 'coldNight' : STARTING_TROUBLE[Math.floor(eventRandom() * STARTING_TROUBLE.length)]);
 syncNight();
 refreshHud();
 // The framing reserves room for the HUD (hud.insets), which only now holds tonight's events and
@@ -2144,12 +2227,12 @@ void whenViewportSettled(canvas).then(() => {
     if (!continuingGame) welcome.showForNewGame();
   }));
 });
-void startGame();
 // The Quaternius kits load after the first frame, so a phone is never kept waiting for them.
 // The scenery kits are 2 MB: skipped on weak phones and slow or data-saving connections.
 if (QUALITY.kits) void loadKits().then(async (kits) => {
   if (!kits) return;
   world.applyKits(kits);
+  tutorialArea?.prepareMaterials(world.scene);
   lite.refresh(world.scene);
   // The kits bring new materials: they compile in parallel (KHR_parallel_shader_compile) before they are
   // drawn, the picture holding a moment with the game and input running, instead of a frozen frame

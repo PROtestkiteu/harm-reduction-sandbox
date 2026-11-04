@@ -112,7 +112,7 @@ export class StakesSection {
     for (const p of Object.keys(STORM.prepare) as StormPrep[]) {
       const b = el('button', 'btn org-action', PREP_LABEL[p]());
       b.type = 'button';
-      b.title = PREP_DOES[p]();
+      b.dataset.iconHint = PREP_DOES[p]();
       b.id = `stakes-prep-${p}`;
       b.addEventListener('click', () => cb.onPrepare(p));
       prepRow.append(b);
@@ -131,7 +131,7 @@ export class StakesSection {
       const b = el('button', 'btn org-action', t('Send to {spot} ({price})', { spot: PATROL.spots[spot].label, price: price(PATROL.cost) }));
       b.type = 'button';
       b.id = `stakes-patrol-${spot}`;
-      b.title = PATROL.spots[spot].does;
+      b.dataset.iconHint = PATROL.spots[spot].does;
       b.hidden = true;
       b.addEventListener('click', () => cb.onPatrol(spot));
       patrolRow.append(b);
@@ -169,7 +169,7 @@ export class StakesSection {
       const who = el('div', 'team-who');
       const name = el('p', 'team-name');
       name.append(el('strong', undefined, s.label));
-      name.title = s.does;
+      name.dataset.iconHint = s.does;
       const stock = el('p', 'team-status');
       who.append(name, stock);
       const order = el('button', 'btn org-action', t('Order {n} ({price})', { n: s.batch, price: price(s.price) }));

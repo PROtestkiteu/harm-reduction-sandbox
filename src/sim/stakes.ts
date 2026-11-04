@@ -13,6 +13,7 @@ import { Storm, type StormReport } from './storm';
 import { Supplies } from './supplies';
 import { Team, type Blow, type Member } from './team';
 import type { ServiceId } from './types';
+import { supportFit, type PersonSupport } from './personSupport';
 
 /**
  * What is at stake: the team's morale, the project's standing, supplies on the
@@ -115,10 +116,32 @@ export class Stakes {
    * looks for a worker on shift there who can meet it. Returns the visit-time
    * factor (quicker with the right worker, much slower without).
    */
-  admitted(service: ServiceId, crisis: number): number {
+  admitted(service: ServiceId, crisis: number, support?: PersonSupport): number {
     this.team.helpedAt(service);
     this.storm.note('helped');
     if (this.storm.phase === 'peak' && LOW_THRESHOLD.includes(service)) this.stormServed++;
+    // A visible person's disclosed priorities apply immediately, including in the tutorial.
+    // Anonymous/legacy callers retain their original staged random matching below.
+    if (support !== undefined) {
+      if (!support.needs.length && !support.skills.length) {
+        this.addStanding(STANDING.helped);
+        return 1;
+      }
+      let best: Member | undefined;
+      let fit = 0;
+      for (const member of this.team.members) if (member.workingAt === service) {
+        const candidate = supportFit(member, support);
+        if (!best || candidate > fit) { best = member; fit = candidate; }
+      }
+      const time = MATCHING.unmatchedTime - fit * (MATCHING.unmatchedTime - MATCHING.matchedTime);
+      const matched = !!best && time <= 1;
+      if (matched) {
+        this.team.matched(best!);
+        this.matchedTonight++;
+      } else for (const need of support.needs) this.unmatched[need]++;
+      this.addStanding(STANDING.helped + (matched ? STANDING.matched : 0));
+      return time;
+    }
     if (!this.introduced('matching')) {
       this.addStanding(STANDING.helped);
       return 1;

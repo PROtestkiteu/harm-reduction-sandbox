@@ -36,7 +36,7 @@ export function randomSection(setDateClock: (v: DateClock) => void): HTMLFieldSe
     b.type = 'button';
     b.className = 'btn save-btn';
     b.textContent = text;
-    b.title = hint;
+    b.dataset.iconHint = hint;
     b.addEventListener('click', run);
     return b;
   };

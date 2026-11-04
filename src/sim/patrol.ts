@@ -42,8 +42,8 @@ export class Patrol {
     return { contacts, back: true };
   }
 
-  snapshot(): { spot: PatrolSpot | null; until: number; reached: number; at: { x: number; z: number } | null } {
-    return { spot: this.spot, until: Math.round(this.until), reached: this.reached, at: this.at };
+  snapshot(): { spot: PatrolSpot | null; until: number; reached: number; at: { x: number; z: number } | null; carry: number } {
+    return { spot: this.spot, until: Math.round(this.until), reached: this.reached, at: this.at, carry: this.carry };
   }
 
   restore(s: Partial<ReturnType<Patrol['snapshot']>> | undefined): void {
@@ -51,6 +51,7 @@ export class Patrol {
     this.spot = s.spot && s.spot in PATROL.spots ? s.spot : null;
     if (typeof s.until === 'number' && Number.isFinite(s.until)) this.until = s.until;
     if (typeof s.reached === 'number' && Number.isFinite(s.reached)) this.reached = Math.max(0, Math.round(s.reached));
+    this.carry = typeof s.carry === 'number' && Number.isFinite(s.carry) ? Math.max(0, Math.min(1, s.carry)) : 0;
     const a = s.at;
     this.at = this.spot && a && typeof a === 'object' && Number.isFinite(a.x) && Number.isFinite(a.z) ? { x: a.x, z: a.z } : null;
   }

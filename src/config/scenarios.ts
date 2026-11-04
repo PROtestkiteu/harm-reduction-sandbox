@@ -3,7 +3,7 @@ import { t } from '../i18n';
 /**
  * Scenarios: a city run under one country's model (config/nationalModels.ts),
  * with a goal to reach. Reaching it wins the scenario; the game then carries
- * on as an open run. Started from Settings, as a fresh game; a scenario is
+ * on as an open run. Started from the before-game menu; a challenge is
  * always Hardcore (the project can fold). ILLUSTRATIVE targets, tuned with
  * the strategy bots (scripts/bots, naive and prepared on several seeds) so a
  * prepared player wins and a naive one does not: people helped at about two
@@ -28,6 +28,7 @@ export const SCENARIOS: readonly Scenario[] = [
   { id: 'portugal', model: 'pt', title: t('Decriminalised'), blurb: t('Use is not a crime, but the money is tight. Grow without going broke.'), nights: 5, helped: 160, stars: 7, deaths: 15 },
   { id: 'poland', model: 'pl', title: t('Against the odds'), blurb: t('Possession is a crime and funding is a project at a time. Keep people alive and the doors open.'), nights: 5, helped: 170, stars: 7, deaths: 8 },
   { id: 'us', model: 'us', title: t('Patchwork'), blurb: t('A patchwork of laws and short grants. Every night is a fight for money.'), nights: 5, helped: 170, stars: 7, deaths: 10 },
+  { id: 'colombia', model: 'mx-latam', title: t('Colombia'), blurb: t('Build a community project with a small budget and a volunteer team. This scenario uses the regional Latin America preset, not a country-specific policy model.'), nights: 5, helped: 150, stars: 7, deaths: 10 },
 ];
 
 /** Where a scenario stands, in one line: won, lost (too many deaths, or the project folded), or its progress. */
@@ -41,3 +42,18 @@ export function scenarioProgress(s: Scenario, at: { nights: number; helped: numb
 }
 
 export const scenarioById = (id: string | null | undefined): Scenario | undefined => SCENARIOS.find((s) => s.id === id);
+
+/** Menu metadata stays separate from challenge scoring and its existing save contract. */
+export interface ScenarioCard {
+  id: string;
+  kind: 'tutorial' | 'challenge' | 'sandbox';
+  title: string;
+  blurb: string;
+  model: string | null;
+  challenge?: Scenario;
+}
+export const SCENARIO_CARDS: readonly ScenarioCard[] = [
+  { id: 'tutorial', kind: 'tutorial', model: null, title: t('Tutorial'), blurb: t('Start with a foot patrol beside the park. Meet your neighbours, build trust, and grow your services one step at a time.') },
+  ...SCENARIOS.map((challenge): ScenarioCard => ({ ...challenge, kind: 'challenge', challenge })),
+  { id: 'sandbox', kind: 'sandbox', model: null, title: t('Sandbox'), blurb: t('An open city with no final objective. Shape the starting conditions and play at your own pace.') },
+];

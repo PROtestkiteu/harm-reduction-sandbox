@@ -1,0 +1,82 @@
+/* One vector vocabulary: independent of font metrics, locale and device glyph rendering. */
+:root {
+  --ui-mark-size: 16px;
+  --ui-mark-slot: 20px;
+  --ui-mark-gap: 8px;
+  --ui-plus: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 8h10M8 3v10' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round'/%3E%3C/svg%3E");
+  --ui-minus: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 8h10' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round'/%3E%3C/svg%3E");
+  --ui-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m6 3 5 5-5 5' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+/* Heading hierarchy stays separate from body copy and numbered replies. */
+.goals-head, .events-heading, .legend-heading,
+.column .goals-head, .column .events-heading, .map-legend .legend-heading {
+  display: flex; align-items: center; gap: var(--ui-mark-gap); width: 100%;
+  font: 600 13px/1.4 var(--body); letter-spacing: 0.04em; text-transform: uppercase;
+}
+.selection-heading { font-family: var(--body); font-weight: 600; line-height: 1.4; }
+.sandbox-sub > summary, .employee-background > summary, .profile-reference > summary,
+.reputation-disclosure summary, .main-menu summary { font: 500 14px/1.4 var(--body); }
+.sandbox-sub > summary .fold-note {
+  min-width: 0; max-width: 50%; white-space: normal; overflow-wrap: anywhere; text-align: right;
+  font: 400 12px/1.4 var(--body); font-variant-numeric: tabular-nums; color: var(--muted);
+}
+
+.goals-head, .events-heading, .legend-heading, .opt.group, .opt.guide-opt,
+.event-head, .map-legend .legend-go, .sandbox-reply,
+details > summary {
+  position: relative; padding-right: calc(var(--ui-mark-slot) + var(--ui-mark-gap));
+}
+details > summary { list-style: none; }
+details > summary::-webkit-details-marker { display: none; }
+details > summary::marker { content: ''; }
+
+.goals-head::after, .events-heading::after, .legend-heading::after,
+.opt.group::after, .opt.guide-opt::after, .event-head::after,
+.map-legend .legend-go::after, .sandbox-reply::after, details > summary::after,
+.selection-heading::after, .sandbox-backlink::before,
+.employee-assignment::after, .team-member::after, .mix-row .mix-setup::before,
+.options[data-drill] > li.drill-head .opt::before {
+  content: ''; display: inline-block; box-sizing: border-box;
+  width: var(--ui-mark-slot); min-width: var(--ui-mark-slot); height: var(--ui-mark-slot);
+  margin: 0; padding: 0; border: 0; float: none; flex: none;
+  background: currentColor; color: var(--ui-mark-color, var(--reply)); pointer-events: none;
+  forced-color-adjust: none;
+  -webkit-mask: var(--ui-mark, var(--ui-chevron)) center / var(--ui-mark-size) var(--ui-mark-size) no-repeat;
+  mask: var(--ui-mark, var(--ui-chevron)) center / var(--ui-mark-size) var(--ui-mark-size) no-repeat;
+  vertical-align: middle; transform: none; transition: none;
+}
+.goals-head::after, .events-heading::after, .legend-heading::after,
+.opt.group::after, .opt.guide-opt::after, .event-head::after,
+.map-legend .legend-go::after, .sandbox-reply::after, details > summary::after {
+  position: absolute; right: 0; top: calc(50% - var(--ui-mark-slot) / 2);
+}
+.goals-head::after, .events-heading::after, .legend-heading::after,
+.selection-heading::after { --ui-mark: var(--ui-plus); }
+.goals-head[aria-expanded='true']::after, .events-heading[aria-expanded='true']::after,
+.legend-heading[aria-expanded='true']::after, .selection-heading[aria-expanded='true']::after { --ui-mark: var(--ui-minus); }
+details[open] > summary::after, .opt.group[aria-expanded='true']::after { transform: rotate(90deg); }
+.sandbox-backlink::before, .options[data-drill] > li.drill-head .opt::before { transform: rotate(180deg); }
+.sandbox-backlink { display: inline-flex; align-items: center; gap: var(--ui-mark-gap); font: 500 14px/1.4 var(--body); }
+.employee-assignment::after, .team-member::after { position: absolute; right: 8px; top: calc(50% - var(--ui-mark-slot) / 2); transform: rotate(90deg); }
+.map-legend .legend-heading::after, .map-legend .legend-go::after { color: var(--ui-mark-color, #edb300); }
+.opt.group:disabled::after, .sandbox-reply:disabled::after { color: var(--muted); }
+
+/* One heading affordance; secondary actions live in the existing context menu. */
+.window .line { position: relative; }
+.window .selection-heading {
+  position: relative; display: block; width: 100%; min-height: 32px;
+  padding-right: 28px; text-align: left; font-size: 16px;
+}
+.window .selection-heading::after {
+  display: inline-block; position: absolute; right: 0;
+  top: calc(50% - var(--ui-mark-slot) / 2);
+}
+.column[data-mode='idle'] .selection-heading { font-size: 13px; font-weight: 600; }
+.column[data-mode='idle'] .selection-heading::after { display: inline-block; }
+.window .said { display: block; font-weight: 400; }
+.window[data-collapsed='true'] .selection-heading { padding-right: 28px; }
+
+/* Drill heads already have a Back indicator at the leading edge. */
+.options[data-drill] > li.drill-head .opt.group::after { display: none; }
+@media (forced-colors: active) { :root { --ui-mark-color: CanvasText; } }

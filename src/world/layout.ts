@@ -1,3 +1,4 @@
+export const TUTORIAL_LAYOUT = typeof location !== 'undefined' && new URLSearchParams(location.search).get('scenario') === 'tutorial';
 import type { WalkInServiceId } from '../sim/types';
 import { t } from '../i18n';
 import { LAUNCH_STREAM, launchRandom } from '../config/launch';
@@ -69,6 +70,7 @@ export const MAIN_CROSSINGS: readonly { z0: number; z1: number }[] = [
   { z0: CROSSING.z0, z1: CROSSING.z1 },
   { z0: -23.75, z1: -21.75 },
   { z0: 21.75, z1: 23.75 },
+  ...(TUTORIAL_LAYOUT ? [{ z0: 70.5, z1: 72.5 }] : []),
 ];
 
 /** The outer ring's blocks: between the ring road and the district edge, cut by the streets running through. */
@@ -215,7 +217,10 @@ const DESIGN: Record<'club' | 'dropIn', { front: P2; face: '+x' | '+z'; along: n
 
 const fits = (v: Venue, site: SiteId) => v === 'club' || v === 'dropIn' ? SITES[site].along >= DESIGN[v].along && SITES[site].depth >= DESIGN[v].depth : true;
 
+/** Tutorial geography is authored, so its lessons survive reloads and map expansion. */
+
 const SITE_OF: Record<Venue, SiteId> = (() => {
+  if (TUTORIAL_LAYOUT) return { club: 'centreWest', dropIn: 'southWest', pharmacy: 'west', drugChecking: 'north', shelter: 'east', clinic: 'outerNorthEast' };
   const ids = Object.keys(SITES) as SiteId[];
   const random = launchRandom(LAUNCH_STREAM.sites);
   for (;;) {
@@ -317,9 +322,9 @@ const CAMPER_SITES: readonly { name: string; x: number; z: number; rot: number }
   { name: t('East street, towards the river'), x: 28.1, z: -6, rot: 0 },
 ];
 const kerbRandom = launchRandom(LAUNCH_STREAM.kerbs);
-const CAMPER_AT = Math.floor(kerbRandom() * CAMPER_SITES.length);
+const CAMPER_AT = TUTORIAL_LAYOUT ? 2 : Math.floor(kerbRandom() * CAMPER_SITES.length);
 /** One kerb spot, not the camper's, is in front of a squat this launch. */
-export const SQUAT_SPOT = (CAMPER_AT + 1 + Math.floor(kerbRandom() * (CAMPER_SITES.length - 1))) % CAMPER_SITES.length;
+export const SQUAT_SPOT = TUTORIAL_LAYOUT ? 3 : (CAMPER_AT + 1 + Math.floor(kerbRandom() * (CAMPER_SITES.length - 1))) % CAMPER_SITES.length;
 /**
  * Every kerb spot, by a fixed index for this launch: the first camper stands
  * at one (`camperSpot`), extra campers at others.
@@ -333,7 +338,7 @@ export const CAMPER_SPOTS: readonly { name: string; x: number; z: number; rot: n
  * there too), staff on the building side, people served on the kerb side,
  * a short queue along the pavement. Coordinates in the camper's own design frame.
  */
-const SQUAT_FRAME: Frame = { ...CAMPER_SITES[SQUAT_SPOT], home: p(HOME_CAMPER.x, (HOME_CAMPER.z0 + HOME_CAMPER.z1) / 2) };
+const SQUAT_FRAME: Frame = { ...CAMPER_SITES[SQUAT_SPOT], ...(TUTORIAL_LAYOUT ? { x: -1.75, z: 58.4, rot: 0 } : {}), home: p(HOME_CAMPER.x, (HOME_CAMPER.z0 + HOME_CAMPER.z1) / 2) };
 const patrol = (q: P2) => toWorld(SQUAT_FRAME, q);
 const PZ = HOME_CAMPER.z1 + 4;
 export const PATROL = {
@@ -451,6 +456,9 @@ const SS = 22.75; // south cross street, south pavement
 const X = 22.75; // east street, west pavement
 
 export const NODES = {
+  tutorialCampNorth: p(-17, 74),
+  tutorialCampSouth: p(-17, 92),
+  tutorialCampWest: p(-30, 83.5),
   // Centre block, as before.
   wBack: p(W, NS),
   wCross: p(W, -4),
@@ -508,6 +516,7 @@ export const NODES = {
 export type NodeId = keyof typeof NODES;
 
 export const EDGES: [NodeId, NodeId][] = [
+  ...(TUTORIAL_LAYOUT ? [['eS2', 'wS2'], ['wS2', 'tutorialCampNorth'], ['tutorialCampNorth', 'tutorialCampWest'], ['tutorialCampWest', 'tutorialCampSouth']] as [NodeId, NodeId][] : []),
   // Centre block.
   ['wBack', 'wCross'], ['wCross', 'wClub'], ['wClub', 'wTerrace'], ['wTerrace', 'wFront'], ['wTerrace', 'terrace'],
   ['wCross', 'eCross'],
@@ -630,6 +639,7 @@ export function nearestNodeTo(q: P2): NodeId {
   let any: NodeId = 'wCross';
   let anyD = Infinity;
   for (const id of Object.keys(NODES) as NodeId[]) {
+    if (!TUTORIAL_LAYOUT && id.startsWith('tutorial')) continue;
     const d = Math.hypot(NODES[id].x - q.x, NODES[id].z - q.z);
     if (d < anyD) { anyD = d; any = id; }
     if (d < bestD && !crossesRoad(NODES[id], q)) { bestD = d; best = id; }

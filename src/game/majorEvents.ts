@@ -322,7 +322,7 @@ export function concessionEvent(id: ConcessionId): MajorEvent {
   return {
     id: `concession-${id}`,
     title: c.title,
-    lines: [c.ask, t('Agree and you earn your next favour. Refuse and city hall remembers.')],
+    lines: [c.ask, t('Agree to settle the request. Refuse and city hall remembers. Reputation earns new favours.')],
     eligible: () => true,
     choices: [
       { label: t('Agree'), cost: id === 'cleanUp' ? FAVOUR.cleanUpCost : undefined, apply: (w) => w.sim.answerConcession(id, true) },

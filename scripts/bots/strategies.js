@@ -14,7 +14,8 @@
 //             ahead, and once a storm is announced every preparation, a full shelf and a rested team
 // opts.clockSpeed sets the game clock's speed (1 = default) for speed-dependence checks.
 async (name, days = 3, opts = {}) => {
-  const { sim, crowd } = window.__sandbox;
+  const { sim, crowd, world } = window.__sandbox;
+  let sceneTime = 0;
   const STEP = 1 / 30;
   if (opts.clockSpeed) sim.configure({ clockSpeed: opts.clockSpeed });
   const ids = Object.keys(sim.services);
@@ -118,7 +119,14 @@ async (name, days = 3, opts = {}) => {
     if (t >= nextAct) { nextAct += 30; strategy(); }
     const target = sim.org.now + 1;
     let inner = 0;
-    while (sim.org.now < target && inner++ < 10000) { sim.tick(STEP); const pace = sim.pace ?? 1, parts = Math.max(1, Math.ceil(pace)); for (let k = 0; k < parts; k++) crowd.update((STEP * pace) / parts); }
+    while (sim.org.now < target && inner++ < 10000) {
+      sim.tick(STEP);
+      const pace = sim.pace ?? 1, parts = Math.max(1, Math.ceil(pace));
+      for (let k = 0; k < parts; k++) crowd.update((STEP * pace) / parts);
+      // Mirror the game's fixed step: signals must advance with people, including in headless runs.
+      world.update(STEP, sceneTime);
+      sceneTime += STEP;
+    }
     if (red()) { redHours += 1 / 60; firstRed ??= Math.round(t / 60); }
     // No game over any more: the first hour all three starting services had closed down for money.
     if (overAt === null && sim.org.closedDown.size >= 3) overAt = Math.round(t / 60);
@@ -132,6 +140,7 @@ async (name, days = 3, opts = {}) => {
         police: +s.police.toFixed(2), medics: +s.medics.toFixed(2), sobering: +s.sobering.toFixed(2), district: +sim.vitality.level.toFixed(2), size: sim.growth ? +sim.growth.size.toFixed(2) : 1, street: sim.growth ? +sim.growth.street.toFixed(2) : 0,
         crisis: +sim.crisis.toFixed(2), unmet24: sim.unmet24, helped: sim.totals.helped, broke: sim.org.broke ? Math.round(sim.org.brokeMinutes / 60) : 0,
         staff: `${sim.org.paid}+${sim.org.volunteers}`, open: ids.filter((i) => sim.services[i].status === 'open').length,
+        reputation: +sim.reputation.score.toFixed(2), favours: sim.favours, favourProgress: +sim.reputation.progress.toFixed(3), unlocks: sim.reputation.earned.size,
         stars: sim.goals?.stars ?? 0, trust: sim.funders ? +sim.funders.trust.toFixed(2) : 1,
         morale: +sim.team.morale.toFixed(2), tier: st.standing.tier, points: Math.round(st.standing.points), deaths: sim.deaths,
         naloxone: st.supplies.stock.naloxone, kits: st.supplies.stock.kits, storm: st.storm.phase, turnedAway: sim.turnedAwayTotal,

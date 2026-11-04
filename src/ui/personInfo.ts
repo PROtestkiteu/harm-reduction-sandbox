@@ -1,3 +1,5 @@
+import type { Member } from '../sim/team';
+import type { PersonSupport } from '../sim/personSupport';
 import type { Archetype } from '../agents/character';
 import type { PersonRole, PersonState } from '../agents/crowd';
 import type { Mood } from '../agents/moodIcons';
@@ -19,6 +21,8 @@ export interface PersonCard {
   activity: string;
   inView: boolean;
   profile?: UseProfile;
+  support?: PersonSupport;
+  worker?: Member;
   /** The state their glow on the map shows, so the card's name can share its hue. */
   mood?: Mood;
 }
@@ -175,7 +179,7 @@ function contextActivity(p: PersonState): string {
 export function describePerson(p: PersonState): PersonCard {
   // A name the player gave this person, if any, stands in for the role.
   const card = describeRole(p);
-  return { ...card, title: displayName('person', p.id, card.title), mood: p.mood };
+  return { ...card, title: displayName('person', p.id, card.title), mood: p.mood, support: p.support, worker: p.worker };
 }
 
 function describeRole(p: PersonState): PersonCard {
@@ -189,10 +193,12 @@ function describeRole(p: PersonState): PersonCard {
   const group = p.archetype === 'everyday' ? undefined : GROUP_SUBTITLE[p.archetype];
   return {
     role: p.role,
-    title: ROLE_TITLE[p.role],
+    title: p.worker?.name ?? ROLE_TITLE[p.role],
     subtitle: staff ? SERVICE_TEXT[p.service ?? 'dropIn'].team : group ?? ROLE_SUBTITLE[p.role as Exclude<PersonRole, 'staff'>],
     activity: staff ? staffActivity(p) : visitorActivity(p),
     inView: p.visible,
     profile: staff ? undefined : profileFor(p),
+    support: p.support,
+    worker: p.worker,
   };
 }

@@ -32,6 +32,8 @@ export class NightReportBox {
     const title = Object.assign(document.createElement('h2'), { id: 'night-report-title', textContent: t('Night {n}: morning report', { n: r.night }) });
     const stars = p('night-stars', `${'★'.repeat(r.stars)}${'☆'.repeat(3 - r.stars)}`);
     stars.setAttribute('aria-label', plural(r.stars, ['{n} star of 3', '{n} stars of 3'], ['{n} gwiazdka z 3', '{n} gwiazdki z 3', '{n} gwiazdek z 3']));
+    stars.dataset.iconHint = stars.getAttribute('aria-label')!;
+    stars.tabIndex = 0;
     // The night in a few figures, each a tile: the number large, what it counts small under it.
     const money = r.moneyEnd - r.moneyStart;
     const tiles = document.createElement('div');
@@ -40,7 +42,7 @@ export class NightReportBox {
       const d = document.createElement('div');
       d.className = 'night-tile';
       if (state) d.dataset.state = state;
-      if (title) d.title = title;
+      if (title) d.dataset.iconHint = title;
       d.append(Object.assign(document.createElement('strong'), { textContent: value }), Object.assign(document.createElement('span'), { textContent: label }));
       tiles.append(d);
     };
@@ -67,6 +69,7 @@ export class NightReportBox {
       li.dataset.met = String(g.met);
       li.append(Object.assign(document.createElement('span'), { className: 'goal-mark', textContent: g.met ? '★' : '☆' }), document.createTextNode(GOAL_TEXT[g.id](g.target)));
       li.setAttribute('aria-label', `${g.met ? t('Met') : t('Missed')}: ${GOAL_TEXT[g.id](g.target)}`);
+      li.dataset.iconHint = li.getAttribute('aria-label')!;
       goals.append(li);
     }
     // Your own read of the night, by the stars it earned.

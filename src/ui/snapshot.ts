@@ -6,7 +6,6 @@ import { displayName } from './names';
 import { CAMPER_SPOTS } from '../world/scene';
 import { EXPOSURE, aidSeason } from '../sim/exposure';
 import { HUSTLE } from '../config/hustles';
-import { FAVOURS, type FavourId } from '../config/favours';
 import { camperSpot } from '../world/layout';
 import { INVEST } from '../sim/simulation';
 import { stageCount, stageOf } from '../config/serviceStages';
@@ -155,7 +154,7 @@ export function buildSnapshot(sim: Simulation, people: number): HudSnapshot {
   };
   return { clock: `${formatDate(date)} · ${formatClock(sim.clockMinutes)}`, clockMinutes: sim.clockMinutes, people, enabled, locations, money: { budget: sim.org.budget, perHour: sim.org.netPerHour }, aid: aid || undefined, unmet: { day: sim.unmet24, crisis: sim.crisis },
     stress: { police: sim.cityStress.police, medics: sim.cityStress.medics, sobering: sim.cityStress.sobering, district: sim.vitality.level },
-    favours: { held: sim.favours, owed: sim.concessionAt !== null, items: (Object.keys(FAVOURS) as FavourId[]).map((id) => ({ id, label: FAVOURS[id].label, short: FAVOURS[id].short })) } };
+    favours: sim.favourView };
 }
 
 /** A donation drive, for the organisation sheet: running until a time, resting until one, or ready. */

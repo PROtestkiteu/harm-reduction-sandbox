@@ -111,12 +111,12 @@ export function soundSection(sound: SoundControls): HTMLFieldSetElement {
   for (const c of CHANNELS) {
     const name = CHANNEL_NAME[c]();
     const sl = slider(`sound-${c}`, name, s.mix[c].volume, (v) => { sound.setChannel(c, { volume: v }); sync(); });
-    sl.row.title = CHANNEL_HINT[c]();
+    sl.row.dataset.iconHint = CHANNEL_HINT[c]();
     sl.input.setAttribute('aria-describedby', `sound-${c}-hint`);
     const hint = Object.assign(document.createElement('span'), { id: `sound-${c}-hint`, className: 'sound-hint', textContent: CHANNEL_HINT[c]() });
     const m = Object.assign(document.createElement('input'), { type: 'checkbox', checked: s.mix[c].muted, className: 'sound-mute' });
     m.setAttribute('aria-label', t('Mute {channel}', { channel: name }));
-    m.title = t('Mute {channel}', { channel: name });
+    m.dataset.iconHint = t('Mute {channel}', { channel: name });
     m.addEventListener('change', () => { sound.setChannel(c, { muted: m.checked }); sync(); });
     sl.row.append(m, hint);
     rows[c] = { slider: sl, mute: m };

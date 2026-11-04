@@ -1,7 +1,6 @@
 /**
- * Favours with city hall: the organisation holds at most one. Using it gets
- * something done now; city hall then asks for a concession some hours later,
- * and only agreeing to it earns the next favour. ILLUSTRATIVE.
+ * Base favour effects and city hall concessions. Reputation supplies favours
+ * and upgrades their benefits. Spending schedules one request. ILLUSTRATIVE.
  */
 import { t } from '../i18n';
 export type FavourId = 'funding' | 'police' | 'camp';

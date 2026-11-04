@@ -1,0 +1,11 @@
+.person-support { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--muted); overflow-wrap: anywhere; }
+.person-support h3 { font: inherit; font-weight: 600; color: var(--reply); margin: 0 0 8px; }
+.person-support p { margin: 6px 0; line-height: 1.4; }
+.person-support p:nth-of-type(n+3) { font-size: 14px; color: var(--muted); }
+.person-team { margin: 10px 0 4px; min-height: 44px; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.profile-reference { margin-top: 14px; border-top: 1px solid var(--muted); }
+.profile-reference > summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; color: var(--muted); font-size: 14px; }
+.profile-reference > summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.profile-reference .profile-name { font-size: 16px; margin: 8px 0; }
+.profile-reference p, .profile-reference dd { overflow-wrap: anywhere; }
+.profile-reference .note { font-size: 12px; }

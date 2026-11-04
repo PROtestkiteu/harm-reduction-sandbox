@@ -133,6 +133,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 
 /* Headings avoid a lone last word ("…in the / media"). */
 h1, h2, h3 { text-wrap: pretty; }
@@ -370,7 +371,7 @@ button:focus-visible {
 .idle { color: var(--muted); }
 
 /* A spoken line: the name in medium weight, a short rule, then the words. */
-.line { font-size: 17px; }
+.line { font-size: 17px; overflow-wrap: anywhere; }
 .speaker[hidden] { display: none; }
 .rename {
   min-height: 36px;
@@ -386,15 +387,6 @@ button:focus-visible {
   font-family: var(--body); font-weight: 500;
   font-size: 18px;
   color: var(--tone, var(--text));
-}
-.speaker::after {
-  content: '';
-  display: inline-block;
-  width: 0.9em;
-  height: 1.5px;
-  margin: 0 8px;
-  background: currentColor;
-  vertical-align: middle;
 }
 
 .column[data-role='staff'] { --tone: var(--role-staff); }
@@ -465,8 +457,6 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
 /* Replies folded under a group reply sit indented beneath it. */
 .options > li.nested { padding-left: 1.6em; font-size: 0.95em; }
 .options > li.nested-2 { padding-left: 3em; }
-.opt.group::after { content: '▸'; margin-left: auto; color: var(--muted); transition: transform 0.15s; }
-.opt.group[aria-expanded='true']::after { transform: rotate(90deg); }
 
 .opt {
   display: flex;
@@ -1025,8 +1015,6 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
 .event-more { margin-top: 2px; font-size: 13px; }
 .event-more > summary { cursor: pointer; color: var(--muted); font-size: 12px; list-style: none; padding: 4px 0; }
 .event-more > summary::-webkit-details-marker { display: none; }
-.event-more > summary::after { content: ' ›'; }
-.event-more[open] > summary::after { content: ' ‹'; }
 .event-more p { margin: 4px 0 0; }
 .hints-label { color: var(--muted); }
 .btn.hint, .btn.trigger { min-height: 28px; padding: 0 8px; font-size: 12px; position: relative; text-align: left; }
@@ -1146,8 +1134,6 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
   cursor: pointer;
   text-shadow: none;
 }
-.events-heading::after { content: ' +'; }
-.events-heading[aria-expanded='true']::after { content: ' \2212'; }
 @media (hover: hover) {
   .events-heading:hover { color: var(--reply-hover); }
 }
@@ -1319,8 +1305,6 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
 /* Something coming that needs preparing: its title in the warning colour, so it reads while folded. */
 .stakes-storm > summary .fold-title { color: var(--law); font-weight: 600; }
 .stakes-morale + .factor-summary { margin: 2px 0 6px; font-size: 12px; color: var(--muted); }
-.sandbox-sub > summary::after { content: '\203A'; flex: none; width: 22px; margin-left: 8px; text-align: center; color: var(--reply); font-size: 28px; line-height: 1; transition: transform 0.15s; }
-.sandbox-sub[open] > summary::after { transform: rotate(90deg); }
 @media (prefers-reduced-motion: reduce) { .sandbox-sub > summary::after { transition: none; } }
 @media (hover: hover) {
   .sandbox-sub > summary:hover { color: var(--reply-hover); }
@@ -1624,15 +1608,6 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
 @media (pointer: coarse) { .rename-pencil { width: 44px; height: 44px; margin: -12px 0 -12px -4px; } }
 
 /* With the pencil shown, the dash moves after it: name, pencil, dash, text. */
-.speaker:has(+ .rename-pencil:not([hidden]))::after { display: none; }
-.rename-pencil::after {
-  content: '';
-  display: inline-block;
-  width: 0.9em;
-  height: 1.5px;
-  margin: 0 8px 0 6px;
-  background: var(--tone, var(--text));
-}
 .rename-pencil { width: auto; padding: 0 0 0 4px; }
 
 /* Budget mix: one labelled slider per activity under the place's reply. */
@@ -1653,7 +1628,6 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
 .mix-row .mix-setup { grid-column: 1 / -1; }
 .options > li.mix-row { counter-increment: none; }
 .mix-row .mix-setup[hidden] { display: none; }
-.mix-row .mix-setup::before { content: '›'; }
 .options > li.mix-row[hidden] { display: none; }
 .column-sub { display: flex; gap: 8px; font-size: 12px; white-space: nowrap; }
 /* A crisis (many people turned away in a day): a tag under the money; amber while it builds, red at its worst. */
@@ -1789,7 +1763,6 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
 /* An open group is a submenu on every screen: other replies step aside, its own reply (marked ‹) leads back. */
 .options[data-drill] > li.drill-out { display: none; }
 .options[data-drill] > li.drill-head { grid-column: 1 / -1; }
-.options[data-drill] > li.drill-head .opt::before { content: '‹'; font-size: 1.3em; line-height: 1; }
 .options[data-drill] > li.drill-head .opt.group::after { display: none; }
 .options[data-drill] > li.nested { grid-column: 1 / -1; padding-left: 0; }
 
@@ -2039,7 +2012,7 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
 .sandbox.sheet:not([data-open='true']) { display: none; }
 @media (min-width: 761px) { .sheet .sandbox-body { position: relative; } }
 .sheet-head { position: absolute; top: 8px; right: 8px; }
-.sheet .org-name-row { padding-right: 44px; }
+.sheet .org-name-row { padding-right: 0; }
 @media (max-width: 760px) {
   .sandbox.sheet { margin-top: 0; }
   .sheet-head { top: 6px; right: max(6px, env(safe-area-inset-right)); }
@@ -2075,16 +2048,6 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
 }
 .team-assign option { color: #1f1b17; }
 .team-member:has(.team-assign) { position: relative; }
-.team-member::after {
-  content: '›';
-  position: absolute;
-  right: 4px;
-  top: 50%;
-  transform: translateY(-50%) rotate(90deg);
-  color: var(--reply);
-  pointer-events: none;
-  font-size: 16px;
-}
 .team-assign:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
 /* Phones: one layer of navigation at a time. While Settings or the organisation is open, the conversation sheet steps aside. */
@@ -2112,7 +2075,6 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
 .favour-icon { display: inline-flex; width: 13px; height: 13px; }
 .favour-icon svg { width: 100%; height: 100%; }
 /* Nothing said (an open place): no dialogue dash after the name or its pencil. */
-.rename-pencil:has(+ .said:empty)::after, .speaker:has(+ .rename-pencil[hidden] + .said:empty)::after { display: none; }
 
 /* A service's row on its own card: one reply, Close down or Open up; the name and the switch belong to the services list. */
 .own-act { display: none; }
@@ -2177,8 +2139,6 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
   border: 0; background: none; cursor: pointer; text-align: left; text-shadow: none;
   font: 500 12px var(--body); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted);
 }
-.goals-head::after { content: '+'; margin-left: auto; font-size: 15px; color: var(--reply); }
-.goals-head[aria-expanded='true']::after { content: '\2212'; }
 .goals-head:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .goals-stars { color: var(--reply); font-size: 14px; letter-spacing: 0.12em; text-transform: none; }
 .goals-strip[data-open='false'] ul, .goals-strip[data-open='false'] .goals-scenario { display: none; }
@@ -2252,7 +2212,6 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
 /* Nothing selected: your organisation speaks, and its next step leads the replies. */
 .column[data-mode='idle'] .speaker { color: var(--reply); }
 .opt.guide-opt { font-weight: 600; }
-.opt.guide-opt::after { content: '→'; margin-left: auto; padding-left: 8px; }
 
 /* You, at the head of the welcome box, a guide or the morning report. */
 .player-badge { display: flex; align-items: center; gap: 12px; margin: 0 0 12px; }
@@ -2275,32 +2234,19 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
 }
 
 /*
- * Small screens, either way up: one layer at a time. Tonight's goals fold to a line of stars,
- * the news to its latest line, and an opened layer (the goals or the event feed) shows alone
- * until it is folded again. Goals and news belong to the overview: a selection hides them.
+ * Small screens: each overview module keeps its own disclosure state alongside the selection.
  */
 @media (max-width: 760px), (max-height: 520px) {
-  .column[data-mode='idle'][data-layer] .log,
-  .column[data-mode='idle'][data-layer] .options,
-  .column[data-layer='goals'] .column-events,
-  .column[data-layer='goals'] .notice-strip,
-  .column[data-layer='events'] .goals-strip,
-  .column[data-layer='events'] .notice-strip,
-  .column:not([data-mode='idle']) .goals-strip,
-  .column:not([data-mode='idle']) .notice-strip,
-  .column[data-folded] .goals-strip,
-  .column[data-folded] .notice-strip { display: none; }
   .goals-strip, .notice-strip { margin-top: 2px; }
   /* Room above Pause, whose fade would otherwise sit on an open layer's last line. */
   /* The open feed scrolls with the sheet, not inside a box of its own. */
-  .column[data-layer='events'] .events { max-height: none; overflow: visible; }
+  .column .events { max-height: none; overflow: visible; }
   .notice-strip li { color: var(--muted); }
   .column .column-events { margin-top: 0; }
   .column .events-heading { min-height: 34px; font-size: 15px; }
   /* The hint to pick on the map is said by the guide's own reply; your organisation's name is a quiet label. */
   .column .idle { display: none; }
   .column[data-mode='idle'] .speaker { display: block; margin-bottom: 1px; font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
-  .column[data-mode='idle'] .speaker::after { display: none; }
   .column[data-mode='idle'] .line { font-size: 15px; }
 }
 
@@ -2365,7 +2311,6 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
 .column[data-mode='idle'][data-tutorial='true'] .speaker { color: var(--reply); }
 /* The walk-through's label stands on its own line: no dialogue rule after it. */
 .column[data-mode='idle'][data-tutorial='true'] .speaker { display: block; }
-.column[data-mode='idle'][data-tutorial='true'] .speaker::after { display: none; }
 /* The control a step names glows gold until it is used. */
 #hud[data-guide='try:speed'] .speed-toggle,
 #hud[data-guide='try:org'] .money-btn { outline: 2px solid var(--reply); outline-offset: 4px; border-radius: 3px; animation: guide-glow 1.6s ease-in-out infinite; }
@@ -2377,7 +2322,7 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
 /* Larger reading text on small screens. */
 @media (max-width: 760px), (max-height: 520px) {
   .column[data-mode='idle'] .line { font-size: 16px; }
-  .column[data-mode='idle'][data-tutorial='true'] .line { font-size: 17px; }
+  .column[data-mode='idle'][data-tutorial='true'] .line { font-size: 17px; overflow-wrap: anywhere; }
   .goals-head { min-height: 36px; font-size: 13px; }
   .notice-strip li { color: var(--text); }
 }
@@ -2400,7 +2345,6 @@ button.event-card {
   font: inherit; font-size: 14px; min-height: 44px; -webkit-tap-highlight-color: transparent;
 }
 .event-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
-.event-head::after { content: '›'; margin-left: auto; color: var(--reply); font-size: 18px; line-height: 1; }
 .event-line { display: block; margin-top: 2px; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
 button.event-card:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 @media (hover: hover) { button.event-card:hover .event-title { color: var(--reply-hover); } }
@@ -2546,8 +2490,8 @@ body:has(.action-menu:not([hidden])) .map-legend { display: none; }
 .map-legend li { display: flex; align-items: baseline; gap: 7px; }
 .map-legend li:has(> .legend-go) { display: block; }
 .map-legend .legend-go { display: flex; align-items: baseline; gap: 7px; width: 100%; min-height: 26px; padding: 3px 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.map-legend .legend-go::after { content: '›'; margin-left: auto; padding-left: 6px; color: #edb300; font-weight: 700; }
-.map-legend .legend-go:hover, .map-legend .legend-go:focus-visible { color: #fff; text-decoration: underline; text-underline-offset: 2px; }
+.map-legend .legend-go:focus-visible { color: #fff; text-decoration: underline; text-underline-offset: 2px; }
+@media (hover: hover) { .map-legend .legend-go:hover { color: #fff; text-decoration: underline; text-underline-offset: 2px; } }
 .map-legend .swatch { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--c); transform: translateY(1px); }
 .map-legend .swatch.ring { background: none; box-shadow: inset 0 0 0 2px var(--c); }
 /* Phones: under the top bar on the right, clear of the title and your portrait. */

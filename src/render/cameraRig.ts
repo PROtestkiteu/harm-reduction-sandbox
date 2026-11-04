@@ -27,6 +27,7 @@ export class CameraRig {
   /** Current focus point and zoom, fed to `frameCamera`. */
   readonly focus = new Vector3();
   private minZoom = MIN_ZOOM;
+  private navigationBounds: { x0: number; x1: number; z0: number; z1: number } | null = null;
   zoom = 1;
   private readonly targetFocus = new Vector3();
   private targetZoom = 1;
@@ -133,6 +134,14 @@ export class CameraRig {
     if (this.targetZoom < this.minZoom) this.target(this.targetFocus.x, this.targetFocus.y, this.targetFocus.z, this.minZoom);
   }
 
+  /** Authored playable bounds, applied to every navigation path including subject following. */
+  setNavigationBounds(bounds: { x0: number; x1: number; z0: number; z1: number } | null): void {
+    this.navigationBounds = bounds;
+    this.within(this.focus);
+    this.within(this.targetFocus);
+    this.changed = true;
+  }
+
   /** Mark the framing stale, for example after a resize. */
   invalidate(): void {
     this.changed = true;
@@ -144,6 +153,12 @@ export class CameraRig {
    * corners past the city, where only empty ground shows, cannot.
    */
   private within(p: { x: number; z: number }): void {
+    const b = this.navigationBounds;
+    if (b) {
+      p.x = clamp(p.x, b.x0, b.x1);
+      p.z = clamp(p.z, b.z0, b.z1);
+      return;
+    }
     const r = Math.hypot(p.x, p.z);
     if (r <= this.limit) return;
     p.x *= this.limit / r;

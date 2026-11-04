@@ -16,7 +16,7 @@ export class GoalsStrip {
   private readonly head: HTMLButtonElement;
   private readonly stars: HTMLSpanElement;
 
-  constructor(open: boolean, private readonly onToggle: (open: boolean) => void) {
+  constructor(open: boolean, private readonly onToggle: (open: boolean) => void = () => {}) {
     this.root = document.createElement('section');
     this.root.className = 'goals-strip';
     this.root.setAttribute('aria-label', t('Tonight\'s goals'));
@@ -59,6 +59,7 @@ export class GoalsStrip {
     if (this.stars.textContent !== stars) {
       this.stars.textContent = stars;
       this.stars.setAttribute('aria-label', t('{n} of {all} met so far', { n: goals.filter((g) => g.met).length, all: goals.length }));
+      this.stars.dataset.iconHint = this.stars.getAttribute('aria-label')!;
     }
     this.scenario.hidden = !scenario;
     if (scenario && this.scenario.textContent !== scenario) this.scenario.textContent = scenario;

@@ -19,7 +19,7 @@ const url = opt('url', 'http://localhost:5199/');
  * Page side: the modules the game itself loaded. The dev server adds `?t=` to a module edited
  * since it started, so each is imported by the exact URL the page used (the same instance).
  */
-const MODS = `const mod = (path) => import(performance.getEntriesByType('resource').map((e) => e.name).find((n) => new URL(n).pathname === path) ?? path);
+const MODS = `const mod = (path) => window.__sandbox.modules?.[path] ? Promise.resolve(window.__sandbox.modules[path]) : import(performance.getEntriesByType('resource').map((e) => e.name).find((n) => new URL(n).pathname === path) ?? path);
   const sg = await mod('/src/game/saveGame.ts');
   const { RESUME_KEY } = await mod('/src/game/updates.ts');
   const { GRANTS } = await mod('/src/config/organisation.ts');
@@ -80,11 +80,11 @@ const steps = [
     return { case: 'before reload', used, favourMoney: Math.round(sim.org.budget - b0), ...${READ} };
   })()` },
   { eval: saveAndReload(false) },
-  { wait: 12000 },
+  { wait: 12000, ready: true },
   { eval: `(async () => { ${MODS} return { case: 'after reload (new save)', ...${READ} }; })()` },
   // 2. An old save: the same game without the newer fields loads with start values.
   { eval: saveAndReload(true) },
-  { wait: 12000 },
+  { wait: 12000, ready: true },
   { eval: `(async () => { ${MODS} return { case: 'after reload (old-format save)', ...${READ} }; })()` },
   // 3. The Sandbox budget slider marks the run; the mark survives a reload and the submit button is off.
   { eval: `(async () => { ${MODS}
@@ -96,7 +96,7 @@ const steps = [
     return { case: 'after the budget slider', ...${READ} };
   })()` },
   { eval: saveAndReload(false, true) },
-  { wait: 12000 },
+  { wait: 12000, ready: true },
   { eval: `(async () => { ${MODS}
     let refused = '';
     try { await lb.submitScore({ id: 'x', ts: 0, token: 'x' }, 'Check', 1, 1); } catch (e) { refused = e.message; }

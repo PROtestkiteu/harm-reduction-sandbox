@@ -38,7 +38,8 @@ export class NoticeStrip {
     this.root.dataset.open = 'false';
     this.list.tabIndex = 0;
     this.list.setAttribute('aria-expanded', 'false');
-    this.list.title = t('Show the earlier news');
+    this.list.dataset.hintAction = 'true';
+    this.list.dataset.iconHint = t('Show the earlier news');
     const toggle = () => {
       const open = this.root.dataset.open !== 'true';
       this.root.dataset.open = String(open);

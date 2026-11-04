@@ -1,0 +1,10 @@
+.icon-hint {
+  position: fixed; z-index: 70; box-sizing: border-box;
+  padding: 7px 10px; border: 1px solid var(--muted); border-radius: 2px;
+  background: rgba(var(--fade), 0.98); color: var(--text);
+  box-shadow: 0 3px 12px rgba(0,0,0,0.3);
+  font: 13px/1.4 var(--body); white-space: pre-line; overflow: hidden;
+  overflow-wrap: anywhere; pointer-events: none;
+}
+.icon-hint[hidden] { display: none; }
+[data-icon-hint]:not(button):not(input):not(select):not(textarea) { pointer-events: auto; }

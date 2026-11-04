@@ -266,7 +266,7 @@ class EventDetail {
       const b = el('button', 'btn hint', `${h.label}${'param' in h ? (h.direction === 'up' ? ' ↑' : ' ↓') : ''}`);
       if ('org' in h) b.dataset.org = 'true';
       b.type = 'button';
-      b.title = t('Open this setting');
+      b.dataset.iconHint = t('Open this setting');
       // The box steps aside for the setting it opens.
       b.addEventListener('click', () => { this.dialog.close(); this.cb.onHint(h); });
       hints.append(b);

@@ -1,5 +1,11 @@
+import { memberTraitLabel } from './personWording';
+import { supportFit, type PersonSupport } from '../sim/personSupport';
+import './employeeSkills.css';
+import { ReputationDisclosure } from './reputation';
+import type { FavourView } from '../sim/favourView';
+import { SKILL_IDS, SKILLS, type SkillId } from '../config/employeeSkills';
 import { serviceNeeds, type Need } from '../config/needs';
-import { METER_ORDER, NEED_ICONS, meterState, needsFor } from './needIcons';
+import { METER_ORDER, NEED_NAME, NEED_HINT, NEED_ICONS, meterState, needsFor } from './needIcons';
 import { GRANT_IDS, GRANTS, ORG, RECRUIT, recruitChance, type ApplicationContext, type GrantId, type RecruitId } from '../config/organisation';
 import { price } from './money';
 import type { DriveView } from './snapshot';
@@ -43,7 +49,7 @@ export interface OrgView {
   team: Team;
   drive: DriveView;
   /** City hall favours: how many held, whether one is owed, and what can be asked. */
-  favours: { held: number; owed: boolean; items: { id: FavourId; label: string }[] };
+  favours: FavourView;
 }
 
 interface MemberRow {
@@ -51,6 +57,8 @@ interface MemberRow {
   status: HTMLElement;
   energy: HTMLElement;
   select: HTMLSelectElement;
+  skills: Map<SkillId, HTMLElement>;
+  strength: HTMLElement;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -113,6 +121,10 @@ export class OrgPanel {
   private readonly shiftStat: HTMLElement;
   private readonly teamSummary: HTMLElement;
   private teamKey = '';
+  private readonly teamDetails: HTMLDetailsElement;
+  private allowedServices: readonly ServiceId[] = SERVICE_IDS;
+  private staffingContext: { support: PersonSupport; service: ServiceId } | null = null;
+  private readonly staffingNote: HTMLElement;
   private readonly memberRows = new Map<number, MemberRow>();
   private readonly cb: OrgPanelCallbacks;
   private readonly meters = {} as Record<Need, { root: HTMLElement; fill: HTMLElement }>;
@@ -126,12 +138,17 @@ export class OrgPanel {
   private readonly favourLine: HTMLElement;
   private readonly favourActions: HTMLElement;
   private favourKey = '';
+  private readonly reputationDisclosure = new ReputationDisclosure();
+  focusFavours(): void {
+    const fold = this.section.querySelector<HTMLDetailsElement>('.org-favours-fold');
+    if (fold) { fold.open = true; fold.querySelector<HTMLElement>('summary')?.focus(); fold.scrollIntoView({ block: 'nearest' }); }
+  }
 
   constructor(cb: OrgPanelCallbacks) {
     this.cb = cb;
     this.bar = el('button', 'org-bar');
     this.bar.type = 'button';
-    this.bar.title = t('Organisation: money and staff.');
+    this.bar.dataset.iconHint = t('Organisation: money and staff.');
     this.bar.addEventListener('click', () => cb.onOpen());
 
     this.section = el('fieldset', 'sandbox-group org');
@@ -147,7 +164,7 @@ export class OrgPanel {
     this.nameInput.setAttribute('autocorrect', 'off');
     this.nameInput.value = displayName('org', 'name', t('Your organisation'));
     this.nameInput.setAttribute('aria-label', t('Organisation name'));
-    this.nameInput.title = t('Click to rename your organisation');
+    this.nameInput.dataset.iconHint = t('Click to rename your organisation');
     // The field is as wide as its name, so the pencil sits just after the words (style.css).
     const fit = () => this.nameInput.style.setProperty('--chars', String(Math.max(4, this.nameInput.value.length + 1)));
     fit();
@@ -163,7 +180,7 @@ export class OrgPanel {
     const pencil = el('button', 'rename-pencil');
     pencil.type = 'button';
     pencil.setAttribute('aria-label', t('Rename'));
-    pencil.title = t('Click to rename your organisation');
+    pencil.dataset.iconHint = t('Click to rename your organisation');
     pencil.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M3 17.25V21h3.75L17.8 9.94l-3.75-3.75L3 17.25zm17.7-10.2a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>';
     pencil.addEventListener('click', () => { this.nameInput.focus(); this.nameInput.select(); });
     const nameRow = el('div', 'org-name-row');
@@ -175,6 +192,9 @@ export class OrgPanel {
     for (const key of METER_ORDER) {
       const m = el('span', 'stress');
       m.dataset.key = key;
+      m.dataset.iconHint = `${NEED_NAME[key]}: ${NEED_HINT[key]}`;
+      m.setAttribute('aria-label', NEED_NAME[key]);
+      m.tabIndex = 0;
       const icon = el('span', 'stress-icon');
       icon.innerHTML = NEED_ICONS[key];
       const bar = el('span', 'stress-bar');
@@ -214,14 +234,14 @@ export class OrgPanel {
         : t('Find volunteers: {price}, unpaid ({chance}%)', { price: price(r.cost), chance: Math.round(recruitChance(id) * 100) }));
       b.type = 'button';
       b.id = `org-${id}`;
-      b.title = t('{label}: about {hours} h. {summary}', { label: r.label, hours: (Math.round(r.minutes / 60 * 10) / 10).toLocaleString(LOCALE), summary: r.summary });
+      b.dataset.iconHint = t('{label}: about {hours} h. {summary}', { label: r.label, hours: (Math.round(r.minutes / 60 * 10) / 10).toLocaleString(LOCALE), summary: r.summary });
       b.addEventListener('click', () => cb.onRecruit(id));
       this.recruitBtns[id] = b;
       teamActions.append(b);
     }
     const letGo = el('button', 'btn org-action', t('Let one go'));
     letGo.type = 'button';
-    letGo.title = t('Saves {wage} per hour in wages.', { wage: price(ORG.wagePerHour) });
+    letGo.dataset.iconHint = t('Saves {wage} per hour in wages.', { wage: price(ORG.wagePerHour) });
     letGo.id = 'org-letGo';
     letGo.addEventListener('click', () => cb.onLetGo());
     teamActions.append(letGo);
@@ -234,7 +254,7 @@ export class OrgPanel {
     this.favourLine = el('p', 'org-favour-line');
     this.favourActions = el('div', 'org-actions org-favours');
     this.favourBox = el('div', 'org-favour-box');
-    this.favourBox.append(this.favourLine, this.favourActions);
+    this.favourBox.append(this.favourLine, this.favourActions, this.reputationDisclosure.element);
 
     // Services closed down when the money ran out: relaunch for a cost.
     this.closed = el('div', 'org-closed');
@@ -284,9 +304,17 @@ export class OrgPanel {
     const note = el('p', 'note', t('Money is in illustrative units. Funding levels follow the library only as a ratio (project about a third of stable public funding).'));
     // The team by name: qualities, energy, and where each person works.
     const team = el('details', 'org-team');
+    this.teamDetails = team;
+    this.staffingNote = el('p', 'employee-context');
+    this.staffingNote.hidden = true;
     this.teamSummary = el('summary', undefined, t('Your team'));
     team.classList.add('sandbox-sub');
-    team.append(this.teamSummary, el('p', 'factor-summary', t('Pin someone to a service or send them to rest. Automatic places people where they fit best, paid staff first; tired people go home until rested.')));
+    team.append(this.teamSummary, this.staffingNote, el('p', 'factor-summary', t('Pin someone to a service or send them to rest. Automatic places people where they fit best, paid staff first; tired people go home until rested.')));
+    team.append(el('p', 'factor-summary', t('Skills grow through practice. Automatic placement uses each person’s strengths; individual assignments are optional.')));
+    const skillHelp = el('details', 'employee-skill-help');
+    skillHelp.append(el('summary', undefined, t('How skills help')), el('p', 'factor-summary', t('Skills are rated out of 20. They improve service capacity and patrol reach, but do not replace professional qualifications.')));
+    for (const id of SKILL_IDS) skillHelp.append(el('p', 'factor-summary', `${SKILLS[id].label}: ${SKILLS[id].detail}`));
+    team.append(skillHelp);
     this.teamList = el('ul', 'team-list');
     team.append(this.recruiting, teamActions, this.teamList);
     // The long lists fold behind a reply of their own.
@@ -312,6 +340,22 @@ export class OrgPanel {
     this.section.append(this.nameRow, this.meterRow, stats, moneyFold.sub, favourFold.sub, team, this.closed, fold(t('Funding applications'), grants), fold(t('What has happened'), this.log));
   }
 
+  /** The tutorial can expose people without exposing funding or locked services. */
+  setTeamAccess(services: readonly ServiceId[], teamOnly: boolean): void {
+    this.allowedServices = services;
+    this.section.classList.toggle('org-team-mode', teamOnly);
+  }
+
+  get teamDisclosure(): HTMLDetailsElement { return this.teamDetails; }
+
+  showTeam(): void { this.teamDetails.open = true; }
+
+  setStaffingContext(support?: PersonSupport, service?: ServiceId): void {
+    this.staffingContext = support && service ? { support, service } : null;
+    this.staffingNote.hidden = !this.staffingContext;
+    setText(this.staffingNote, this.staffingContext ? t('Compare support for {place}. Changing assignments can leave another service short. Automatic placement also considers people waiting.', { place: PICK_NAMES[this.staffingContext.service] }) : '');
+  }
+
   /** The name was changed elsewhere (the welcome): show it here too. */
   refreshName(): void {
     this.nameInput.value = displayName('org', 'name', t('Your organisation'));
@@ -327,9 +371,10 @@ export class OrgPanel {
     if (this.driveBtn.disabled !== driveOff) this.driveBtn.disabled = driveOff;
     const f = v.favours;
     setText(this.favourNote, f.held ? t('{n} held', { n: f.held }) : f.owed ? t('one owed') : t('none'));
-    setText(this.favourLine, f.held ? t('City hall favours: {n}. City hall asks something back later.', { n: f.held }) : f.owed ? t('No favour now: city hall is owed one.') : t("No favour now: agree to city hall's next request to earn one."));
+    setText(this.favourLine, f.held ? t('City hall favours: {n}. City hall asks something back later.', { n: f.held }) : f.owed ? t('No favour now: city hall is owed one.') : t('Reputation earns your next favour.'));
     // The replies are built once per set of favours; only whether they can be used changes.
-    const key = f.items.map((i) => i.id).join('|');
+    const key = f.items.map((i) => i.id + i.label).join('|');
+    this.reputationDisclosure.update(f);
     if (key !== this.favourKey) {
       this.favourKey = key;
       this.favourActions.replaceChildren(...f.items.map((item) => {
@@ -340,7 +385,11 @@ export class OrgPanel {
         return b;
       }));
     }
-    for (const b of this.favourActions.querySelectorAll('button')) if (b.disabled === !!f.held) b.disabled = !f.held;
+    for (const b of this.favourActions.querySelectorAll('button')) {
+      const item = f.items.find(i => i.id === b.dataset.favour)!;
+      b.disabled = !item.available;
+      setText(b, item.reason ? item.label + ' · ' + item.reason : item.label);
+    }
     for (const key of METER_ORDER) {
       const { root, fill } = this.meters[key];
       const w = `${Math.round(v.stress[key] * 100)}%`;
@@ -423,24 +472,39 @@ export class OrgPanel {
         const who = el('div', 'team-who');
         // Two short lines: who and what they are good at, then their contract and where they work.
         const name = el('p', 'team-name');
-        name.append(el('strong', undefined, m.name), el('span', 'team-traits', ` · ${m.traits.map((x) => TRAITS[x].label).join(', ')}`));
-        name.title = m.traits.map((x) => `${TRAITS[x].label}: ${TRAITS[x].detail}`).join('\n');
+        name.append(el('strong', undefined, m.name), el('span', 'team-traits', ` · ${m.traits.map((x) => memberTraitLabel(m, x)).join(', ')}`));
+        name.dataset.iconHint = m.traits.map((x) => `${memberTraitLabel(m, x)}: ${TRAITS[x].detail}`).join('\n');
         const status = el('p', 'team-status');
-        who.append(name, status);
+        const strength = el('p', 'team-strength');
+        const skillList = el('dl', 'employee-skills');
+        skillList.setAttribute('aria-label', t('Skills'));
+        const skills = new Map<SkillId, HTMLElement>();
+        for (const id of SKILL_IDS) {
+          const item = el('div', 'employee-skill');
+          const value = el('dd');
+          item.append(el('dt', undefined, SKILLS[id].label), value);
+          skillList.append(item); skills.set(id, value);
+        }
+        const background = el('details', 'employee-background');
+        background.append(el('summary', undefined, t('Background and traits')), ...m.traits.map((id) => el('p', undefined, `${memberTraitLabel(m, id)}: ${TRAITS[id].detail}`)));
+        who.append(name, status, strength, skillList, background);
         const energy = el('span', 'team-energy');
+        energy.tabIndex = 0;
         energy.setAttribute('role', 'img');
         const select = el('select', 'team-assign');
         select.setAttribute('aria-label', t('Where {name} works', { name: m.name }));
         // Each service shows how well this person works there, so strengths and weak spots are visible.
         for (const [value, text] of WORKS_AT) {
           const svc = value === 'auto' || value === 'rest' ? null : value;
-          const o = el('option', undefined, svc ? t('{place} ({pct}%)', { place: text, pct: Math.round(Team.traitFit(m, svc) * 100) }) : text);
+          const o = el('option', undefined, svc ? t('{place} ({pct}%)', { place: text, pct: Math.round(Team.potentialFit(m, svc) * 100) }) : text);
           o.value = value;
           select.append(o);
         }
         select.addEventListener('change', () => this.cb.onAssign(m.id, select.value as Assignment));
-        row.append(who, select, energy);
-        this.memberRows.set(m.id, { row, status, energy, select });
+        const assignment = el('div', 'employee-assignment');
+        assignment.append(select);
+        row.append(who, assignment, energy);
+        this.memberRows.set(m.id, { row, status, energy, select, skills, strength });
         return row;
       }));
     }
@@ -456,6 +520,18 @@ export class OrgPanel {
         : m.assignment === 'rest' ? t('resting') : m.worn ? t('gone home tired') : t('off shift');
       const pct = Math.round(m.energy * 100);
       // Morale in words and numbers, and where they have specialised.
+      for (const id of SKILL_IDS) setText(r.skills.get(id)!, t('{value}/20', { value: Math.round(Team.skill(m, id)) }));
+      const best = this.allowedServices.reduce((a, b) => Team.potentialFit(m, b) > Team.potentialFit(m, a) ? b : a, this.allowedServices[0] ?? 'footPatrol');
+      setText(r.strength, this.staffingContext
+        ? t('Support match for {place}: {fit}%', { place: PICK_NAMES[this.staffingContext.service], fit: Math.round(supportFit(m, this.staffingContext.support) * 100) })
+        : t('Best fit: {place} · {fit}%', { place: PICK_NAMES[best], fit: Math.round(Team.potentialFit(m, best) * 100) }));
+      for (const option of r.select.options) {
+        const id = option.value as Assignment;
+        const service = id === 'auto' || id === 'rest' ? null : id;
+        option.disabled = !!service && !this.allowedServices.includes(service);
+        option.hidden = option.disabled;
+        if (service && document.activeElement !== r.select) setText(option, t('{place} ({pct}%)', { place: PICK_NAMES[service], pct: Math.round(Team.potentialFit(m, service) * 100) }));
+      }
       const heart = Team.shaken(m) ? t('shaken, morale {pct}%', { pct: Math.round(m.morale * 100) }) : t('morale {pct}%', { pct: Math.round(m.morale * 100) });
       const special = m.special ? ` · ${t('specialist: {place}', { place: PICK_NAMES[m.special] })}` : '';
       setText(r.status, `${kind[0].toUpperCase()}${kind.slice(1)} · ${where} · ${heart}${special}`);

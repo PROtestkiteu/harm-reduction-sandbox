@@ -99,7 +99,8 @@ function sweep() {
  * Opens `url`, runs `steps` in order and returns what each `eval` step gave
  * back. Page errors are printed to stderr. Screenshots and profiles go to `out`.
  */
-export async function drive(url, steps, { out = '.', size = '1280x800', dpr = 1, seed = process.env.SEED, settle = 9000, log = console.log, cpuThrottle = 1 } = {}) {
+export async function drive(url, steps, { out = '.', size = '1280x800', dpr = 1, seed = process.env.SEED, settle = 9000, log = console.log, cpuThrottle = 1, menu = false, colorScheme, reducedMotion, diagnostics = false, touch = false } = {}) {
+  if (!menu) { const gameUrl = new URL(url); gameUrl.searchParams.set('play', '1'); url = gameUrl.href; }
   const [w, h] = size.split('x').map(Number);
   const port = 9300 + Math.floor(Math.random() * 500);
   sweep();
@@ -131,17 +132,42 @@ export async function drive(url, steps, { out = '.', size = '1280x800', dpr = 1,
     const send = (method, params = {}) => new Promise((r) => { const n = ++id; waiting.set(n, r); ws.send(JSON.stringify({ id: n, method, params })); });
     await send('Runtime.enable');
     await send('Page.enable');
+    if (!menu) await send('Page.addScriptToEvaluateOnNewDocument', { source: "try{localStorage.setItem('hrp-tutorials-hidden', JSON.stringify(['welcome','guides']))}catch{}" });
+    if (diagnostics) await send('Page.addScriptToEvaluateOnNewDocument', { source: `window.__qaErrors=[];addEventListener('error',e=>window.__qaErrors.push(e.message));addEventListener('unhandledrejection',e=>window.__qaErrors.push(String(e.reason)));` });
+    if (colorScheme || reducedMotion !== undefined) await send('Emulation.setEmulatedMedia', { features: [...(colorScheme ? [{name:'prefers-color-scheme',value:colorScheme}] : []), ...(reducedMotion !== undefined ? [{name:'prefers-reduced-motion',value:reducedMotion ? 'reduce' : 'no-preference'}] : [])] });
     await send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: dpr, mobile: w < 768 });
+    if (touch) await send('Emulation.setTouchEmulationEnabled', { enabled: true });
     // A weak phone's CPU: every task runs this many times slower (the GPU is not throttled).
     if (cpuThrottle > 1) await send('Emulation.setCPUThrottlingRate', { rate: cpuThrottle });
     if (seed !== undefined) await send('Page.addScriptToEvaluateOnNewDocument', { source: seeded(seed) });
     await send('Page.navigate', { url });
     await sleep(settle);
     for (const s of steps) {
+      // Device input and display-mode emulation for the UI regression checks.
+      if (s.cdp) {
+        const r = await send(s.cdp, s.params ?? {});
+        if (r.error) throw new Error(`${s.cdp}: ${r.error.message}`);
+      }
       if (s.wait) await sleep(s.wait);
+      if (s.ready) {
+        const deadline = Date.now() + 120000;
+        let ready = false;
+        while (!ready && Date.now() < deadline) {
+          const state = await send('Runtime.evaluate', { expression: "!!window.__sandbox && !document.getElementById('loading')", returnByValue: true });
+          ready = state.result?.result?.value === true;
+          if (!ready) await sleep(200);
+        }
+        if (!ready) {
+          const state = await send('Runtime.evaluate', { expression: "JSON.stringify({url:location.href,text:document.body?.innerText.slice(0,900),resources:performance.getEntriesByType('resource').slice(-4).map(r=>r.name)})", returnByValue: true });
+          throw new Error('Game did not become ready within 120 seconds: ' + state.result?.result?.value);
+        }
+      }
       if (s.eval) {
-        const r = await send('Runtime.evaluate', { expression: s.eval, awaitPromise: true, returnByValue: true });
-        results.push(r.result?.result?.value ?? r.result?.exceptionDetails?.exception?.description ?? null);
+        const r = await send('Runtime.evaluate', { expression: s.eval, awaitPromise: true, returnByValue: true, userGesture: !!s.userGesture });
+        if (r.error) throw new Error(r.error.message);
+        const exception = r.result?.exceptionDetails;
+        if (exception) throw new Error(exception.exception?.description ?? exception.text);
+        results.push(r.result?.result?.value ?? null);
       }
       if (s.profile) {
         await send('Profiler.enable');
@@ -180,7 +206,7 @@ export async function drive(url, steps, { out = '.', size = '1280x800', dpr = 1,
  * again" for the welcome and the red-meter guides (the key and ids of
  * src/ui/tutorials.ts), then reload once. A box left open pauses the game.
  */
-export const SKIP_WELCOME = [{ eval: "localStorage.setItem('hrp-tutorials-hidden', JSON.stringify(['welcome', 'guides'])); location.reload(); 1" }, { wait: 12000 }];
+export const SKIP_WELCOME = [{ eval: "localStorage.setItem('hrp-tutorials-hidden', JSON.stringify(['welcome', 'guides'])); document.querySelectorAll('dialog[open]').forEach(d=>d.close()); 1" }, { wait: 12000, ready: true }];
 
 /** A page-side file (a function expression) called with `args`, as one eval step. */
 export const call = (file, ...args) => ({ eval: `(${readFileSync(new URL(file, import.meta.url), 'utf8')})(${args.map((a) => JSON.stringify(a)).join(', ')})` });

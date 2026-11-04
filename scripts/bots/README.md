@@ -11,6 +11,8 @@ Nothing here is imported by the game, so none of it reaches `dist/`.
 | `edges.mjs` | Traffic edges: the widest views at each corner tilted low, the junctions, the river and the level crossing, watching every tagged mover (`userData.mover`). Fails when a vehicle, boat, aircraft or the train appears, vanishes or jumps on screen, a road vehicle stands inside a building, two registered vehicles overlap, or one stands still for 40 s. `--clock` sets the hour. |
 | `clearance.mjs` | Flavour props and standing spots against the crowd's walking lines and buildings, over several launches. |
 | `saves.mjs` | Saves: a used favour, an approved grant and the stress meters survive the update reload; an old save without the newer fields loads with start values; the Sandbox mark survives and keeps the run off the leaderboard. Exits 1 on a failure. |
+| `touchUi.mjs [url] [outDir]` | Touch and desktop panel parity at 320×568, 393×852, 667×375, 852×393, 768×1024 and 1440×900. Real CDP map gestures, hint dismissal, heading toggles, viewport shrink/restore, rotation, screenshots and runtime errors. Attempts Fullscreen API entry/exit through a real click and reports the outcome. `UI_CASE=phone-new` selects one case. Screenshots default to `/tmp/hrs-touch-qa`. |
+| `iconHints.mjs` | Compiles the real shared hint module into an isolated fixture and checks 24 touch/hover, action-preservation, dismissal, keyboard/assistive activation, dynamic-indicator, modal and stale-hint scenarios. Uses the canonical Chrome driver; artifacts stay in `/tmp/hrs-icon-hints-qa`. |
 | `sound.mjs` | Renders the street ambience offline for four moods and measures it: level, peaks, clipping, share below 150 Hz (buzz on small speakers), loudness spread and flat share (monotony). `--recorded` mixes in the recorded street, `--wav dir` writes WAVs to listen to. |
 | `chrome.mjs` | The driver the others use; also a CLI that runs a JSON list of steps (`eval`, `wait`, `shot`, `profile`). It closes Chrome with `Browser.close` (signals only if that fails), removes its temporary profile even on Ctrl-C or an error, and sweeps `hrs-chrome-*` profiles left by earlier crashed runs. Launch Chrome only through it: a bare `kill` leaves a profile and a macOS code-signing clone behind each time. |
 
@@ -22,3 +24,21 @@ which is random per launch, is the same on every run and two builds can be compa
 
 Saving a source file while a bot runs makes the dev server reload the page and restarts that run;
 `run-bots.mjs` retries such runs, but leave the code alone while measuring.
+
+### Physical mobile/PWA verification
+
+The touch bot uses current Chrome with viewport and CPU emulation. It does **not** verify older Safari,
+older Android browser engines, installed Home Screen launches, operating-system keyboards or real cutouts.
+Chrome's headless media emulation did not activate standalone display mode; do not report that as passed.
+
+Before claiming hardware/PWA compatibility, repeat the heading-toggle, outside-hint-dismissal and map
+navigation flows on an iOS/iPadOS 15.8 device, a newer iPhone/iPad, an older Android device running a
+supported browser and a newer Android device. Use both a browser tab and an installed Home Screen app.
+Check portrait/landscape, cold launch, background/resume, toolbar changes, keyboard opening/closing,
+cutouts/home indicators and supported fullscreen entry/exit. Record exact device/OS/browser versions;
+until performed these hardware checks remain pending.
+
+Keep the existing manifest fullscreen-to-standalone fallback. Display modes vary by platform; see
+[the browser vendor's PWA guidance](https://web.dev/learn/pwa/app-design/). The oldest documented Safari
+baseline already supports dynamic viewport units, `:has()` and `:focus-visible`; see
+[WebKit's Safari 15.4 release notes](https://webkit.org/blog/12445/new-webkit-features-in-safari-15-4/).

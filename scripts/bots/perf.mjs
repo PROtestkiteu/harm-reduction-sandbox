@@ -22,6 +22,7 @@ for (let run = 1; run <= runs; run++) {
     const url = new URL(base);
     if (packs) url.searchParams.set('packs', packs);
     const [, a, b] = await drive(url.href, [...SKIP_WELCOME, { wait: 2000 }, call('./perf.js', 8), call('./perf.js', 8)], { seed, size, log: () => {} });
+    if ([a, b].some(r => !r || !Number.isFinite(r.cpuMeanMs) || r.frames < 10)) throw new Error('No valid frame-cost samples; check startup or a dev-server reload');
     for (const r of [a, b]) rows.push({ run, packs: packs ?? 'all on', 'cpu ms': r.cpuMeanMs, 'p95 ms': r.cpuP95Ms, draws: r.drawCallsPerRenderedFrame, fps: r.fps });
   }
 }

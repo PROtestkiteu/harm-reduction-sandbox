@@ -1,3 +1,5 @@
+import type { Member } from '../sim/team';
+import type { PersonSupport } from '../sim/personSupport';
 import { Group, Vector3, type Camera, type Object3D } from 'three';
 import { MoodIcons, type Mood } from './moodIcons';
 import { CarryProps, SERVED_CARRY, type CarryKind } from './carryProps';
@@ -5,7 +7,7 @@ import { SEASON_PROFILES } from '../config/seasons';
 import { createRandom, pick, type Random } from '../sim/random';
 import type { AcuteOutcome, Intent, SimEvent, Simulation, VisitorId } from '../sim/simulation';
 import type { Substance } from '../config/randomEvents';
-import { WALK_IN_SERVICE_IDS, type ServiceId, type WalkInServiceId } from '../sim/types';
+import { SERVICE_IDS, WALK_IN_SERVICE_IDS, type ServiceId, type WalkInServiceId } from '../sim/types';
 import type { World } from '../world/scene';
 import {
   CAMPER_FRAME,
@@ -42,7 +44,8 @@ import { CharacterRig, randomAppearance, type Appearance, type Archetype, type B
 import { HumanFigure, peopleLibrary } from './humanFigure';
 import { Dog } from './dog';
 import type { PatrolStyle } from '../config/contextFactors';
-import { nearestNode, routeTo } from './nav';
+import { nearestNode, routeTo as defaultRouteTo, navigationWithin } from './nav';
+import { TUTORIAL_AREAS, TUTORIAL_PRIVACY_SPOT } from '../config/tutorialMap';
 import { pushFromBox, setMovingBox, type Box } from '../world/solids';
 import type { Tailpipe } from '../world/puffs';
 import { PoliceRings, deterrenceRadius } from './policeRings';
@@ -126,6 +129,8 @@ export interface PersonState {
   readonly archetype: Archetype;
   /** What a visitor uses, for matching tonight's events to them; never shown as a label. */
   readonly substance?: Substance;
+  readonly support?: PersonSupport;
+  readonly worker?: Member;
   /** How they look (illustrative), for their painted portrait. */
   readonly look: Appearance;
   /** Resting on a bench with their belongings, not part of any flow. */
@@ -158,6 +163,9 @@ interface Agent {
   pose: Pose;
   service?: ServiceId;
   staffPost?: number;
+  /** A post can change occupants; this visible person never changes identity. */
+  memberId?: number;
+  staffMember?: Member;
   faceHeading?: number;
   pauseLeft: number;
   offset: P2;
@@ -237,7 +245,7 @@ export class Crowd {
   private readonly pushScratch = { x: 0, z: 0 };
   private readonly random: Random;
   private nextId = 1;
-  private readonly staffQueue: { service: ServiceId; post: number; delay: number }[] = [];
+  private readonly staffQueue: { service: ServiceId; post: number; delay: number; member: Member }[] = [];
   private readonly scratch = new Vector3();
   /** Context people: officers and residents with placards, kept in step with the simulation's context. */
   private readonly officers: Agent[] = [];
@@ -305,11 +313,14 @@ export class Crowd {
   }
 
   private view(a: Agent): PersonState {
+    const worker = a.staffMember;
     return {
+      worker,
       id: a.id,
       role: a.role,
       archetype: a.rig.look.style ?? 'everyday',
       substance: a.visitor !== undefined ? this.sim.substanceOf(a.visitor) : undefined,
+      support: a.visitor !== undefined ? this.sim.supportOf(a.visitor) : undefined,
       look: a.rig.look,
       resting: !!a.resting,
       crowding: a.crowding,
@@ -335,13 +346,20 @@ export class Crowd {
       case 'admitted': return this.onAdmitted(e.service, e.visitor);
       case 'served': return this.onServed(e.service, e.visitor);
       case 'leftUnserved': return this.onLeftUnserved(e.service, e.visitor);
-      case 'staffCall':
+      case 'staffCall': {
+        const roster = this.sim.team.members.filter((member) => member.workingAt === e.service);
         for (let i = 0; i < e.count; i++) {
-          // The table reopens after a round: the streetworkers out on the beat walk back to it, no one new is called.
-          if (e.service === 'footPatrol' && this.returnFromBeat(e.first + i)) continue;
-          this.staffQueue.push({ service: e.service, post: e.first + i, delay: i * 1.6 });
+          const member = roster[e.first + i];
+          if (!member) continue;
+          // The same named streetworker returns from the round; no replacement is called.
+          if (e.service === 'footPatrol' && this.returnFromBeat(e.first + i, member)) continue;
+          if ([...this.agents.values()].some((agent) => agent.staffMember === member && agent.service === e.service && agent.mode !== 'leaving')) continue;
+          if (this.staffQueue.some((queued) => queued.member === member && queued.service === e.service)) continue;
+          this.staffQueue.push({ service: e.service, post: e.first + i, delay: i * 1.6, member });
         }
         return;
+      }
+      case 'staffRota': return this.reconcileStaff();
       case 'staffRelease': return this.releaseStaff(e.service, e.fromPost);
       case 'clubAdmitted': return this.onClubAdmitted(e.visitor);
       case 'clubLeaver': return this.spawnClubLeaver(e.intoxicated, e.acute);
@@ -386,7 +404,7 @@ export class Crowd {
   private goToSatellite(a: Agent, sat: Satellite): void {
     a.satellite = sat;
     a.service = sat.service;
-    this.walk(a, sat.approach ? [...routeTo(a.pos, sat.approach.node, a.offset), ...sat.approach.way] : [...routeTo(a.pos, nearestNode(sat.door), a.offset), sat.door], () => {
+    this.walk(a, sat.approach ? [...this.routeTo(a.pos, sat.approach.node, a.offset), ...sat.approach.way] : [...this.routeTo(a.pos, nearestNode(sat.door), a.offset), sat.door], () => {
       const result = this.sim.arrive(sat.service, a.visitor!);
       if (result === 'admitted') this.enterSatellite(a);
       // Waiting at a satellite: they stay by its door rather than join the main line.
@@ -450,13 +468,13 @@ export class Crowd {
     }
     switch (intent) {
       case 'dropIn':
-        this.walk(a, routeTo(a.pos, SERVICE_NODES.dropIn, a.offset), () => this.arriveAtDropIn(a));
+        this.walk(a, this.routeTo(a.pos, SERVICE_NODES.dropIn, a.offset), () => this.arriveAtDropIn(a));
         break;
       case 'outreach':
-        this.walk(a, routeTo(a.pos, SERVICE_NODES.outreach, a.offset), () => this.arriveAtOutreach(a));
+        this.walk(a, this.routeTo(a.pos, SERVICE_NODES.outreach, a.offset), () => this.arriveAtOutreach(a));
         break;
       case 'club':
-        if (wantsStand) this.walk(a, routeTo(a.pos, SERVICE_NODES.clubHr, a.offset), () => this.arriveAtStand(a));
+        if (wantsStand) this.walk(a, this.routeTo(a.pos, SERVICE_NODES.clubHr, a.offset), () => this.arriveAtStand(a));
         else this.goToClubQueue(a);
         break;
       case 'footPatrol':
@@ -464,7 +482,7 @@ export class Crowd {
       case 'shelter':
       case 'clinic': {
         const id = intent;
-        this.walk(a, routeTo(a.pos, SERVICE_NODES[id], a.offset), () => this.arriveAtWalkIn(a, id));
+        this.walk(a, this.routeTo(a.pos, SERVICE_NODES[id], a.offset), () => this.arriveAtWalkIn(a, id));
         break;
       }
       case 'party': {
@@ -472,7 +490,7 @@ export class Crowd {
         const festival = this.sim.events.isActive('musicFestival');
         const centre = festival ? PARTY_AREAS.festival : PARTY_AREAS.popUp;
         const spot = { x: centre.x + (this.random() - 0.5) * centre.r * 2, z: centre.z + (this.random() - 0.5) * centre.r * 2 };
-        this.walk(a, [...routeTo(a.pos, 'park', a.offset), spot], () => {
+        this.walk(a, [...this.routeTo(a.pos, 'park', a.offset), spot], () => {
           a.mode = 'pausing';
           a.dancing = true;
           a.faceHeading = headingTo(a.pos, centre.face);
@@ -497,7 +515,7 @@ export class Crowd {
           // Early-shift workers wait for the night bus at the shelter.
           const at = BUS_WAIT[a.id % BUS_WAIT.length];
           a.waitingForBus = true;
-          this.walk(a, [...routeTo(a.pos, 'wBack', a.offset), at], () => {
+          this.walk(a, [...this.routeTo(a.pos, 'wBack', a.offset), at], () => {
             a.mode = 'pausing';
             a.faceHeading = Math.PI / 2;
             a.pauseLeft = 150;
@@ -507,7 +525,7 @@ export class Crowd {
         }
         if (kind === 'diners' && !this.sim.events.isActive('shopClosesEarly')) {
           const cafe = SHOP_FRONTS[1];
-          this.walk(a, [...routeTo(a.pos, cafe.node, a.offset), CAFE_TABLES[a.id % CAFE_TABLES.length]], () => {
+          this.walk(a, [...this.routeTo(a.pos, cafe.node, a.offset), CAFE_TABLES[a.id % CAFE_TABLES.length]], () => {
             a.mode = 'pausing';
             a.pose = 'sit';
             a.faceHeading = Math.PI;
@@ -520,7 +538,7 @@ export class Crowd {
         const shopsOpen = !this.sim.events.isActive('shopClosesEarly');
         if (shopsOpen && this.random() < this.sim.neighbourhood.state.shopTrade * (kind === 'tourists' ? 0.9 : 0.4)) {
           const shop = SHOP_FRONTS[a.id % SHOP_FRONTS.length];
-          this.walk(a, [...routeTo(a.pos, shop.node, a.offset), shop.at], () => {
+          this.walk(a, [...this.routeTo(a.pos, shop.node, a.offset), shop.at], () => {
             a.mode = 'pausing';
             a.pauseLeft = 4 + this.random() * 4;
             a.faceHeading = shop.face;
@@ -536,7 +554,7 @@ export class Crowd {
 
   /** Walks most of the way, stops short, looks, and turns back: need that never reaches the service. */
   private approachThenTurnBack(a: Agent, service: ServiceId): void {
-    const full = routeTo(a.pos, SERVICE_NODES[service], a.offset);
+    const full = this.routeTo(a.pos, SERVICE_NODES[service], a.offset);
     const goal = full[full.length - 1] ?? a.pos;
     // They stop where an officer's ring begins, if one stands by the service; otherwise just short of it.
     const radius = deterrenceRadius(this.sim.context.deterrence);
@@ -564,7 +582,23 @@ export class Crowd {
     return weighted(this.random, tourists === 1 ? mix : mix.map(([a, w]) => [a, a === 'tourist' ? w * tourists : w] as const));
   }
 
+  private localNavigation: { district: string; graph: ReturnType<typeof navigationWithin> } | null = null;
+
+  private get navigation(): ReturnType<typeof navigationWithin> | null {
+    if (!this.sim.tutorial?.active || this.sim.tutorialCapabilities.district === 'city') return null;
+    const district = this.sim.tutorialCapabilities.district;
+    if (this.localNavigation?.district !== district) this.localNavigation = { district, graph: navigationWithin(TUTORIAL_AREAS[district]) };
+    return this.localNavigation.graph;
+  }
+
+  private routeTo(from: P2, to: NodeId, offset: P2): P2[] {
+    return this.navigation?.route(from, to, offset) ?? defaultRouteTo(from, to, offset);
+  }
+
   private entryFor(intent: Intent): NodeId {
+    const navigation = this.navigation;
+    if (navigation) return navigation.entry(NODES[SERVICE_NODES[intent === 'club' ? 'clubHr' : intent as ServiceId]]);
+
     // Everyone arrives from the district edge; club-goers mostly along the main street.
     const options: Partial<Record<Intent, NodeId[]>> = {
       club: ['wN2', 'eN2', 'wS2', 'eS2', 'nW', 'sW'],
@@ -654,7 +688,7 @@ export class Crowd {
     a.staffPost = undefined;
     a.mode = 'walking';
     a.pose = 'stand';
-    this.walk(a, routeTo(a.pos, SERVICE_NODES.club, a.offset), () => {
+    this.walk(a, this.routeTo(a.pos, SERVICE_NODES.club, a.offset), () => {
       if (this.sim.joinClubQueue(a.visitor!)) a.mode = 'clubQueue';
       else this.leaveAnywhere(a);
     });
@@ -787,7 +821,9 @@ export class Crowd {
 
   // Staff
 
-  private spawnStaff(service: ServiceId, post: number): void {
+  private spawnStaff(service: ServiceId, post: number, member: Member): void {
+    if (member.workingAt !== service || !this.sim.team.members.includes(member) || !this.sim.services[service].enabled) return;
+    if ([...this.agents.values()].some((agent) => agent.staffMember === member && agent.service === service && agent.mode !== 'leaving')) return;
     const sources: Record<ServiceId, NodeId[]> = {
       dropIn: ['eN2', 'xN2'],
       outreach: ['eS2', 'xS2'],
@@ -797,8 +833,10 @@ export class Crowd {
       shelter: ['wS2', 'sW'],
       clinic: ['xS2', 'sE'],
     };
-    const from = NODES[pick(this.random, sources[service])];
+    const from = NODES[this.navigation?.entry(NODES[SERVICE_NODES[service]]) ?? pick(this.random, sources[service])];
     const a = this.createAgent(from, 'staff');
+    a.memberId = member.id;
+    a.staffMember = member;
     a.goal = 'post';
     a.service = service;
     a.staffPost = post;
@@ -809,17 +847,17 @@ export class Crowd {
     };
     if (service === 'footPatrol') {
       // On foot to the squat, then behind the table, facing the pavement.
-      this.walk(a, [...routeTo(from, SERVICE_NODES.footPatrol, a.offset), PATROL.staff[Math.min(post, PATROL.staff.length - 1)]], () => { a.faceHeading = PATROL.facing + Math.PI; arrive(); });
+      this.walk(a, [...this.routeTo(from, SERVICE_NODES.footPatrol, a.offset), PATROL.staff[Math.min(post, PATROL.staff.length - 1)]], () => { a.faceHeading = PATROL.facing + Math.PI; arrive(); });
     } else if (isWalkIn(service)) {
       const lot = LOTS[service];
-      this.walk(a, [...routeTo(from, SERVICE_NODES[service], a.offset), lot.door, lot.inside], () => { this.hide(a); arrive(); });
+      this.walk(a, [...this.routeTo(from, SERVICE_NODES[service], a.offset), lot.door, lot.inside], () => { this.hide(a); arrive(); });
     } else if (service === 'dropIn') {
-      if (post === 0) this.walk(a, [...routeTo(from, SERVICE_NODES.dropIn, a.offset), SPOTS.centerGreeter], () => { a.faceHeading = 0.3 + VENUE_ROT.dropIn; arrive(); });
-      else this.walk(a, [...routeTo(from, SERVICE_NODES.dropIn, a.offset), SPOTS.centerDoor, SPOTS.centerInside], () => { this.hide(a); arrive(); });
+      if (post === 0) this.walk(a, [...this.routeTo(from, SERVICE_NODES.dropIn, a.offset), SPOTS.centerGreeter], () => { a.faceHeading = 0.3 + VENUE_ROT.dropIn; arrive(); });
+      else this.walk(a, [...this.routeTo(from, SERVICE_NODES.dropIn, a.offset), SPOTS.centerDoor, SPOTS.centerInside], () => { this.hide(a); arrive(); });
     } else if (service === 'outreach') {
       if (post === 0) {
         // Steps in through the rear door and appears at the service window.
-        this.walk(a, [...routeTo(from, SERVICE_NODES.outreach, a.offset), SPOTS.camperRearApproach, SPOTS.camperRear], () => {
+        this.walk(a, [...this.routeTo(from, SERVICE_NODES.outreach, a.offset), SPOTS.camperRearApproach, SPOTS.camperRear], () => {
           a.pos = { ...SPOTS.camperStaffInside };
           a.faceHeading = Math.PI / 2 + VENUE_ROT.outreach;
           a.mode = 'post';
@@ -827,16 +865,17 @@ export class Crowd {
         });
       } else {
         const outside = SPOTS.camperStaffOutside;
-        this.walk(a, [...routeTo(from, SERVICE_NODES.outreach, a.offset), outside[Math.min(post - 1, outside.length - 1)]], () => { a.faceHeading = VENUE_ROT.outreach; arrive(); });
+        this.walk(a, [...this.routeTo(from, SERVICE_NODES.outreach, a.offset), outside[Math.min(post - 1, outside.length - 1)]], () => { a.faceHeading = VENUE_ROT.outreach; arrive(); });
       }
     } else {
-      this.walk(a, [...routeTo(from, SERVICE_NODES.clubHr, a.offset), SPOTS.standStaff[post]], () => { a.faceHeading = VENUE_ROT.club; arrive(); });
+      this.walk(a, [...this.routeTo(from, SERVICE_NODES.clubHr, a.offset), SPOTS.standStaff[post]], () => { a.faceHeading = VENUE_ROT.club; arrive(); });
     }
   }
 
   /** Staff at `fromPost` and above leave; 0 releases everyone (service closing). */
   private releaseStaff(service: ServiceId, fromPost: number): void {
-    this.staffQueue.splice(0, this.staffQueue.length, ...this.staffQueue.filter((s) => s.service !== service || s.post < fromPost));
+    this.staffQueue.splice(0, this.staffQueue.length, ...this.staffQueue.filter((queued) => queued.service !== service ||
+      (service === 'footPatrol' && this.sim.patrol.out ? queued.post < fromPost : this.sim.team.members.includes(queued.member) && queued.member.workingAt === service)));
     // The table shuts because its people are going out on foot: they stay, and walk the beat (syncStreetworkers).
     if (service === 'footPatrol' && this.sim.patrol.out && this.sim.patrol.at) {
       for (const a of this.agents.values()) {
@@ -849,26 +888,63 @@ export class Crowd {
       this.beatKey = '';
       return;
     }
+    const roster = new Set(this.sim.team.members.filter((member) => member.workingAt === service));
     for (const a of this.agents.values()) {
-      if (!a.rig.look.staff || a.service !== service || a.mode === 'leaving' || (a.staffPost ?? 0) < fromPost) continue;
-      const wasOnPost = a.mode === 'post' || a.responding === true;
-      a.responding = false;
-      if (wasOnPost) this.sim.staffLeft(service);
-      a.faceHeading = undefined;
-      if (service === 'dropIn' && !a.visible) {
-        this.show(a, SPOTS.centerInside);
-        this.walk(a, [SPOTS.centerDoor, SPOTS.centerFront], () => this.leaveAnywhere(a));
-        a.mode = 'leaving';
-      } else if (isWalkIn(service) && !a.visible) {
-        const lot = LOTS[service];
-        this.show(a, lot.inside);
-        this.walk(a, [lot.door, NODES[SERVICE_NODES[service]]], () => this.leaveAnywhere(a));
-        a.mode = 'leaving';
-      } else if (service === 'outreach' && wasOnPost && a.staffPost === 0) {
-        a.pos = { ...SPOTS.camperRear };
-        this.leave(a, pick(this.random, ['eN2', 'eS2'] as NodeId[]));
-      } else {
-        this.leave(a, pick(this.random, ENTRY_NODES));
+      if (!a.rig.look.staff || a.service !== service || a.mode === 'leaving') continue;
+      if (a.staffMember ? roster.has(a.staffMember) : (a.staffPost ?? 0) < fromPost) continue;
+      this.releaseStaffMember(a);
+    }
+  }
+
+  /** A departed avatar retains its member reference until it has walked out. */
+  private releaseStaffMember(a: Agent): void {
+    const service = a.service;
+    if (!service || a.mode === 'leaving') return;
+    a.onBeat = false;
+    const wasOnPost = a.mode === 'post' || a.responding === true;
+    a.responding = false;
+    if (wasOnPost) this.sim.staffLeft(service);
+    a.faceHeading = undefined;
+    if (service === 'dropIn' && !a.visible) {
+      this.show(a, SPOTS.centerInside);
+      this.walk(a, [SPOTS.centerDoor, SPOTS.centerFront], () => this.leaveAnywhere(a));
+      a.mode = 'leaving';
+    } else if (isWalkIn(service) && !a.visible) {
+      const lot = LOTS[service];
+      this.show(a, lot.inside);
+      this.walk(a, [lot.door, NODES[SERVICE_NODES[service]]], () => this.leaveAnywhere(a));
+      a.mode = 'leaving';
+    } else if (service === 'outreach' && wasOnPost && a.staffPost === 0) {
+      a.pos = { ...SPOTS.camperRear };
+      this.leave(a, pick(this.random, ['eN2', 'eS2'] as NodeId[]));
+    } else {
+      this.leave(a, pick(this.random, ENTRY_NODES));
+    }
+  }
+
+  /** Reconcile only after the named rota changes, never on ordinary animation frames. */
+  private reconcileStaff(): void {
+    const active = [...this.agents.values()].filter((agent) => agent.role === 'staff' && agent.mode !== 'leaving');
+    for (const agent of active) if (!agent.staffMember || !this.sim.team.members.includes(agent.staffMember) || agent.staffMember.workingAt !== agent.service) this.releaseStaffMember(agent);
+    for (let i = this.staffQueue.length - 1; i >= 0; i--) {
+      const queued = this.staffQueue[i];
+      if (!this.sim.team.members.includes(queued.member) || queued.member.workingAt !== queued.service || !this.sim.services[queued.service].enabled) this.staffQueue.splice(i, 1);
+    }
+    for (const service of SERVICE_IDS) {
+      if (!this.sim.services[service].enabled) continue;
+      const current = active.filter((agent) => agent.service === service && agent.mode !== 'leaving');
+      const present = new Set(current.map((agent) => agent.staffMember));
+      const occupied = new Set(current.map((agent) => agent.staffPost ?? 0));
+      for (const queued of this.staffQueue.filter((item) => item.service === service)) {
+        if (present.has(queued.member)) continue;
+        let post = 0; while (occupied.has(post)) post++;
+        queued.post = post; occupied.add(post); present.add(queued.member);
+      }
+      for (const member of this.sim.team.members) {
+        if (member.workingAt !== service || present.has(member)) continue;
+        let post = 0; while (occupied.has(post)) post++;
+        this.staffQueue.push({ service, post, delay: 0, member });
+        occupied.add(post); present.add(member);
       }
     }
   }
@@ -914,7 +990,8 @@ export class Crowd {
   }
 
   private leave(a: Agent, exit: NodeId): void {
-    this.walk(a, routeTo(a.pos, exit, a.offset), () => this.remove(a));
+    exit = this.navigation?.entry(a.pos) ?? exit;
+    this.walk(a, this.routeTo(a.pos, exit, a.offset), () => this.remove(a));
     a.mode = 'leaving';
     a.goal = 'exit';
     a.pose = 'stand';
@@ -948,9 +1025,9 @@ export class Crowd {
   private useInHiddenSpot(a: Agent, adverse: boolean, acute: AcuteOutcome | null): void {
     const c = this.sim.context;
     const spots = c.patrol > 0 && c.patrolStyle !== 'clear' ? DEEP_SPOTS : NEAR_SPOTS;
-    const spot = spots[a.id % spots.length];
+    const spot = this.navigation ? TUTORIAL_PRIVACY_SPOT : spots[a.id % spots.length];
     a.mode = 'leaving';
-    this.walk(a, [...routeTo(a.pos, spot.node, a.offset), spot.at], () => {
+    this.walk(a, [...this.routeTo(a.pos, spot.node, a.offset), spot.at], () => {
       a.mode = 'pausing';
       a.ground = 'sit';
       a.pose = 'sit';
@@ -1288,7 +1365,7 @@ export class Crowd {
     const door = this.squatDoor();
     if (!door) return;
     const a = this.createAgent(NODES[pick(this.random, ENTRY_NODES)], 'passerby', { style: 'unhoused', extra: 'backpack' });
-    this.walk(a, [...routeTo(a.pos, door.node, a.offset), ...door.way], () => this.remove(a));
+    this.walk(a, [...this.routeTo(a.pos, door.node, a.offset), ...door.way], () => this.remove(a));
   }
 
   /** The way in to a squat's door (one of them, at random): the street door on its front. */
@@ -1300,7 +1377,7 @@ export class Crowd {
   private spawnStreetFigure(role: 'seller' | 'sleeper', spot: { node: NodeId; at: P2; face: number }): Agent {
     const a = this.createAgent(NODES[pick(this.random, ENTRY_NODES)], role, role === 'sleeper' ? { style: 'unhoused', extra: 'backpack' } : {});
     a.role = role;
-    this.walk(a, [...routeTo(a.pos, spot.node, a.offset), spot.at], () => {
+    this.walk(a, [...this.routeTo(a.pos, spot.node, a.offset), spot.at], () => {
       a.mode = 'standing';
       a.faceHeading = spot.face;
       if (role === 'sleeper') a.pose = 'sit';
@@ -1331,7 +1408,7 @@ export class Crowd {
       // Posted at the drop-in path and by the outreach camper, watching who comes.
       const posts = policePosts();
       const post = posts[i % posts.length];
-      this.walk(a, [...routeTo(a.pos, post.node, a.offset), post.at], () => { a.mode = 'standing'; a.faceHeading = post.face; });
+      this.walk(a, [...this.routeTo(a.pos, post.node, a.offset), post.at], () => { a.mode = 'standing'; a.faceHeading = post.face; });
     } else {
       this.patrol(a, style === 'beat' ? BEAT : CLEAR_BEAT, i % 2);
     }
@@ -1340,7 +1417,7 @@ export class Crowd {
 
   private patrol(a: Agent, beat: readonly NodeId[], step: number): void {
     const next = beat[step % beat.length];
-    this.walk(a, routeTo(a.pos, next, a.offset), () => {
+    this.walk(a, this.routeTo(a.pos, next, a.offset), () => {
       a.mode = 'pausing';
       a.pauseLeft = 2 + this.random() * 3;
       a.onArrive = () => this.patrol(a, beat, step + 1);
@@ -1350,7 +1427,7 @@ export class Crowd {
   private spawnResident(i: number): Agent {
     const spot = PLACARD_SPOTS[i % PLACARD_SPOTS.length];
     const a = this.createAgent(NODES[i % 2 ? 'xN2' : 'eN2'], 'resident', { placard: true, extra: 'none' });
-    this.walk(a, [...routeTo(a.pos, SERVICE_NODES.dropIn, a.offset), spot], () => { a.mode = 'standing'; a.faceHeading = Math.PI + VENUE_ROT.dropIn; });
+    this.walk(a, [...this.routeTo(a.pos, SERVICE_NODES.dropIn, a.offset), spot], () => { a.mode = 'standing'; a.faceHeading = Math.PI + VENUE_ROT.dropIn; });
     return a;
   }
 
@@ -1386,9 +1463,9 @@ export class Crowd {
     this.beatersOut = true;
     a.faceHeading = undefined;
     a.responding = false;
-    const corners = (Object.keys(NODES) as NodeId[]).map((id) => ({ id, d: dist(NODES[id], at) })).sort((p, q) => p.d - q.d).slice(0, 4).map((n) => n.id);
+    const corners = (this.navigation?.nodes ?? (Object.keys(NODES) as NodeId[]).filter(id => !id.startsWith('tutorial'))).map((id) => ({ id, d: dist(NODES[id], at) })).sort((p, q) => p.d - q.d).slice(0, 4).map((n) => n.id);
     const target = step === 0 ? corners[0] : corners[(step + (a.staffPost ?? 0)) % corners.length];
-    this.walk(a, routeTo(a.pos, target, a.offset), () => {
+    this.walk(a, this.routeTo(a.pos, target, a.offset), () => {
       if (!a.onBeat || !this.sim.patrol.out) return;
       let other: Agent | undefined;
       let best = 5;
@@ -1412,7 +1489,7 @@ export class Crowd {
     a.onBeat = false;
     a.staffPost = post;
     a.goal = 'post';
-    this.walk(a, [...routeTo(a.pos, SERVICE_NODES.footPatrol, a.offset), PATROL.staff[Math.min(post, PATROL.staff.length - 1)]], () => {
+    this.walk(a, [...this.routeTo(a.pos, SERVICE_NODES.footPatrol, a.offset), PATROL.staff[Math.min(post, PATROL.staff.length - 1)]], () => {
       a.mode = 'post';
       a.faceHeading = PATROL.facing + Math.PI;
       this.sim.staffArrived('footPatrol');
@@ -1420,9 +1497,9 @@ export class Crowd {
   }
 
   /** A streetworker still out on the beat takes post `post` back at the table; false if none is out. */
-  private returnFromBeat(post: number): boolean {
+  private returnFromBeat(post: number, member: Member): boolean {
     for (const a of this.agents.values()) {
-      if (!a.onBeat || a.service !== 'footPatrol' || a.mode === 'leaving') continue;
+      if (!a.onBeat || a.service !== 'footPatrol' || a.mode === 'leaving' || a.staffMember !== member) continue;
       if (a.mode === 'pausing') {
         // Finishing a conversation: back to the table once it ends.
         const done = a.onArrive;
@@ -1575,7 +1652,7 @@ export class Crowd {
       a.role = 'cleaner';
       a.speed = 0.9;
       const corners = i ? [{ x: 9.6, z: 13.6 }, { x: 4.2, z: 12.6 }] : [{ x: 14.2, z: 14.0 }, { x: 12.4, z: 9.8 }];
-      this.walk(a, [...routeTo(a.pos, 'park', a.offset), ...corners], () => this.leave(a, pick(this.random, ['parkEast', 'parkFront'] as NodeId[])));
+      this.walk(a, [...this.routeTo(a.pos, 'park', a.offset), ...corners], () => this.leave(a, pick(this.random, ['parkEast', 'parkFront'] as NodeId[])));
     }
   }
 
@@ -1730,21 +1807,23 @@ export class Crowd {
 
   update(dt: number): void {
     this.clock += dt;
-    this.syncContextPeople();
-    this.moveIntoSquat(dt);
+    if (!this.navigation) this.syncContextPeople();
+    if (!this.navigation) this.moveIntoSquat(dt);
     this.ringAt.length = 0;
     for (const o of this.officers) if (o.visible && o.mode !== 'leaving') this.ringAt.push(o.pos);
     this.rings.update(this.ringAt, deterrenceRadius(this.sim.context.deterrence));
     this.streetEncounters(dt);
     this.syncStreetworkers();
-    this.syncBouncers();
-    this.maybeHarass(dt);
+    if (this.sim.tutorialAllowsService('clubHr')) {
+      this.syncBouncers();
+      this.maybeHarass(dt);
+    }
     for (const s of this.staffQueue) s.delay -= dt;
     for (let i = this.staffQueue.length - 1; i >= 0; i--) {
       const s = this.staffQueue[i];
       if (s.delay <= 0) {
         this.staffQueue.splice(i, 1);
-        this.spawnStaff(s.service, s.post);
+        this.spawnStaff(s.service, s.post, s.member);
       }
     }
     this.assignQueueSpots();

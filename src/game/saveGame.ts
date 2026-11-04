@@ -1,8 +1,13 @@
+import { Reputation } from '../sim/reputation';
+import type { ReputationSave } from '../config/reputation';
+import { LAUNCH_SEED } from '../config/launch';
+import { TutorialProgress, type TutorialSave } from './tutorial';
 import type { Simulation } from '../sim/simulation';
 import { BASE_STAGE, stageCount } from '../config/serviceStages';
 import { SERVICE_IDS, type ServiceId } from '../sim/types';
 import { Team, TRAITS, type Assignment, type Member, type TraitId } from '../sim/team';
 import { MORALE } from '../config/morale';
+import { SKILL_IDS, SKILL_MAX, type SkillValues } from '../config/employeeSkills';
 import { SATELLITE_SERVICES, type SatelliteService, type UnitState } from '../sim/property';
 import type { NeighbourhoodState } from '../sim/neighbourhood';
 import { CAMPER_PATH_IDS, type CamperPath } from '../config/camperPaths';
@@ -29,6 +34,10 @@ import type { Goals } from '../sim/goals';
  */
 export interface SaveData {
   v: 1;
+  /** City geometry seed, resolved before importing world modules on continuation. */
+  worldSeed?: number;
+  /** Authored tutorial progress; absent in older, unrestricted games. */
+  tutorial?: TutorialSave;
   /** Organisation name, for the leaderboard. */
   name: string;
   clock: number;
@@ -40,7 +49,7 @@ export interface SaveData {
   /** The services ever run this game (older saves: those switched on). */
   ran?: ServiceId[];
   /** Morale, hours at each place and a specialism are newer: older saves load at the start values. */
-  team: { name: string; paid: boolean; traits: TraitId[]; energy: number; assignment: Assignment; worn?: true; morale?: number; hours?: Partial<Record<ServiceId, number>>; special?: ServiceId }[];
+  team: { name: string; paid: boolean; traits: TraitId[]; energy: number; assignment: Assignment; worn?: true; morale?: number; hours?: Partial<Record<ServiceId, number>>; special?: ServiceId; skills?: SkillValues }[];
   /** Each service's stage (see SERVICE_STAGES) and progress; older saves wrote `level` on a scale one lower. */
   upgrades: Record<string, { stage: number; progress: number }>;
   units: UnitState[];
@@ -108,6 +117,7 @@ export interface SaveMore {
   mix: { weights: MixWeights; ready: string[] };
   city: {
     favours: number;
+    reputation?: ReputationSave;
     concessionAt: number | null;
     policeAwayUntil: number;
     policePostedUntil: number;
@@ -215,6 +225,7 @@ function captureMore(sim: Simulation): SaveMore {
     mix: sim.mix.snapshot(),
     city: {
       favours: sim.favours,
+      reputation: sim.reputation.snapshot(),
       concessionAt: sim.concessionAt === null ? null : r1(sim.concessionAt),
       policeAwayUntil: r1(own.policeAwayUntil),
       policePostedUntil: r1(own.policePostedUntil),
@@ -326,7 +337,8 @@ function parseMore(raw: unknown): SaveMore | undefined {
     camper: int(m.camper, -1, CAMPER_SPOTS.length - 1, -1),
     mix: { weights, ready: arr(mix.ready, 64).filter((k): k is string => typeof k === 'string' && k.length < 40) },
     city: {
-      favours: int(city.favours, 0, 1, 1),
+      favours: int(city.favours, 0, 3, 1),
+      reputation: city.reputation && typeof city.reputation === 'object' ? (() => { const r = new Reputation(); r.restore(city.reputation, 0.5, 1); return r.snapshot(); })() : undefined,
       concessionAt: whenOrNull(city.concessionAt),
       policeAwayUntil: when(city.policeAwayUntil),
       policePostedUntil: when(city.policePostedUntil),
@@ -396,7 +408,8 @@ function applyMore(sim: Simulation, m: SaveMore): void {
   sim.property.points.splice(0, sim.property.points.length, ...m.points);
   sim.mix.restore(m.mix);
   const c = m.city;
-  sim.favours = c.favours;
+  sim.reputation.restore(c.reputation, sim.neighbourhood.state.reputation, sim.funders.trust);
+  sim.favours = Math.min(c.favours, sim.reputation.capacity);
   sim.concessionAt = c.concessionAt;
   own.policeAwayUntil = c.policeAwayUntil;
   own.policePostedUntil = c.policePostedUntil;
@@ -457,6 +470,8 @@ export function captureSave(sim: Simulation, name: string, run?: SaveData['run']
   for (const k of STREET_KEYS) street[k] = Math.round(sim.neighbourhood.state[k] * 1000) / 1000;
   return {
     v: 1,
+    worldSeed: LAUNCH_SEED,
+    tutorial: sim.tutorial?.snapshot(),
     name,
     clock: Math.round(sim.clockMinutes),
     day: sim.calendar.dayOfYear,
@@ -464,7 +479,7 @@ export function captureSave(sim: Simulation, name: string, run?: SaveData['run']
     org: { budget: Math.round(o.budget), paid: o.paid, volunteers: o.volunteers, grantIncome: o.grantIncome, closedDown: [...o.closedDown] },
     on: SERVICE_IDS.filter((id) => sim.services[id].switchedOn),
     ran: SERVICE_IDS.filter((id) => sim.services[id].everRun),
-    team: sim.team.members.map((m) => ({ name: m.name, paid: m.paid, traits: [...m.traits], energy: Math.round(m.energy * 100) / 100, assignment: m.assignment, ...(m.worn ? { worn: true as const } : {}),
+    team: sim.team.members.map((m) => ({ name: m.name, paid: m.paid, traits: [...m.traits], skills: { ...m.skills }, energy: Math.round(m.energy * 100) / 100, assignment: m.assignment, ...(m.worn ? { worn: true as const } : {}),
       morale: Math.round(m.morale * 1000) / 1000, hours: Object.fromEntries(Object.entries(m.hours).map(([k, h]) => [k, Math.round((h ?? 0) * 10) / 10])), ...(m.special ? { special: m.special } : {}) })),
     upgrades: Object.fromEntries(SERVICE_IDS.map((id) => [id, { stage: sim.upgrades[id].level, progress: Math.round(sim.upgrades[id].progress * 1000) / 1000 }])),
     units: sim.property.units.map((u) => ({ ...u })),
@@ -474,7 +489,7 @@ export function captureSave(sim: Simulation, name: string, run?: SaveData['run']
     street,
     totals: { ...sim.totals },
     run,
-    sandboxed: isSandboxed() || undefined,
+    sandboxed: isSandboxed() || !!sim.tutorial || undefined,
     rev: 2,
     more: captureMore(sim),
   };
@@ -493,6 +508,8 @@ export function parseSave(raw: unknown): SaveData | null {
   const run = r.run as Record<string, unknown> | undefined;
   return {
     v: 1,
+    worldSeed: typeof r.worldSeed === 'number' && Number.isInteger(r.worldSeed) && r.worldSeed >= 0 && r.worldSeed <= 0xffffffff ? r.worldSeed : undefined,
+    tutorial: TutorialProgress.restore(r.tutorial)?.snapshot(),
     name: text(r.name, 40, ''),
     clock: num(r.clock, 18 * 60, 42 * 60 - 1, 19 * 60),
     day: int(r.day, 0, 364, 257),
@@ -512,6 +529,8 @@ export function parseSave(raw: unknown): SaveData | null {
         name: text(m.name, 24, 'Worker') || 'Worker',
         paid: m.paid === true,
         traits,
+        ...(m.skills && typeof m.skills === 'object' && SKILL_IDS.every((id) => typeof (m.skills as Record<string, unknown>)[id] === 'number' && Number.isFinite((m.skills as Record<string, unknown>)[id]))
+          ? { skills: Object.fromEntries(SKILL_IDS.map((id) => [id, num((m.skills as Record<string, unknown>)[id], 0, SKILL_MAX, 8)])) as SkillValues } : {}),
         energy: num(m.energy, 0, 1, 0.8),
         assignment: (typeof m.assignment === 'string' && ASSIGN.has(m.assignment) ? m.assignment : 'auto') as Assignment,
         ...(m.worn === true ? { worn: true as const } : {}),
@@ -550,6 +569,7 @@ export function parseSave(raw: unknown): SaveData | null {
 
 /** Puts a checked save into a freshly started simulation. */
 export function applySave(sim: Simulation, s: SaveData): void {
+  sim.tutorial = TutorialProgress.restore(s.tutorial);
   sim.clockMinutes = s.clock;
   sim.calendar.dayOfYear = s.day;
   sim.calendar.year = s.year;
@@ -575,6 +595,7 @@ export function applySave(sim: Simulation, s: SaveData): void {
   s.team.forEach((t, i) => {
     const m: Member = {
       id: i + 1, name: t.name, paid: t.paid, traits: [...t.traits], energy: t.energy, assignment: t.assignment, workingAt: null, worn: t.worn === true,
+      skills: t.skills ? { ...t.skills } : Team.initialSkills(t.name, t.traits),
       morale: t.morale ?? MORALE.start, hours: { ...t.hours }, special: t.special ?? null, blows: Team.noBlows(), warned: false,
     };
     members.push(m);
@@ -587,9 +608,10 @@ export function applySave(sim: Simulation, s: SaveData): void {
   sim.totals.helped = s.totals.helped;
   sim.totals.nights = s.totals.nights;
   if (s.more) applyMore(sim, s.more);
+  else sim.reputation.restore(undefined, sim.neighbourhood.state.reputation, sim.funders.trust);
   // The scene parks the first camper; a spot another camper holds is left as it is.
   loadedCamper = s.more && s.more.camper >= 0 && !s.campers.includes(s.more.camper) ? s.more.camper : null;
-  if (s.sandboxed || s.run?.sandboxed) markSandboxed();
+  if (s.sandboxed || s.run?.sandboxed || sim.tutorial) markSandboxed();
   sim.refreshAfterLoad();
 }
 

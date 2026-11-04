@@ -49,6 +49,7 @@ const WORLD_ORDER = ['group-night', 'group-demand', 'group-org', 'services', 'co
  * and the simulation picks values up on its next fixed step.
  */
 export class SandboxPanel {
+  private worldLocked = false;
   private resetRow!: HTMLElement;
   private readonly root: HTMLElement;
   private readonly toggle: HTMLButtonElement;
@@ -75,7 +76,8 @@ export class SandboxPanel {
     this.toggle.type = 'button';
     this.toggle.setAttribute('aria-expanded', 'false');
     this.toggle.setAttribute('aria-controls', 'sandbox-body');
-    this.toggle.title = t('Change the night, the street and the services');
+    this.toggle.setAttribute('aria-label', t('Settings'));
+    this.toggle.dataset.iconHint = t('Change the night, the street and the services');
     this.toggle.addEventListener('click', () => this.setOpen(this.toggle.getAttribute('aria-expanded') !== 'true'));
 
     this.body = el('div', 'sandbox-body');
@@ -85,15 +87,11 @@ export class SandboxPanel {
     const title = el('h2', undefined, t('Settings'));
     const reset = el('button', 'btn sandbox-reset', t('Reset'));
     reset.type = 'button';
-    reset.title = t('Return every setting to its default');
+    reset.dataset.iconHint = t('Return every setting to its default');
     reset.addEventListener('click', () => cb.onReset());
-    const close = el('button', 'btn close', '×');
-    close.type = 'button';
-    close.setAttribute('aria-label', t('Close settings'));
-    close.addEventListener('click', () => this.setOpen(false, true));
-    // Reset sits at the bottom of the panel, well away from the close button.
+    // The existing Settings toggle closes this panel; Back only navigates within it.
     this.title = title;
-    head.append(title, close);
+    head.append(title);
     const resetRow = el('p', 'sandbox-reset-row');
     resetRow.append(reset);
     this.resetRow = resetRow;
@@ -102,7 +100,7 @@ export class SandboxPanel {
     this.heading.hidden = true;
     this.menu = el('ol', 'sandbox-menu');
     this.back = el('ol', 'sandbox-menu sandbox-back');
-    const backBtn = el('button', 'sandbox-backlink', `‹ ${t('Back')}`);
+    const backBtn = el('button', 'sandbox-backlink', t('Back'));
     backBtn.type = 'button';
     backBtn.addEventListener('click', () => this.goBack());
     const li = el('li');
@@ -136,7 +134,7 @@ export class SandboxPanel {
         input.min = String(p.min);
         input.max = String(p.max);
         input.step = String(p.step);
-        input.title = p.hint;
+        input.dataset.iconHint = p.hint;
         input.setAttribute('aria-description', p.hint);
         const r: Row = { input, output, editingUntil: 0 };
         input.addEventListener('input', () => {
@@ -218,6 +216,7 @@ export class SandboxPanel {
 
   /** Shows the top menu (null), a submenu, or one topic. */
   private show(id: string | null): void {
+    if (this.worldLocked && id && (id === WORLD || this.pages.get(id)?.parent === WORLD || this.pages.get(id)?.parent === 'services')) id = null;
     this.current = id;
     const page = id ? this.pages.get(id) : undefined;
     const isMenu = !id || page?.section === this.menu;
@@ -235,7 +234,7 @@ export class SandboxPanel {
 
   /** Numbered replies for the topics at this level. */
   private fillMenu(level: string | null): void {
-    const ids = [...this.pages.keys()].filter((pid) => (this.pages.get(pid)!.parent ?? null) === level && (level !== null || !this.pages.get(pid)!.parent));
+    const ids = [...this.pages.keys()].filter((pid) => (!this.worldLocked || pid !== WORLD) && (this.pages.get(pid)!.parent ?? null) === level && (level !== null || !this.pages.get(pid)!.parent));
     ids.sort((a, b) => rank(a, level) - rank(b, level));
     const items = ids.map((pid) => {
       const li = el('li');
@@ -252,10 +251,30 @@ export class SandboxPanel {
     this.menu.replaceChildren(...(level === null ? this.extras : []), ...items);
   }
 
+  setWorldLocked(locked: boolean): void {
+    if (this.worldLocked === locked) return;
+    this.worldLocked = locked;
+    for (const row of Object.values(this.rows)) row.input.disabled = locked;
+    this.show(this.current);
+  }
+
+  /** Reuse the same toggle beside the title on touch layouts; no duplicate button state. */
+  placeCompactToggle(title: HTMLElement): void {
+    const compact = window.matchMedia('(max-width: 760px), (max-height: 520px), (pointer: coarse)');
+    const place = () => {
+      if (compact.matches) title.append(this.toggle);
+      else this.root.prepend(this.toggle);
+    };
+    compact.addEventListener('change', place);
+    place();
+  }
+
   setOpen(open: boolean, returnFocus = false): void {
     if (open && this.body.hidden) this.cb.onOpen?.();
     this.body.hidden = !open;
     this.toggle.setAttribute('aria-expanded', String(open));
+    this.toggle.setAttribute('aria-label', open ? t('Close settings') : t('Settings'));
+    this.toggle.dataset.iconHint = open ? t('Close settings') : t('Change the night, the street and the services');
     this.root.dataset.open = String(open);
     if (returnFocus) this.toggle.focus();
   }

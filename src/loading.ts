@@ -6,6 +6,9 @@
  */
 // The stylesheet comes with this first, tiny script, so the loading screen is styled (and themed) at once.
 import './style.css';
+import './ui/mainMenu.css';
+import './ui/uiIndicators.css';
+import { hasAutomaticLaunch } from './game/launch';
 import { LANG, loadCatalogue } from './i18n';
 import { loadCompat } from './compat';
 import skylineSvg from './assets/loading-skyline.svg?raw';
@@ -92,7 +95,7 @@ if (line) {
   show();
   const timer = window.setInterval(() => {
     if (!line.isConnected) { clearInterval(timer); return; }
-    show();
+    if (!document.getElementById('loading')?.classList.contains('has-menu')) show();
   }, 1400);
 }
 
@@ -197,4 +200,13 @@ function showStartFailure(error: unknown): void {
 // any stand-ins this browser needs are installed (compat/: none on current browsers). A chunk that
 // cannot load, parse or run rejects here; the loading screen then explains instead of hanging.
 const text = loadCatalogue().catch(() => { /* offline mid-load: English */ });
-void Promise.all([text, loadCompat()]).then(() => import('./main')).catch(showStartFailure);
+void Promise.all([text, loadCompat()]).then(async () => {
+  if (!hasAutomaticLaunch()) {
+    const { showMainMenu } = await import('./ui/mainMenu');
+    await showMainMenu();
+  } else {
+    const { prepareAutomaticLaunch } = await import('./game/automaticLaunch');
+    await prepareAutomaticLaunch();
+  }
+  await import('./main');
+}).catch(showStartFailure);

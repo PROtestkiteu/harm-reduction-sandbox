@@ -1,3 +1,4 @@
+import './welcome.css';
 import { t } from '../i18n';
 import { playerBadge, type PlayerPicture } from './playerBadge';
 import { dontShowAgain, tutorialHidden } from './tutorials';
@@ -58,6 +59,19 @@ const PAGES: Page[] = [
   },
 ];
 
+const TUTORIAL_PAGES: Page[] = [
+  {
+    title: t('Who you are'), identity: true,
+    lead: t('Start with two streetworkers, a small neighbourhood and the park next door.'),
+    points: [t('Meet people where they are. Your first round offers clean kit, naloxone, a warm drink and a conversation.'), t('Follow one goal at a time. New streets, services and controls appear as your team learns.')],
+  },
+  {
+    title: t('How to play'),
+    lead: t('Drag to move around, pinch or scroll to zoom, and tap a place to inspect it.'),
+    points: [t('Begin by visiting the park encampment and opening the foot patrol controls.'), t('You can pause whenever you need. Setbacks are recoverable during the tutorial.')],
+  },
+];
+
 /**
  * The welcome: who you are, your job and how to play, over three short pages
  * with Back and Next. Shown at the start of every new game unless the player
@@ -77,9 +91,11 @@ export class Welcome {
   private readonly next: HTMLButtonElement;
   private page = 0;
   private readonly identityBox: HTMLElement | null;
+  private readonly pages: Page[];
   private readonly optOut = dontShowAgain('welcome');
 
-  constructor(parent: HTMLElement, private readonly onChange: (open: boolean) => void, private readonly picture?: PlayerPicture, identity?: Identity) {
+  constructor(parent: HTMLElement, private readonly onChange: (open: boolean) => void, private readonly picture?: PlayerPicture, identity?: Identity, tutorial = false) {
+    this.pages = tutorial ? TUTORIAL_PAGES : PAGES;
     this.dialog = document.createElement('dialog');
     this.dialog.className = 'welcome intro';
     this.dialog.setAttribute('aria-labelledby', 'welcome-title');
@@ -91,7 +107,7 @@ export class Welcome {
     this.back = Object.assign(document.createElement('button'), { type: 'button', className: 'welcome-start intro-back', textContent: t('Back') });
     this.next = Object.assign(document.createElement('button'), { type: 'button', className: 'welcome-start' });
     this.back.addEventListener('click', () => this.go(this.page - 1));
-    this.next.addEventListener('click', () => (this.page < PAGES.length - 1 ? this.go(this.page + 1) : this.dialog.close()));
+    this.next.addEventListener('click', () => (this.page < this.pages.length - 1 ? this.go(this.page + 1) : this.dialog.close()));
     nav.append(this.back, this.next);
     this.identityBox = identity ? identityBox(identity) : null;
     this.dialog.append(this.step, this.title, ...(this.identityBox ? [this.identityBox] : []), this.lead, this.list, nav, this.optOut);
@@ -115,9 +131,9 @@ export class Welcome {
   }
 
   private go(page: number): void {
-    this.page = Math.max(0, Math.min(PAGES.length - 1, page));
-    const p = PAGES[this.page];
-    this.step.textContent = t('{n} of {all}', { n: this.page + 1, all: PAGES.length });
+    this.page = Math.max(0, Math.min(this.pages.length - 1, page));
+    const p = this.pages[this.page];
+    this.step.textContent = t('{n} of {all}', { n: this.page + 1, all: this.pages.length });
     this.title.textContent = p.title;
     if (this.identityBox) {
       this.identityBox.hidden = !p.identity;
@@ -130,7 +146,7 @@ export class Welcome {
     this.dialog.querySelector('.player-badge')?.remove();
     if (p.said && this.picture) this.title.after(playerBadge(this.picture, p.said));
     this.back.hidden = this.page === 0;
-    const last = this.page === PAGES.length - 1;
+    const last = this.page === this.pages.length - 1;
     this.next.textContent = last ? t('Start the night') : t('Next');
     this.next.focus();
   }
