@@ -5,7 +5,7 @@
   color: #edb300; text-align: left;
 }
 .legend-heading:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.map-legend { max-height: calc(var(--ui-height, 100vh) - max(12px, var(--safe-top)) - 188px - env(safe-area-inset-bottom)); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.map-legend { max-height: calc(var(--ui-height, 100vh) - max(12px, var(--safe-top)) - 188px - var(--safe-bottom, 0px)); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 .map-legend::-webkit-scrollbar { width: 4px; }
 .window[data-collapsed='true'] .log > :not(.line),
 .window[data-collapsed='true'] .said,
@@ -37,9 +37,9 @@
 }
 @media (max-width: 760px) {
   .column {
-    left: max(10px, env(safe-area-inset-left));
-    right: max(10px, env(safe-area-inset-right));
-    bottom: max(10px, env(safe-area-inset-bottom));
+    left: max(10px, var(--safe-left, 0px));
+    right: max(10px, var(--safe-right, 0px));
+    bottom: max(10px, var(--safe-bottom, 0px));
     width: auto; top: auto;
   }
 }
@@ -48,24 +48,30 @@
   .portrait[data-who='person'] figcaption { max-height: 34px; overflow: hidden; line-height: 16px; }
   .portrait[data-who='person'] .portrait-sub { white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
 }
-@media (min-width: 761px) and (max-height: 520px) {
-  .column { padding: max(8px, var(--safe-top)) max(12px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) 12px; }
+@media (orientation: landscape) and (max-height: 520px) {
+  .hud-header { right: calc(min(300px, 40%) + 20px); }
+  .hud-header .subtitle { display: none; }
+  .column .options { display: block; }
+  .portrait[data-who='player'] { width: 44px; }
+  .top-bar { width: min(300px, 40%); }
+  .column { top: calc(var(--topbar-h, 44px) + 20px); right: 10px; left: auto; bottom: 10px; width: min(300px, 40%); padding: 0; overflow-y: auto; pointer-events: auto; }
+  .column .outliner, .column .window { flex: none; max-height: none; overflow: visible; }
+  .column > *, .column .log, .column .options { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
   .column .column-top { flex-wrap: wrap; gap: 4px 12px; }
   .column .column-time { gap: 8px; }
   .column .clock { font-size: 16px; }
   .column .money { font-size: 14px; }
   .column .column-right { flex: 1; flex-direction: row; justify-content: flex-end; gap: 8px; }
-  .column .outliner { max-height: 22vh; }
-  .column .window { max-height: 30vh; }
+
 }
 /* Follow browser chrome and the software keyboard without resizing the scene. */
-#hud { top: var(--ui-top, 0px); left: var(--ui-left, 0px); width: var(--ui-width, 100%); height: var(--ui-height, 100%); bottom: auto; right: auto; }
+#hud { --safe-top: 0px; --safe-right: 0px; --safe-bottom: 0px; --safe-left: 0px; top: var(--ui-top, 0px); left: var(--ui-left, 0px); width: var(--ui-width, 100%); height: var(--ui-height, 100%); bottom: auto; right: auto; }
 /* A character's portrait is its disclosure. No second collapsed name bar. */
 [data-portrait-ready='true'] .column[data-mode='person'] .window[data-collapsed='true'] { display: none; }
 [data-portrait-ready='true'] .column[data-mode='person'] .selection-heading { display: none; }
 @media (max-width: 760px) {
   .portrait[data-who='person'] {
-    bottom: calc(var(--sheet-h, 0px) + max(10px, env(safe-area-inset-bottom)) + 10px);
+    bottom: calc(var(--sheet-h, 0px) + max(10px, var(--safe-bottom, 0px)) + 10px);
     z-index: 2;
   }
 }
@@ -82,3 +88,6 @@
   .hud-header .sandbox-toggle .gear { width: 18px; height: 18px; margin: 0; }
   .hud-header .sandbox-toggle::after { content: ''; position: absolute; inset: -6px; }
 }
+/* World annotations stay in canvas coordinates, outside the inset control rectangle. */
+#hud .labels, #hud .fx-tags { position: fixed; inset: 0; height: var(--scene-height, 100%); }
+#hud .daemon-tag { position: fixed; }

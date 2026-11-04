@@ -8,14 +8,15 @@ Interaction contract:
 - Informational indicators have hover/tap hints dismissed by the next tap anywhere. Actionable indicators preserve their tap action and expose hints on hover.
 - Device color preference controls UI colors and browser theme colors. Game time changes scene lighting only.
 - Menu launch paints the splash before importing the scene. Independent compositor opacity animations run continuously, with reduced-motion support. Startup warmup yields between short batches; shader preparation is sequential and asynchronous.
-- UI uses actual visual viewport bounds and safe-area insets, without guessed status-bar offsets. The camera frames the largest clear rectangle between visible panels, cached until layout changes. Tutorial interactions focus their actual target; manual navigation uses the full authored city envelope, including the northern park beyond the original city radius, rather than being clamped to the highlighted district. Tutorial action restrictions remain intact.
+- UI uses one rectangle intersecting the visual viewport with all four safe-area insets, without guessed status-bar offsets. The scene fills the display independently; an installed viewport missing exactly its reported top safe-area band recovers that band without expanding a keyboard-reduced visual viewport. World annotations retain canvas coordinates. Landscape panels shift camera focus without shrinking close-zoom scale. The camera frames the largest clear rectangle between visible panels, cached until layout changes. Tutorial interactions focus their actual target; manual navigation uses the full authored city envelope, including the northern park beyond the original city radius, rather than being clamped to the highlighted district. Tutorial action restrictions remain intact.
 
 Automated checks:
 
 1. Run `npm run build` and `node scripts/check-i18n.mjs . --unused`.
 2. Run `scripts/tests/tutorial.mjs`, `tutorialMap.mjs`, `tutorialCamera.mjs`, and `menuSave.mjs` with Node.
-3. Run the tutorial and portrait browser bots against a development server. Confirm staff images decode, do not change row height, team folding preserves the sheet, and focus returns to the tutorial action.
-4. Check production menu-to-tutorial launch at 320×568, 393×852, 852×393, 768×1024, and 1440×900. Assert no horizontal overflow, no empty portrait, no empty overview strip, and a reachable minimized objective. Verify splash animation time advances without progress updates.
+3. Run `node scripts/bots/viewport.mjs` against the dev server for portrait/landscape inset bounds, control parity and actual touch pinch. Insets are injected measurements, not a verification of the native PWA shell.
+4. Run the tutorial and portrait browser bots against a development server. Confirm staff images decode, do not change row height, team folding preserves the sheet, and focus returns to the tutorial action.
+5. Check production menu-to-tutorial launch at 320×568, 393×852, 852×393, 768×1024, and 1440×900. Assert no horizontal overflow, no empty portrait, no empty overview strip, and a reachable minimized objective. Verify splash animation time advances without progress updates.
 
 Physical-device checks still required before claiming mobile/PWA compatibility:
 

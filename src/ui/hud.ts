@@ -746,11 +746,10 @@ export class Hud {
     selection.append(this.log, this.options, this.works);
     this.column.append(top, this.stressRow, this.unmet, outliner, selection);
     // Phones and wide screens: the clock, money and meters live in a block at the top of the screen
-    // (wide screens add the crisis line to it); the column keeps the rest. Phones on their side keep
-    // everything in the side column.
+    // (wide screens add the crisis line to it); the column keeps the rest in both phone orientations.
     this.topBar = el('div', 'top-bar');
     const placeIndicators = () => {
-      if (window.matchMedia(NARROW).matches) {
+      if (window.matchMedia(COMPACT).matches) {
         if (top.parentElement !== this.topBar) this.topBar.append(top, this.stressRow);
         if (this.unmet.parentElement !== this.column) outliner.before(this.unmet);
       } else if (window.matchMedia(WINDOWED).matches) {
@@ -761,7 +760,7 @@ export class Hud {
       this.invalidateLayout();
     };
     placeIndicators();
-    window.matchMedia(NARROW).addEventListener('change', placeIndicators);
+    window.matchMedia(COMPACT).addEventListener('change', placeIndicators);
     window.matchMedia(WINDOWED).addEventListener('change', placeIndicators);
     // The top block's height, so the windows below it start just under it.
     new ResizeObserver(() => {
@@ -1233,7 +1232,8 @@ export class Hud {
     const panels = [...this.root.querySelectorAll<HTMLElement>('.hud-header, .top-bar, .column, .tutorial-guide:not([hidden])')]
       .filter(panel => panel.getClientRects().length > 0)
       .map(panel => panel.getBoundingClientRect());
-    this.cameraInsets = cameraArea(viewport, window.innerWidth, window.innerHeight, panels);
+    const canvas = document.getElementById('scene')!;
+    this.cameraInsets = cameraArea(viewport, canvas.clientWidth, canvas.clientHeight, panels);
     return this.cameraInsets;
   }
 

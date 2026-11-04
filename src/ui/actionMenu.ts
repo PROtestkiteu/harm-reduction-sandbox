@@ -96,8 +96,9 @@ export class ActionMenu {
     // Keep it on screen: flip left or up when it would run off an edge.
     const w = this.root.offsetWidth;
     const h = this.root.offsetHeight;
-    const left = x + w + 8 > window.innerWidth ? Math.max(8, x - w) : x;
-    const top = y + h + 8 > window.innerHeight ? Math.max(8, y - h) : y;
+    const bounds = this.root.parentElement!.getBoundingClientRect();
+    const left = Math.max(bounds.left + 8, Math.min(x + w + 8 > bounds.right ? x - w : x, bounds.right - w - 8));
+    const top = Math.max(bounds.top + 8, Math.min(y + h + 8 > bounds.bottom ? y - h : y, bounds.bottom - h - 8));
     this.root.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
     (this.list.querySelector<HTMLButtonElement>('[aria-checked="true"]:not(:disabled)') ?? this.list.querySelector<HTMLButtonElement>('button:not(:disabled)'))?.focus({ preventScroll: true });
   }

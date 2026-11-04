@@ -38,7 +38,8 @@ export interface Framing { worldPerPixel: number; near: number; far: number }
  * centre; combined with a larger `zoom` it frames one location or person.
  * `depth`, when given, is the whole volume that may come into view (a world
  * larger than the fitted box); the depth range then covers all of it, so
- * panning never clips anything.
+ * panning never clips anything. `scaleInsets` can keep zoom independent of panel
+ * placement while `insets` still positions the subject in the clear map area.
  *
  * The fit uses the vertical cylinder around the box, which does not change as
  * the view turns, so orbiting never makes the scene pump in and out. At the
@@ -53,6 +54,7 @@ export function frameCamera(
   view: ViewAngles = DEFAULT_VIEW,
   focus: Vector3 | null = null,
   depth: Box3 | null = null,
+  scaleInsets: Insets = insets,
 ): Framing {
   const center = box.getCenter(new Vector3());
   // Far enough back that the whole depth volume sits in front of the camera.
@@ -83,7 +85,9 @@ export function frameCamera(
   const availW = Math.max(16, visW - (insets.left + insets.right) * toLow);
   const availH = Math.max(16, visH - (insets.top + insets.bottom) * toLow);
   const margin = 1.04;
-  const wpp = (Math.max((max.x - min.x) / availW, (max.y - min.y) / availH) * margin) / zoom;
+  const scaleW = Math.max(16, visW - (scaleInsets.left + scaleInsets.right) * toLow);
+  const scaleH = Math.max(16, visH - (scaleInsets.top + scaleInsets.bottom) * toLow);
+  const wpp = (Math.max((max.x - min.x) / scaleW, (max.y - min.y) / scaleH) * margin) / zoom;
 
   let centerX = (min.x + max.x) / 2;
   let centerY = (min.y + max.y) / 2;

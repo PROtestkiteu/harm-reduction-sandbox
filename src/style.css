@@ -132,7 +132,7 @@ html, body {
   position: fixed;
   inset: 0;
   width: 100%;
-  height: 100%;
+  height: var(--scene-height, 100%);
   display: block;
   background: var(--page, var(--bg));
   /* All gestures are ours: tap selects, two-finger drag orbits. */
@@ -145,7 +145,7 @@ html, body {
   pointer-events: none;
 }
 
-:root { --safe-top: env(safe-area-inset-top); color-scheme: light dark; }
+:root { --safe-left: env(safe-area-inset-left); --safe-right: env(safe-area-inset-right); --safe-bottom: env(safe-area-inset-bottom); --safe-top: env(safe-area-inset-top); color-scheme: light dark; }
 
 #hud button, .column { pointer-events: auto; }
 
@@ -246,7 +246,7 @@ button:focus-visible {
 .hud-header {
   position: absolute;
   top: max(14px, var(--safe-top));
-  left: max(16px, env(safe-area-inset-left));
+  left: max(16px, var(--safe-left, 0px));
   right: calc(var(--column-w) + 16px);
   color: #f4ecdc;
   text-shadow: var(--outline);
@@ -268,7 +268,7 @@ button:focus-visible {
   width: var(--column-w);
   display: flex;
   flex-direction: column;
-  padding: max(16px, var(--safe-top)) max(22px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) 80px;
+  padding: max(16px, var(--safe-top)) max(22px, var(--safe-right, 0px)) max(18px, var(--safe-bottom, 0px)) 80px;
   background:
     var(--grain),
     linear-gradient(90deg, rgba(var(--fade), 0) 0, rgba(var(--fade), 0.9) 70px, rgba(var(--fade), 0.98) 160px);
@@ -556,7 +556,7 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
     width: auto;
     max-height: 76vh;
     max-height: 76dvh;
-    padding: 80px max(14px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+    padding: 80px max(14px, var(--safe-right, 0px)) max(10px, var(--safe-bottom, 0px)) max(14px, var(--safe-left, 0px));
     background:
       var(--grain),
       linear-gradient(180deg, rgba(var(--fade), 0) 0, rgba(var(--fade), 0.9) 52px, rgba(var(--fade), 0.98) 110px);
@@ -614,7 +614,7 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
 
 .sandbox {
   position: absolute;
-  right: max(12px, env(safe-area-inset-right));
+  right: max(12px, var(--safe-right, 0px));
   top: calc(max(12px, var(--safe-top)) + 52px);
   width: 300px;
   display: flex;
@@ -711,7 +711,7 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
 
 @media (max-width: 760px) {
   .sandbox {
-    right: max(8px, env(safe-area-inset-right));
+    right: max(8px, var(--safe-right, 0px));
     top: calc(max(12px, var(--safe-top)) + 46px);
     width: auto;
   }
@@ -725,7 +725,7 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
     width: auto;
     max-height: 62dvh;
     border-radius: 14px 14px 0 0;
-    padding: 10px max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+    padding: 10px max(12px, var(--safe-right, 0px)) max(12px, var(--safe-bottom, 0px)) max(12px, var(--safe-left, 0px));
     z-index: 2;
     background: var(--panel);
   }
@@ -813,7 +813,7 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
   --accent: var(--reply);
   --badge: var(--reply);
   --switch-on: var(--reply);
-  left: max(16px, env(safe-area-inset-left));
+  left: max(16px, var(--safe-left, 0px));
   right: auto;
   top: calc(max(14px, var(--safe-top)) + 54px);
   width: min(380px, calc(100vw - var(--column-w) - 48px));
@@ -859,7 +859,7 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
 .context-stats { border-radius: 0; background: rgba(0, 0, 0, 0.2); }
 
 @media (max-width: 760px) {
-  .sandbox { left: max(12px, env(safe-area-inset-left)); width: auto; top: calc(max(12px, var(--safe-top)) + 58px); }
+  .sandbox { left: max(12px, var(--safe-left, 0px)); width: auto; top: calc(max(12px, var(--safe-top)) + 58px); }
   .sandbox-toggle { font-size: 16px; }
   .sandbox-body { border-left: 0; border-top: 2px solid var(--reply); background: var(--grain), rgba(var(--fade), 0.98); }
 }
@@ -868,7 +868,7 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
 
 .events {
   position: absolute;
-  left: max(12px, env(safe-area-inset-left));
+  left: max(12px, var(--safe-left, 0px));
   top: calc(max(12px, var(--safe-top)) + 52px);
   width: 300px;
   max-height: calc(100dvh - max(12px, var(--safe-top)) - 52px - 200px);
@@ -981,7 +981,7 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
 
 @media (max-width: 760px) {
   .events {
-    left: max(8px, env(safe-area-inset-left));
+    left: max(8px, var(--safe-left, 0px));
     top: calc(max(12px, var(--safe-top)) + 46px);
     width: min(64vw, 300px);
     max-height: 34dvh;
@@ -1267,8 +1267,8 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
 /* Version counter: bottom-left, tiny and muted, never catches clicks or taps. */
 .version {
   position: absolute;
-  left: max(10px, env(safe-area-inset-left));
-  bottom: max(6px, env(safe-area-inset-bottom));
+  left: max(10px, var(--safe-left, 0px));
+  bottom: max(6px, var(--safe-bottom, 0px));
   margin: 0;
   font-family: var(--body);
   font-size: 11px;
@@ -1281,7 +1281,7 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
 }
 @media (max-width: 760px) {
   /* The bottom sheet covers the lower corners on phones; sit at the top right instead. */
-  .version { bottom: auto; left: auto; top: max(6px, var(--safe-top)); right: max(10px, env(safe-area-inset-right)); }
+  .version { bottom: auto; left: auto; top: max(6px, var(--safe-top)); right: max(10px, var(--safe-right, 0px)); }
 }
 
 /* A reply that cannot be taken right now reads as a remark, in grey. */
@@ -1298,8 +1298,8 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
  */
 .portrait {
   position: absolute;
-  left: max(16px, env(safe-area-inset-left));
-  bottom: max(26px, env(safe-area-inset-bottom));
+  left: max(16px, var(--safe-left, 0px));
+  bottom: max(26px, var(--safe-bottom, 0px));
   width: clamp(120px, 13vw, 170px);
   margin: 0;
   pointer-events: none;
@@ -1653,13 +1653,13 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
 /* The Configure button sits over the scene: always the bright gold. */
 .sandbox-toggle { --reply: #edb300; --reply-hover: #f5c93a; }
 
-/* Phones: the indicators live in a compact block at the top right; the title takes the left. */
+/* Compact screens share the same indicators in both orientations. */
 .top-bar:empty { display: none; }
-@media (max-width: 760px) {
+@media (max-width: 760px), (max-height: 520px) {
   .top-bar {
     position: absolute;
     top: max(10px, var(--safe-top));
-    right: max(10px, env(safe-area-inset-right));
+    right: max(10px, var(--safe-right, 0px));
     width: min(60vw, 280px);
     padding: 6px 10px 8px;
     background: var(--grain), rgba(var(--fade), 0.9);
@@ -1733,7 +1733,7 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
 .outliner, .window { display: contents; }
 .window-close { display: none; }
 @media (min-width: 761px) and (min-height: 521px) {
-  :root { --window-w: min(420px, 38vw); --window-gap: 8px; --window-edge: max(12px, env(safe-area-inset-right)); }
+  :root { --window-w: min(420px, 38vw); --window-gap: 8px; --window-edge: max(12px, var(--safe-right, 0px)); }
   .top-bar, .outliner, .window {
     background: var(--grain), rgba(var(--fade), 0.95);
     border: 1px solid rgba(201, 162, 72, 0.55);
@@ -1780,7 +1780,7 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
 
 /* Configure: a button over the scene on wide screens, a reply in the bottom menu on phones. */
 .options > li.phone-only { display: none; }
-@media (max-width: 760px) {
+@media (max-width: 760px), (max-height: 520px) {
   .options > li.phone-only:not([hidden]) { display: list-item; }
   .sandbox-toggle { display: none; }
   .sandbox { top: max(10px, var(--safe-top)); }
@@ -1845,7 +1845,7 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
 .update-bar {
   position: fixed; z-index: 30;
   top: max(8px, var(--safe-top));
-  left: max(12px, env(safe-area-inset-left)); right: max(12px, env(safe-area-inset-right));
+  left: max(12px, var(--safe-left, 0px)); right: max(12px, var(--safe-right, 0px));
   max-width: 520px; margin: 0 auto;
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 6px 6px 6px 12px;
@@ -1947,7 +1947,7 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
 .sheet .org-name-row { padding-right: 0; }
 @media (max-width: 760px) {
   .sandbox.sheet { margin-top: 0; }
-  .sheet-head { top: 6px; right: max(6px, env(safe-area-inset-right)); }
+  .sheet-head { top: 6px; right: max(6px, var(--safe-right, 0px)); }
 }
 /* The dialogue dash after the pencil belongs to speech, not to the organisation's name. */
 .org-name-row .rename-pencil::after { display: none; }
@@ -2155,8 +2155,8 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
 }
 .player-said { margin: 0; font-style: italic; }
 .player-who { display: block; font-style: normal; font-size: 13px; font-weight: 500; color: var(--muted); }
-@media (max-width: 760px) {
-  /* Phones: you are a small face under the title; your organisation speaks in the sheet below. */
+@media (max-width: 760px), (max-height: 520px) {
+  /* Compact screens: you are a small face under the title; your organisation speaks in the sheet below. */
   .portrait[data-who='player'] { width: 60px; }
   .portrait[data-who='player'] .portrait-sub { display: none; }
 }
@@ -2188,11 +2188,10 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
  * Phones on their side (wide but short): the side column scrolls as one with Pause pinned to its
  * foot, smaller type, no subtitle, and your own portrait stays out of the way of the map.
  */
-@media (min-width: 761px) and (max-height: 520px) {
-  .subtitle { display: none; }
+@media (orientation: landscape) and (max-height: 520px) {
   .column {
     padding-top: max(8px, var(--safe-top));
-    padding-bottom: max(8px, env(safe-area-inset-bottom));
+    padding-bottom: max(8px, var(--safe-bottom, 0px));
     font-size: 14px;
     overflow-y: auto;
     overscroll-behavior: contain;
@@ -2203,8 +2202,8 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
   .column .clock { font-size: 20px; }
   .column .line { font-size: 15px; }
   .column .opt { min-height: 36px; }
-  .portrait[data-who='player'] { display: none; }
-  .portrait { width: 96px; bottom: max(10px, env(safe-area-inset-bottom)); }
+  .portrait[data-who='player'] { width: 60px; }
+  .portrait { width: 96px; bottom: max(10px, var(--safe-bottom, 0px)); }
   .portrait figcaption { font-size: 12px; }
 }
 
@@ -2254,7 +2253,7 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
   .goals-head { min-height: 36px; font-size: 13px; }
   .notice-strip li { color: var(--text); }
 }
-@media (min-width: 761px) and (max-height: 520px) {
+@media (orientation: landscape) and (max-height: 520px) {
   .column { font-size: 15px; }
   .column .line { font-size: 16px; }
 }
@@ -2388,7 +2387,7 @@ button.event-card:focus-visible { outline: 2px solid var(--focus); outline-offse
 
 /* Map overlays: a round layers button floating over the map, and the legend under it. */
 .layers-toggle {
-  position: absolute; z-index: 2; left: max(16px, env(safe-area-inset-left)); top: calc(max(12px, var(--safe-top)) + 124px);
+  position: absolute; z-index: 2; left: max(16px, var(--safe-left, 0px)); top: calc(max(12px, var(--safe-top)) + 124px);
   display: inline-flex; align-items: center; justify-content: center;
   width: 44px; height: 44px; padding: 0; border-radius: 50%;
   border: 1px solid rgba(237, 179, 0, 0.7); background: rgba(14, 11, 9, 0.78); color: #edb300;
@@ -2404,7 +2403,7 @@ body:has(.sandbox-body:not([hidden])) .layers-toggle,
 body:has(.sandbox-body:not([hidden])) .map-legend,
 body:has(.action-menu:not([hidden])) .map-legend { display: none; }
 .map-legend {
-  position: absolute; z-index: 2; left: max(16px, env(safe-area-inset-left)); top: calc(max(12px, var(--safe-top)) + 176px);
+  position: absolute; z-index: 2; left: max(16px, var(--safe-left, 0px)); top: calc(max(12px, var(--safe-top)) + 176px);
   width: min(300px, calc(100vw - 32px)); padding: 6px 10px 8px;
   background: rgba(14, 11, 9, 0.84); color: #f2ead8; font: 13px/1.35 var(--body); pointer-events: auto;
 }

@@ -1968,12 +1968,13 @@ function layout(): void {
   rig.invalidate();
 }
 
+const FULL_FRAME_INSETS = { top: 0, right: 0, bottom: 0, left: 0 };
 /** Re-aims the camera for the current orbit angles; cheap, no render-target changes. */
 function applyView(): void {
   const frame = pipeline.frame;
   // Portrait screens start a little closer so people stay legible.
   const zoom = frame.cssW / frame.cssH < 0.8 ? 1.3 : 1;
-  const framing = frameCamera(camera, tutorialArea && sim.tutorialCapabilities.district !== 'city' ? tutorialArea.frame : world.frame.full, frame, hud.insets(), zoom * rig.zoom, rig.view, rig.focus, world.frame.bounds);
+  const framing = frameCamera(camera, tutorialArea && sim.tutorialCapabilities.district !== 'city' ? tutorialArea.frame : world.frame.full, frame, hud.insets(), zoom * rig.zoom, rig.view, rig.focus, world.frame.bounds, frame.cssW > frame.cssH ? FULL_FRAME_INSETS : undefined);
   quality.setZoom(zoom * rig.zoom);
   // Shadows only need to cover what is on screen.
   world.setDetail(framing.worldPerPixel);

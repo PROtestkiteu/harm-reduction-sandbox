@@ -52,3 +52,21 @@ for (const [width, height, panels] of [
   assert(width-insets.left-insets.right >= 300 || height-insets.top-insets.bottom >= 250, width + ': usable map squeezed');
 }
 console.log('Tutorial camera freedom and unobstructed phone, landscape and tablet framing: passed');
+
+const { viewportGeometry } = await import('../../src/ui/viewportGeometry.ts');
+const metrics = { width:393, height:790, screenHeight:852, installed:true, visual:{left:0,top:0,width:393,height:790,scale:1}, safe:{top:62,right:0,bottom:34,left:0} };
+assert.deepEqual(viewportGeometry(metrics), {sceneHeight:852,top:62,left:0,width:393,height:756});
+assert.equal(viewportGeometry({...metrics,installed:false}).sceneHeight,790);
+assert.equal(viewportGeometry({...metrics,height:852,visual:{...metrics.visual,height:852}}).sceneHeight,852, 'No double extension after WebKit settles');
+assert.equal(viewportGeometry({...metrics,visual:{...metrics.visual,height:350}}).height,288, 'Keyboard still limits controls');
+assert.deepEqual(viewportGeometry({...metrics,width:852,height:393,screenHeight:393,visual:{left:0,top:0,width:852,height:393,scale:1},safe:{top:0,left:62,right:62,bottom:21}}), {sceneHeight:393,top:0,left:62,width:728,height:372});
+const full = {top:0,left:0,right:0,bottom:0};
+const camera = createIsoCamera();
+const frame = {cssW:852,cssH:393,dpr:1,factor:1,lowW:852,lowH:393};
+const crowded = {top:198,left:12,right:310,bottom:21};
+const a = frameCamera(camera, area.frame, frame, full, 3.2, undefined, rig.focus, null, full);
+const b = frameCamera(camera, area.frame, frame, crowded, 3.2, undefined, rig.focus, null, full);
+assert.equal(a.worldPerPixel,b.worldPerPixel,'Landscape panels cannot reduce close zoom');
+const c = frameCamera(camera, area.frame, frame, crowded, 1, undefined, rig.focus, null, full);
+assert(Math.abs(c.worldPerPixel/b.worldPerPixel-3.2)<.001,'Pinch/wheel zoom retains full magnification');
+console.log('PWA full-height, keyboard, landscape safe bounds and panel-independent close zoom: passed');

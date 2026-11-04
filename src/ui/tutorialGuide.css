@@ -6,7 +6,7 @@
 [data-tutorial-organisation="false"] [data-tutorial-feature="organisation"],
 [data-tutorial-full-ui="false"] [data-tutorial-feature="fullUi"] { display: none !important; }
 .tutorial-guide {
-  position: absolute; left: max(20px, env(safe-area-inset-left)); top: calc(max(12px, var(--safe-top)) + 76px); z-index: 12; width: min(340px, calc(100% - 40px)); box-sizing: border-box;
+  position: absolute; left: max(20px, var(--safe-left, 0px)); top: calc(max(12px, var(--safe-top)) + 76px); z-index: 12; width: min(340px, calc(100% - 40px)); box-sizing: border-box;
   color: var(--text, #e8dec9); background: var(--grain), rgba(var(--fade), .97); border: 1px solid var(--muted, #776a53);
   border-left: 3px solid var(--reply, #c7a663); padding: 14px 16px; box-shadow: 0 8px 22px #0005;
   pointer-events: auto; font-family: inherit;
@@ -25,11 +25,13 @@
 .tutorial-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .tutorial-guide[data-collapsed='true'] > p { display: none; }
 .tutorial-guide[data-collapsed='true'] h2 { margin: 0; }
-@media (max-width: 760px) {
-  .tutorial-guide { top: calc(max(12px, var(--safe-top, 12px)) + max(76px, var(--topbar-h, 44px)) + 10px); left: max(10px, env(safe-area-inset-left)); width: min(340px, calc(100% - max(10px, env(safe-area-inset-left)) - max(10px, env(safe-area-inset-right)))); padding: 8px 10px; max-height: calc(var(--ui-height, 100vh) * .25); overflow-y: auto; }
+@media (max-width: 760px), (max-height: 520px) {
+  .tutorial-guide { top: calc(max(12px, var(--safe-top, 12px)) + max(76px, var(--topbar-h, 44px)) + 10px); left: max(10px, var(--safe-left, 0px)); width: min(340px, calc(100% - max(10px, var(--safe-left, 0px)) - max(10px, var(--safe-right, 0px)))); padding: 8px 10px; max-height: calc(var(--ui-height, 100vh) * .25); display: flex; flex-direction: column; overflow: hidden; }
   .tutorial-guide p { font-size: .83rem; }
+  .tutorial-guide h2, .tutorial-guide .tutorial-step, .tutorial-guide .tutorial-counter { flex-shrink: 0; }
+  .tutorial-guide > p:not(.tutorial-counter) { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
   .tutorial-actions button { min-height: 44px; }
 }
-@media (max-height: 500px) and (min-width: 761px) { .tutorial-guide { top: 88px; left: 12px; max-height: calc(var(--ui-height, 100vh) * .28); overflow: auto; } }
+@media (orientation: landscape) and (max-height: 520px) { .tutorial-guide { top: 76px; left: 12px; width: min(340px, calc(60% - 34px)); max-height: min(calc(var(--ui-height, 100vh) * .6), calc(var(--ui-height, 100vh) - 160px)); overflow: hidden; } }
 
 [data-tutorial-restricted="true"] .column[data-mode="idle"] .line { display: none; }
