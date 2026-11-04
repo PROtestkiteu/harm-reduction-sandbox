@@ -1,3 +1,4 @@
+import { MenuPolicy } from './menuPolicy';
 import { LANG, LANGS, LANG_KEY, t } from '../i18n';
 import { SCENARIO_CARDS, type ScenarioCard } from '../config/scenarios';
 import { PARAMS, PARAM_GROUPS, defaultSettings, encodeSettings, normalize, type ParamId } from '../config/sandboxParams';
@@ -43,6 +44,8 @@ export function showMainMenu(): Promise<void> {
     }
     function screen(heading: string, kind = 'page'): void {
       menu.dataset.screen = kind;
+      splash.scrollTop = 0;
+      menu.scrollTop = 0;
       request++;
       pending?.abort(); pending = null;
       const headingNode = el('h2', 'menu-heading', heading);
@@ -62,7 +65,8 @@ export function showMainMenu(): Promise<void> {
       menu.remove();
       splash.classList.remove('has-menu');
       splash.setAttribute('role', 'status');
-      resolve();
+      // Commit the splash and its compositor animations before importing the scene.
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
     }
     async function loadStored(key: string, status: HTMLElement): Promise<void> {
       const token = ++request;
@@ -97,31 +101,35 @@ export function showMainMenu(): Promise<void> {
       page.append(actions, status);
     }
     function scenarios(): void {
-      screen(t('New Game'));
+      screen(t('New Game'), 'scenarios');
       const customize = el('details', 'menu-customize');
       customize.append(el('summary', '', t('Customize')));
       const sliders = el('div', 'menu-slider-groups');
       const locked = el('p', 'menu-note', t('Tutorial settings are fixed so each lesson remains achievable.'));
-      const reset = button(t('Reset to scenario defaults'), () => { settings = defaultSettings(); sync(); });
+      const reset = button(t('Reset to scenario defaults'), () => { settings = defaultSettings(); policy.reset(selected.model); sync(); });
+      const policy = new MenuPolicy(selected.model, sync);
       customize.append(locked, sliders, reset);
       const inputs = new Map<ParamId, { input: HTMLInputElement; output: HTMLOutputElement }>();
       for (const group of PARAM_GROUPS) {
         const details = el('details', 'menu-slider-group'); details.append(el('summary', '', group.label));
+        const fields = el('div', 'menu-slider-fields');
+        details.append(fields);
         for (const p of PARAMS.filter((item) => item.group === group.id)) {
           const row = el('label', 'menu-slider');
-          const input = el('input', ''); input.id = `menu-param-${p.id.replace('.', '-')}`; row.htmlFor = input.id; input.type = 'range'; input.min = String(p.min); input.max = String(p.max); input.step = String(p.step); input.dataset.iconHint = p.hint;
+          const input = el('input', ''); input.id = `menu-param-${p.id.replace('.', '-')}`; row.htmlFor = input.id; input.type = 'range'; input.min = String(p.min); input.max = String(p.max); input.step = String(p.step); input.dataset.iconHint = p.hint; input.setAttribute('aria-description', p.hint);
           const output = el('output', ''); output.htmlFor.add(input.id);
           input.addEventListener('input', () => { settings[p.id] = normalize(p.id, Number(input.value)); sync(); });
-          row.append(el('span', '', p.label), output, input); details.append(row); inputs.set(p.id, { input, output });
+          row.append(el('span', '', p.label), output, input); fields.append(row); inputs.set(p.id, { input, output });
         }
         sliders.append(details);
       }
+      sliders.append(policy.root);
       const tiles = el('div', 'scenario-tiles'); tiles.setAttribute('role', 'group'); tiles.setAttribute('aria-label', t('Scenarios'));
       const choices = new Map<string, HTMLButtonElement>();
       SCENARIO_CARDS.forEach((scenario) => {
-        const tile = button('', () => { selected = scenario; settings = defaultSettings(); keep('hrp-last-scenario', selected.id); sync(); });
+        const tile = button('', () => { selected = scenario; settings = defaultSettings(); policy.reset(selected.model); keep('hrp-last-scenario', selected.id); sync(); });
         tile.className = 'scenario-tile';
-        const image = el('img', 'scenario-art'); image.src = scenarioIllustration(scenario.id); image.alt = ''; image.width = 320; image.height = 176; image.loading = 'lazy'; image.decoding = 'async';
+        const image = el('img', 'scenario-art'); image.src = scenarioIllustration(scenario.id); image.alt = ''; image.width = 320; image.height = 176; image.loading = 'eager'; image.decoding = 'async';
         tile.append(image, el('strong', '', scenario.title)); tiles.append(tile); choices.set(scenario.id, tile);
       });
       const detail = el('article', 'scenario-detail');
@@ -129,7 +137,7 @@ export function showMainMenu(): Promise<void> {
       detail.append(name, description, rules, start);
       function sync(): void {
         const isTutorial = selected.kind === 'tutorial';
-        const custom = !isTutorial && !!encodeSettings(settings);
+        const custom = !isTutorial && (!!encodeSettings(settings) || policy.custom);
         name.textContent = `${selected.title}${custom ? ` · ${t('Custom')}` : ''}`;
         description.textContent = selected.blurb;
         rules.textContent = scenarioRules(selected, custom);
@@ -141,13 +149,15 @@ export function showMainMenu(): Promise<void> {
         const q = new URLSearchParams(location.search);
         for (const key of ['g', 'ctx', 'model', 'mode', 'set', 'off']) q.delete(key);
         q.set('scenario', selected.id);
-        if (selected.model) q.set('model', selected.model);
+        if (selected.kind !== 'tutorial') policy.apply(q);
         const encoded = selected.kind === 'tutorial' ? '' : encodeSettings(settings);
         if (encoded) q.set('set', encoded);
-        const custom = selected.kind !== 'challenge' || !!encoded;
+        const custom = selected.kind !== 'challenge' || !!encoded || policy.custom;
         launch({ kind: 'new', scenarioId: selected.id, settings: selected.kind === 'tutorial' ? {} : settings, custom }, q);
       }
-      page.append(customize, tiles, detail); back(); sync();
+      const selection = el('div', 'scenario-selection');
+      selection.append(tiles, detail);
+      page.append(selection, customize); back(); sync();
     }
     function saves(): void {
       screen(t('Load Game'));

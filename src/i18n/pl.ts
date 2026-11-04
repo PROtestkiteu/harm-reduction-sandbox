@@ -4,6 +4,23 @@
  * uses plural() with its Polish forms inline, so it is not listed here.
  */
 export const PL: Record<string, string> = {
+  "At capacity: {n} waiting.": "Brak wolnych miejsc: {n} osób czeka.",
+
+  "{name}: {status}. Show details": "{name}: {status}. Pokaż szczegóły",
+  "Investment reserve: {p}%. Next: {stage}.": "Rezerwa inwestycji: {p}%. Następny etap: {stage}.",
+  "Maintenance reserve: {p}%. This service is at full size.": "Rezerwa utrzymania: {p}%. Usługa osiągnęła pełny rozmiar.",
+  "Reopening work is underway.": "Trwają prace nad ponownym otwarciem.",
+  "Available, not in use.": "Dostępne, nieużywane.",
+  "Outside opening hours.": "Poza godzinami otwarcia.",
+  "Temporarily unavailable.": "Tymczasowo niedostępne.",
+  "No staff assigned. Review staffing.": "Brak przydzielonego personelu. Sprawdź obsadę.",
+  "Investment reserve is low. Invest to prevent a downgrade.": "Rezerwa inwestycji jest niska. Zainwestuj, aby zapobiec utracie poziomu.",
+  "Waiting area full: {n} waiting.": "Poczekalnia pełna: {n} osób czeka.",
+  "{n} people waiting.": "Liczba osób w kolejce: {n}.",
+  "Venue: {status}, {n} of {max} inside, {queue} queuing": "Lokal: {status}, w środku {n} z {max}, w kolejce {queue}",
+  "Venue: {status}. {service}: {state}.": "Lokal: {status}. {service}: {state}.",
+  "Visits and unpaid upkeep use this reserve.": "Wizyty i nieopłacone utrzymanie zużywają tę rezerwę.",
+
   "Local credibility": "Lokalna wiarygodność",
   "Emergency funding +300": "Finansowanie awaryjne +300",
   "Community mandate": "Mandat społeczności",
@@ -165,7 +182,6 @@ export const PL: Record<string, string> = {
   'Next donation drive from {time}': 'Kolejna zbiórka od {time}',
 
   // Place labels
-  '{name}, {service} {status}. Show details': '{name}, {service}: {status}. Pokaż szczegóły',
 
   // Place actions
   'Staffing ({n} wanted)': 'Zespół (potrzeba: {n})',
@@ -289,6 +305,7 @@ export const PL: Record<string, string> = {
   '{collapsed} collapsed: {helped} reached by staff, {alone} alone': 'Zasłabnięcia: {collapsed}. Z pomocą zespołu: {helped}, bez pomocy: {alone}',
   'Helps:': 'Pomaga:',
   'Open this setting': 'Otwórz to ustawienie',
+  'No supporting publication identified.': 'Nie zidentyfikowano publikacji potwierdzającej ten czynnik.',
   'Sources ({n})': 'Źródła ({n})',
   'Helps with: {events}': 'Pomaga przy: {events}',
 
@@ -296,7 +313,6 @@ export const PL: Record<string, string> = {
   '{n} {where}, {cap} at a time': 'Obsługiwane {where}: {n}, naraz mieści się {cap}',
   '{n} waiting, {waiting} waiting places': 'W kolejce: {n}, miejsc w kolejce: {waiting}',
   'Staff on site: {n} of {max}': 'Zespół na miejscu: {n} z {max}',
-  'Venue: open, {n} of {max} inside, {queue} queuing': 'Klub: otwarty, w środku {n} z {max}, w kolejce: {queue}',
   'Door (venue): {n} let in, {adverse} adverse (placeholder)': 'Wejście (klub): wpuszczono {n}, zdarzenia niepożądane: {adverse} (wartość poglądowa)',
   '{n} set out but turned back before arriving': 'Wyruszyło, ale zawróciło przed dotarciem: {n}',
   'Tonight so far': 'Tej nocy do tej pory',
@@ -595,7 +611,6 @@ export const PL: Record<string, string> = {
   "Automatic": "Automatycznie",
   "Rest": "Odpoczynek",
   "Organisation: money and staff.": "Organizacja: pieniądze i zespół.",
-  "Close {name}": "Zamknij: {name}",
   "Your organisation": "Twoja organizacja",
   "Organisation name": "Nazwa organizacji",
   "Click to rename your organisation": "Kliknij, żeby zmienić nazwę organizacji",

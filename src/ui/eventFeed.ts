@@ -1,3 +1,4 @@
+import { citationReference } from './citationReference';
 import { EVENT_IDS, EVENTS, KIND_LABELS, type EventId, type EventKind, type Hint } from '../config/randomEvents';
 import type { ActiveEvent } from '../sim/eventEngine';
 import { formatClock } from '../sim/clock';
@@ -277,7 +278,7 @@ class EventDetail {
     for (const c of def.evidence) {
       const li = el('li');
       li.dataset.type = c.type;
-      li.append(el('strong', undefined, c.ref), el('span', undefined, ` ${c.note} `), el('span', 'cite-src', c.source));
+      li.append(el('strong', undefined, c.ref), el('span', undefined, ` ${c.note} `), citationReference(c));
       list.append(li);
     }
     sources.append(list);

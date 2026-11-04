@@ -1,3 +1,4 @@
+import { memberWording } from '../sim/memberIdentity';
 import type { PersonState } from '../agents/crowd';
 
 export const PORTRAIT_W = 240;
@@ -15,7 +16,14 @@ const ROLE: Partial<Record<PersonState['role'], string>> = {
   cleaner: 'cleaner', bouncer: 'bouncer',
 };
 
-export function portraitId(person: Pick<PersonState, 'role' | 'archetype'>): string {
+export function portraitId(person: Pick<PersonState, 'role' | 'archetype' | 'worker'>): string {
+  // Named staff use the same authored identity as their localized role wording.
+  // Legacy saves need no migration and recruitment consumes no extra random draws.
+  if (person.role === 'staff' && person.worker) {
+    const wording = memberWording(person.worker.name);
+    if (wording === 'masculine') return 'office';
+    if (wording === 'feminine') return 'outreach';
+  }
   return ROLE[person.role] ?? STYLE[person.archetype];
 }
 
@@ -58,7 +66,7 @@ export class PortraitLibrary {
   private tint: number | null = null;
   private readonly ctx: CanvasRenderingContext2D;
 
-  constructor(private readonly canvas: HTMLCanvasElement) {
+  constructor(private readonly canvas: HTMLCanvasElement, private readonly onState?: (state: 'idle' | 'loading' | 'ready' | 'error') => void) {
     this.ctx = canvas.getContext('2d')!;
   }
 
@@ -123,6 +131,7 @@ export class PortraitLibrary {
   private state(value: 'idle' | 'loading' | 'ready' | 'error'): void {
     this.canvas.dataset.state = value;
     this.canvas.setAttribute('aria-busy', String(value === 'loading'));
+    this.onState?.(value);
   }
 
   dispose(): void {

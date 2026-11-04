@@ -1,10 +1,14 @@
 import { PersonSupportView, type StaffingAdvice } from './personSupport';
+import { cameraArea } from './cameraArea';
 import type { TutorialCapabilities } from '../game/tutorial';
 import './tutorialGuide.css';
 import type { GuideAct, GuideStep } from '../game/guide';
 import { CAMPER_PATH, CAMPER_PATH_IDS, type CamperPath } from '../config/camperPaths';
 import { MOOD_HUES } from '../agents/moodIcons';
 import { ACTIVITY, type Activity } from '../config/serviceMix';
+import './venueStatus.css';
+import type { VenueStatus } from './venueStatus';
+import { VENUE_ICONS } from './venueIndicators';
 import type { FavourId } from '../config/favours';
 import { ORG, RECRUIT, recruitChance } from '../config/organisation';
 import { ACTIVITY_NEEDS, AID_NEEDS, PATH_NEEDS, serviceNeeds, type Need } from '../config/needs';
@@ -100,6 +104,7 @@ export interface LocationSnapshot {
   name: string;
   service: string;
   status: ServiceStatus;
+  venue?: VenueStatus;
   /** When closed: why, in two words, and whether it lasts until the player acts (switched off, shut down). */
   closed?: { text: string; lasting: boolean; ownChoice?: boolean };
   /** Counts as icon chips: `value` on screen, `label` the full sentence (tooltip and screen readers). */
@@ -111,8 +116,6 @@ export interface LocationSnapshot {
   actions?: PlaceLevers;
   /** Closed by law, council or venue rules (not by anything the player runs): shown in red. */
   blockedByLaw?: boolean;
-  /** Investment: level 1 to 3 and progress to the next (0..1). */
-  level?: { level: number; progress: number; max: number };
 }
 
 export interface HudSnapshot {
@@ -260,6 +263,9 @@ export class Hud {
   private readonly buildingView: HTMLElement;
   private readonly buildingChips: HTMLElement;
   private readonly facts: HTMLElement;
+  private readonly investment = el('div', 'venue-investment');
+  private readonly investmentText = el('p');
+  private readonly investmentProgress = el('progress');
   private readonly chips: HTMLElement;
   private chipKeys = '';
   private readonly metricsLabel: HTMLElement;
@@ -269,8 +275,7 @@ export class Hud {
   private readonly personSupportView: PersonSupportView;
   private readonly selectionWindow: HTMLElement;
   private folded = false;
-  /** Where the replies started when last unfolded, so framing holds still while folded. */
-  private optionsTopUnfolded = 0;
+  private headerBottom = 0;
   /** Building work under way: a slim strip at the foot of the panel (no bar to press; pausing is on the speed toggle). */
   private readonly works: HTMLElement;
   private paused = false;
@@ -344,7 +349,6 @@ export class Hud {
   private mode: Mode = null;
   private lastSnapshot: HudSnapshot | null = null;
   private factKeys = '';
-  private headerBottom = 0;
 
   constructor(root: HTMLElement, cb: HudCallbacks) {
     this.root = root;
@@ -417,6 +421,9 @@ export class Hud {
     this.chips = el('ul', 'chips');
     this.chips.setAttribute('role', 'list');
     this.facts = el('dl', 'facts place-facts');
+    this.investmentProgress.max = 1;
+    this.investment.append(this.investmentText, this.investmentProgress);
+    this.investment.hidden = true;
     this.metricsLabel = el('p', 'check');
     const metrics = el('dl', 'metrics');
     metrics.dataset.tutorialFeature = 'maintenance';
@@ -439,6 +446,7 @@ export class Hud {
     this.locationView.append(
       this.chips,
       this.facts,
+      this.investment,
       this.metricsLabel,
       metrics,
       el('p', 'note metrics-note', t('Lines: last {min} min. Illustrative counts.', { min: TREND_BUCKET_MINUTES * TREND_BUCKETS })),
@@ -731,8 +739,10 @@ export class Hud {
     // Two groups that wide screens frame as windows of their own (elsewhere they lay out as before):
     // the overview (tonight's goals, the news, the event feed) and the selection with its replies.
     const outliner = el('div', 'outliner');
+    outliner.dataset.tutorialFeature = 'organisation';
     outliner.append(this.eventsSlot);
     const selection = this.selectionWindow = el('div', 'window');
+    selection.id = 'selection-details';
     selection.append(this.log, this.options, this.works);
     this.column.append(top, this.stressRow, this.unmet, outliner, selection);
     // Phones and wide screens: the clock, money and meters live in a block at the top of the screen
@@ -748,7 +758,7 @@ export class Hud {
       } else if (top.parentElement !== this.column) {
         this.column.prepend(top, this.stressRow, this.unmet);
       }
-      this.headerBottom = 0;
+      this.invalidateLayout();
     };
     placeIndicators();
     window.matchMedia(NARROW).addEventListener('change', placeIndicators);
@@ -768,9 +778,11 @@ export class Hud {
     for (const id of LOCATION_IDS) {
       const b = button('loc-label');
       b.dataset.location = id;
-      const bar = el('span', 'level-bar');
-      bar.append(el('span', 'level-fill'));
-      b.append(el('span', 'dot'), el('span', 'loc-name'), bar);
+      const cue = el('span', 'venue-cue');
+      cue.setAttribute('aria-hidden', 'true');
+      cue.hidden = true;
+      cue.append(el('span', 'venue-cue-icon'), el('span', 'venue-cue-count'));
+      b.append(cue, el('span', 'loc-name'));
       b.addEventListener('click', (e) => {
         e.stopPropagation();
         cb.onSelect(this.mode?.kind === 'location' && this.mode.id === id ? null : id);
@@ -1091,7 +1103,7 @@ export class Hud {
     if (!loc) return null;
     const status = statusText(loc);
     if (part === 'stand') return { title: loc.service, body: status, status: loc.status };
-    return { title: loc.name, body: status, status: loc.status };
+    return { title: loc.name, body: loc.venue?.message ?? status, status: loc.status };
   }
 
   placeLabels(points: Record<LocationId, { x: number; y: number; below?: boolean }>): void {
@@ -1195,25 +1207,34 @@ export class Hud {
     this.selectionWindow.dataset.collapsed = String(folded);
     setAttr(this.speaker, 'aria-expanded', String(!folded));
     this.speaker.dataset.iconHint = folded ? t('Open the panel') : t('Fold the panel away');
+    this.root.dispatchEvent(new CustomEvent('selectionfold', { detail: folded }));
   }
 
-  /** CSS-pixel areas the HUD covers; the camera frames the scene around them. */
-  insets(): Insets {
-    const vh = window.innerHeight;
-    this.headerBottom = Math.max(this.header.getBoundingClientRect().bottom, this.topBar.getBoundingClientRect().bottom);
-    const top = this.headerBottom + 6;
-    if (!window.matchMedia(NARROW).matches) {
-      return { top: Math.min(top, 72), right: window.innerWidth - this.column.getBoundingClientRect().left, bottom: 8, left: 0 };
+  get isFolded(): boolean { return this.folded; }
+
+  /** Tutorial actions use the same numbering and keyboard handling as ordinary replies. */
+  setTutorialActions(buttons: HTMLButtonElement[]): void {
+    for (const row of this.options.querySelectorAll(':scope > .tutorial-reply')) row.remove();
+    for (const button of buttons) {
+      const row = el('li', 'tutorial-reply');
+      row.append(button);
+      this.options.append(row);
     }
-    // Phones: the column is a bottom sheet. Reserve room for the conversation
-    // and for the reply rows a selection adds, so the framing never has to
-    // change (and the scene never jumps) when something is selected.
-    // Measured only while the replies show: folded, or under an open layer, the last place holds.
-    const rect = this.options.getBoundingClientRect();
-    if (!this.folded && rect.height > 0) this.optionsTopUnfolded = rect.top;
-    const optionsTop = this.optionsTopUnfolded;
-    const rowsToCome = this.focusOpt.hidden ? 44 : 0;
-    return { top, right: 0, bottom: vh - optionsTop + 150 + rowsToCome, left: 0 };
+  }
+
+  private cameraInsets: Insets | null = null;
+
+  invalidateLayout(): void { this.cameraInsets = null; this.headerBottom = 0; }
+
+  /** Reserve actual visible panels, keeping the largest contiguous map region available. */
+  insets(): Insets {
+    if (this.cameraInsets) return this.cameraInsets;
+    const viewport = this.root.getBoundingClientRect();
+    const panels = [...this.root.querySelectorAll<HTMLElement>('.hud-header, .top-bar, .column, .tutorial-guide:not([hidden])')]
+      .filter(panel => panel.getClientRects().length > 0)
+      .map(panel => panel.getBoundingClientRect());
+    this.cameraInsets = cameraArea(viewport, window.innerWidth, window.innerHeight, panels);
+    return this.cameraInsets;
   }
 
   update(s: HudSnapshot): void {
@@ -1302,16 +1323,24 @@ export class Hud {
         if (label.dataset.iconHint !== text) label.dataset.iconHint = text;
       }
       if (label.dataset.status !== loc.status) label.dataset.status = loc.status;
-      const lasting = String(!!loc.closed?.lasting);
-      if (label.dataset.lasting !== lasting) label.dataset.lasting = lasting;
-      if (loc.level) {
-        // The bar under the name: progress to the next level; empty means a downgrade is near.
-        const p = loc.level.progress.toFixed(3);
-        if (label.style.getPropertyValue('--progress') !== p) label.style.setProperty('--progress', p);
-        const lv = String(loc.level.level);
-        if (label.dataset.level !== lv) label.dataset.level = lv;
+      const v = loc.venue;
+      if (v) {
+        setAttr(label, 'data-tone', v.tone);
+        setAttr(label, 'data-faded', String(v.faded));
+        setAttr(label, 'data-crossed', String(v.crossed));
+        const cue = label.querySelector<HTMLElement>('.venue-cue')!;
+        const kind = v.indicator ?? '';
+        const count = v.count === undefined ? '' : String(v.count);
+        if (label.dataset.indicator !== kind || cue.lastElementChild!.textContent !== count) {
+          if (label.dataset.indicator !== kind) cue.firstElementChild!.innerHTML = v.indicator ? VENUE_ICONS[v.indicator] : '';
+          label.dataset.indicator = kind;
+          setText(cue.lastElementChild as HTMLElement, count);
+          cue.hidden = !v.indicator;
+          this.labelWidths[id] = 0;
+          renamed = true;
+        }
       }
-      setAttr(label, 'aria-label', t('{name}, {service} {status}. Show details', { name: loc.name, service: loc.service, status: statusText(loc).toLowerCase() }));
+      setAttr(label, 'aria-label', t('{name}: {status}. Show details', { name: loc.name, status: v?.message ?? statusText(loc) }));
     }
     // A new name changes the label width, so re-clamp it against the screen edge.
     if (renamed && this.labelPoints) this.placeLabels(this.labelPoints);
@@ -1320,7 +1349,10 @@ export class Hud {
     setText(this.speaker, loc.name);
     // Open says nothing: the switch and the counts below already show it. Anything else is said once, here.
     // The place's name is right above: the line is the status alone.
-    setText(this.said, (loc.status === 'open' || loc.closed?.ownChoice) && !loc.blockedByLaw ? '' : `${loc.blockedByLaw ? t('Not permitted') : statusText(loc)}.`);
+    const venueMessage = loc.venue?.message ?? statusText(loc);
+    setText(this.said, this.mode.id === 'club'
+      ? t('Venue: {status}. {service}: {state}.', { status: venueMessage, service: loc.service, state: statusText(loc) })
+      : loc.venue?.indicator ? venueMessage : (loc.status === 'open' || loc.closed?.ownChoice) && !loc.blockedByLaw ? '' : `${statusText(loc)}.`);
     const law = String(!!loc.blockedByLaw);
     if (this.said.dataset.alert !== law) this.said.dataset.alert = law;
     if (this.column.dataset.status !== loc.status) this.column.dataset.status = loc.status;
@@ -1573,6 +1605,20 @@ export class Hud {
       const alert = String(!!loc.blockedByLaw && k === t('Closed'));
       if (dd.dataset.alert !== alert) dd.dataset.alert = alert;
     });
+    const inv = loc.actions?.invest;
+    this.investment.hidden = !inv;
+    if (inv) {
+      const pct = Math.round(Math.min(1, Math.max(0, inv.progress)) * 100);
+      const text = inv.next
+        ? t('Investment reserve: {p}%. Next: {stage}.', { p: pct, stage: inv.next.label })
+        : t('Maintenance reserve: {p}%. This service is at full size.', { p: pct });
+      setText(this.investmentText, text);
+      const explanation = text + ' ' + t('Visits and unpaid upkeep use this reserve.')
+        + (inv.next ? ' ' + inv.next.does : '');
+      if (this.investment.dataset.iconHint !== explanation) this.investment.dataset.iconHint = explanation;
+      if (this.investmentProgress.value !== inv.progress) this.investmentProgress.value = Math.min(1, Math.max(0, inv.progress));
+      setAttr(this.investmentProgress, 'aria-label', explanation);
+    }
     setText(this.metricsLabel, loc.metricsLabel);
     let peak = 1;
     for (const k of METRIC_KEYS) for (const v of trend.values(k)) peak = Math.max(peak, v);

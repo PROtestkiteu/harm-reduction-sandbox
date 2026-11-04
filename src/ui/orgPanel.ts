@@ -1,6 +1,8 @@
+import { citationReference } from './citationReference';
 import { memberTraitLabel } from './personWording';
 import { supportFit, type PersonSupport } from '../sim/personSupport';
 import './employeeSkills.css';
+import { COORDINATOR_IDS, portraitUrl } from '../render/portraitLibrary';
 import { ReputationDisclosure } from './reputation';
 import type { FavourView } from '../sim/favourView';
 import { SKILL_IDS, SKILLS, type SkillId } from '../config/employeeSkills';
@@ -291,7 +293,7 @@ export class OrgPanel {
       const list = el('ul', 'cites');
       for (const c of g.evidence) {
         const li = el('li');
-        li.append(el('strong', undefined, c.ref), el('span', undefined, ` ${c.note} `), el('span', 'cite-src', c.source));
+        li.append(el('strong', undefined, c.ref), el('span', undefined, ` ${c.note} `), citationReference(c));
         list.append(li);
       }
       sources.append(list);
@@ -470,6 +472,13 @@ export class OrgPanel {
       this.teamList.replaceChildren(...team.members.map((m) => {
         const row = el('li', 'team-member');
         const who = el('div', 'team-who');
+        const portrait = document.createElement('img');
+        portrait.className = 'team-portrait';
+        portrait.src = portraitUrl(COORDINATOR_IDS[m.id % COORDINATOR_IDS.length]);
+        portrait.alt = '';
+        portrait.width = 32; portrait.height = 40;
+        portrait.loading = 'lazy'; portrait.decoding = 'async';
+        portrait.addEventListener('error', () => { portrait.hidden = true; }, { once: true });
         // Two short lines: who and what they are good at, then their contract and where they work.
         const name = el('p', 'team-name');
         name.append(el('strong', undefined, m.name), el('span', 'team-traits', ` · ${m.traits.map((x) => memberTraitLabel(m, x)).join(', ')}`));
@@ -487,7 +496,11 @@ export class OrgPanel {
         }
         const background = el('details', 'employee-background');
         background.append(el('summary', undefined, t('Background and traits')), ...m.traits.map((id) => el('p', undefined, `${memberTraitLabel(m, id)}: ${TRAITS[id].detail}`)));
-        who.append(name, status, strength, skillList, background);
+        const identity = el('div', 'team-identity');
+        const identityText = el('div', 'team-identity-text');
+        identityText.append(name, status);
+        identity.append(portrait, identityText);
+        who.append(identity, strength, skillList, background);
         const energy = el('span', 'team-energy');
         energy.tabIndex = 0;
         energy.setAttribute('role', 'img');

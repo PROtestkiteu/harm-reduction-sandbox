@@ -313,13 +313,14 @@ export class ScenePipeline {
    * Compiles every tier's finishing pass now, so a later tier change never
    * stalls on a shader compile mid-play. Returns the time it took (ms).
    */
-  precompile(): number {
+  async precompile(): Promise<number> {
     const t0 = performance.now();
-    for (const tier of ['ultra', 'high', 'medium', 'low'] as const) {
-      this.quad.material = this.composites[tier];
-      this.renderer.compile(this.quadScene, this.quadCamera);
-    }
-    this.quad.material = this.composite;
+    try {
+      for (const tier of ['ultra', 'high', 'medium', 'low'] as const) {
+        this.quad.material = this.composites[tier];
+        await this.renderer.compileAsync(this.quadScene, this.quadCamera);
+      }
+    } finally { this.quad.material = this.composite; }
     return performance.now() - t0;
   }
 

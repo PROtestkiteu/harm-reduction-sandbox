@@ -42,7 +42,9 @@ export class TutorialArea {
     this.enabledUniform.value = restricted ? 1 : 0;
     this.world.setTutorialActivity(capabilities.services, !restricted);
     this.frame.set(new Vector3(b.x0, 0, b.z0), new Vector3(b.x1, 14, b.z1));
-    this.rig.setNavigationBounds(restricted ? b : null);
+    // Lesson bounds limit actions, not the camera. The authored city envelope includes
+    // the northern park beyond the original city's radius, plus room to pan past the UI.
+    this.rig.setNavigationBounds(TUTORIAL_AREAS.city);
     if (initial && restricted) {
       this.rig.lookAt(this.frame.getCenter(new Vector3()), 1);
       this.rig.step(0, true);

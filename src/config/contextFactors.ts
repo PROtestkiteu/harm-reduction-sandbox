@@ -44,7 +44,7 @@ export interface Citation {
   type: EvidenceType;
   /** Setting and what the source reports, paraphrased, figures as reported. */
   note: string;
-  /** File in the library and page. */
+  /** Original library locator; publicationReferences resolves it for public display. */
   source: string;
 }
 

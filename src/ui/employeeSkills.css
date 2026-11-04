@@ -1,4 +1,7 @@
 /* Staff strengths remain readable, keyboard accessible and optional to manage. */
+.team-identity { position: relative; padding-inline-start: 40px; }
+.team-identity-text { min-width: 0; }
+.team-portrait { position: absolute; inset-inline-start: 0; top: 0; width: 32px; height: 40px; object-fit: cover; }
 .org-team-mode > :not(.org-team):not(legend),
 .org-team-mode .org-team-actions, .org-team-mode .org-team > .org-recruiting { display: none !important; }
 .team-member .team-who { align-self: start; grid-column: 1 / -1; }

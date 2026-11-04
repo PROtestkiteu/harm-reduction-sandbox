@@ -96,31 +96,7 @@
     --role-police: #33467a;
     --role-resident: #8a4a2a;
   }
-  /* At night the HUD stays dark even in light mode: a pale sheet under a night scene glares. */
-  :root[data-scene='night'] {
-    --need-police: #7fa6ff;
-    --need-medics: #ff8494;
-    --need-sobering: #c9a2ff;
-    --need-district: #8fd0a0;
-    --fade: 10, 9, 8;
-    --text: #ece4d4;
-    --muted: #aaa093;
-    --reply: #edb300;
-    --reply-hover: #f5c93a;
-    --bar-text: #090a0c;
-    --open: #8fd0a0;
-    --opening: #8cc4e0;
-    --closing: #f08048;
-    --closed: #8a8278;
-    --law: #ff6a5a;
-    --focus: #fff4e6;
-    --role-staff: #5ec0e8;
-    --role-visitor: #f2a07b;
-    --role-clubgoer: #a98cf0;
-    --role-passerby: #c2baae;
-    --role-police: #9fb0dc;
-    --role-resident: #d8a888;
-  }
+
 }
 
 /* Text over the 3D scene (title, links, map labels) is always light on dark, whatever the theme. */
@@ -169,23 +145,7 @@ html, body {
   pointer-events: none;
 }
 
-/*
- * Installed on the Home Screen, iPhones lay the page out one status bar short and paint nothing
- * below that, leaving a band under the panel. A root taller by the status bar makes iOS give the
- * page the whole screen; the fixed layers then fill it with 'inset: 0'.
- */
-@media (display-mode: standalone), (display-mode: fullscreen) {
-  html { height: calc(100% + env(safe-area-inset-top)); }
-}
-
-/*
- * The top of the screen kept clear of the bars and the notch. Installed and upright, iOS also
- * blurs a band under the status bar: the title and the top bar sit 20px below it.
- */
-:root { --safe-top: env(safe-area-inset-top); }
-@media (display-mode: standalone) and (orientation: portrait), (display-mode: fullscreen) and (orientation: portrait) {
-  :root { --safe-top: calc(env(safe-area-inset-top) + 20px); }
-}
+:root { --safe-top: env(safe-area-inset-top); color-scheme: light dark; }
 
 #hud button, .column { pointer-events: auto; }
 
@@ -244,9 +204,9 @@ button:focus-visible {
 .loading-lit {
   position: absolute; z-index: 1; inset: auto 0 0; height: clamp(120px, 28%, 240px); pointer-events: none;
   background: repeat-x left bottom / auto 100%; opacity: 0; will-change: opacity;
-  animation: lit-blink 5s steps(1, end) infinite;
+  animation: lit-blink 5s ease-in-out infinite; transform: translateZ(0);
 }
-@keyframes lit-blink { 0% { opacity: 0; } 35% { opacity: 1; } 80% { opacity: 0; } }
+@keyframes lit-blink { 0%, 100% { opacity: 0; } 35%, 65% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
   .loading-lit { animation: none; }
   .loading-lit[data-still='on'] { opacity: 1; }
@@ -260,7 +220,7 @@ button:focus-visible {
  * the status bar, the loading screen has the whole screen's size from its first frame to its last.
  */
 @media (display-mode: standalone), (display-mode: fullscreen) {
-  .loading { position: absolute; inset: 0 0 auto; height: calc(100% + env(safe-area-inset-top)); }
+  .loading { position: fixed; inset: 0; height: auto; }
 }
 
 @keyframes shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
@@ -580,34 +540,6 @@ button.opt:disabled .long, button.opt:disabled .short { text-decoration: none; }
 .loc-label[hidden] { display: none; }
 /* Tucked behind a label that overlaps it; kept in layout so its width stays measurable. */
 .loc-label[data-tucked='true'] { visibility: hidden; }
-.loc-label .dot { width: 7px; height: 7px; border-radius: 50%; background: #8a8278; box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.8), 0 0 6px rgba(0, 0, 0, 0.6); }
-.loc-label[data-status='open'] .dot { background: #8fd0a0; }
-.loc-label[data-status='opening'] .dot { background: #8cc4e0; }
-.loc-label[data-status='closing'] .dot { background: #f08048; }
-.loc-label[aria-pressed='true'] { color: #fff; }
-/* Under the name: the place's investment bar. Full means the next upgrade, empty means a downgrade is near. */
-.loc-label .level-bar {
-  position: absolute;
-  left: 19px;
-  right: 4px;
-  bottom: 7px;
-  height: 3px;
-  background: rgba(0, 0, 0, 0.55);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
-  overflow: hidden;
-}
-.loc-label .level-fill {
-  display: block;
-  height: 100%;
-  background: var(--reply);
-  transform-origin: left center;
-  transform: scaleX(var(--progress, 0));
-  transition: transform 0.4s ease-out;
-}
-.loc-label[aria-pressed='true'] .level-bar { height: 4px; }
-@media (prefers-reduced-motion: reduce) {
-  .loc-label .level-fill { transition: none; }
-}
 @media (hover: hover) {
   .loc-label:hover { color: #fff; }
 }
@@ -2063,10 +1995,6 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
 .building-chips .chip[data-state='mid'] .chip-icon { color: var(--opening); }
 .building-chips .chip[data-state='bad'] .chip-icon, .building-chips .chip[data-state='bad'] .chip-value { color: var(--closing); }
 
-/* Closed for good (switched off, shut down, not permitted): a hollow dot and a struck name, apart from closed for the night. */
-.loc-label[data-lasting='true'] .dot { background: transparent; box-shadow: inset 0 0 0 1.5px #8a8278, 0 0 0 1px rgba(0, 0, 0, 0.8); }
-.loc-label[data-lasting='true'] .loc-name { text-decoration: line-through; text-decoration-thickness: 2px; opacity: 0.75; }
-
 /* City hall favours beside the money: an icon and the count, gold while one is held. */
 .favour-count { all: unset; position: relative; display: inline-flex; align-items: center; gap: 3px; cursor: pointer; color: var(--reply); font-variant-numeric: tabular-nums; -webkit-tap-highlight-color: transparent; }
 .favour-count::after { content: ''; position: absolute; inset: -12px -8px; }
@@ -2095,8 +2023,8 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
 
 /* Light system theme: panels are light, so the dark halo meant for text over the night scene only smudges it. */
 @media (prefers-color-scheme: light) {
-  :root:not([data-scene='night']) .sandbox-body *,
-  :root:not([data-scene='night']) .column * { text-shadow: none; }
+  :root .sandbox-body *,
+  :root .column * { text-shadow: none; }
 }
 
 /* Flavour packs: overheard lines over the scene, and their settings topic. */
@@ -2332,9 +2260,6 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
 }
 .welcome-lead[hidden] { display: none; }
 
-/* A closed or switched-off place does not grow: its investment bar under the name goes grey. */
-.loc-label[data-status='closed'] .level-fill { background: #8a8278; }
-.loc-label[data-status='closed'] .level-bar { opacity: 0.7; }
 
 /*
  * Tonight's events as rows: the kind, the title and one short line of how it stands, each row one

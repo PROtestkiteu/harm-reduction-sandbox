@@ -1872,9 +1872,14 @@ export class Simulation {
   }
 
   private closedReason(id: ServiceId): ClosedReason | null {
+    if (!this.tutorialAllowsService(id) || !this.services[id].switchedOn) return 'switchedOff';
+    return this.serviceAvailability(id);
+  }
+
+  /** Read-only availability independent of the player's on/off choice, for venue explanations. */
+  serviceAvailability(id: ServiceId): ClosedReason | null {
     if (!this.tutorialAllowsService(id)) return 'switchedOff';
     const c = this.context;
-    if (!this.services[id].switchedOn) return 'switchedOff';
     if (this.tutorial?.active) {
       if (this.org.closedDown.has(id)) return 'closedDown';
       if (id === 'footPatrol' && this.patrol.out) return 'onPatrol';

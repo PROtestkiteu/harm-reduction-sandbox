@@ -1,0 +1,20 @@
+/* Venue names carry operating state. One optional indicator carries the reason. */
+.loc-label .loc-name { color: var(--venue-name, #f4ecdc); }
+.loc-label[data-tone='muted'] { --venue-name: #c0b9ae; }
+.loc-label[data-tone='normal'] { --venue-name: #f4ecdc; }
+.loc-label[data-tone='green'] { --venue-name: #a3ddb0; }
+.loc-label[data-tone='yellow'] { --venue-name: #ffe285; }
+.loc-label[data-tone='orange'] { --venue-name: #ffb17d; }
+.loc-label[data-tone='red'] { --venue-name: #ff9d9d; }
+.loc-label[data-faded='true'] .loc-name { opacity: 0.68; }
+.loc-label[data-crossed='true'] .loc-name { text-decoration: line-through; text-decoration-thickness: 2px; }
+.loc-label .venue-cue { display: inline-flex; align-items: center; gap: 3px; color: #f4ecdc; font: 600 12px/1 var(--body); font-variant-numeric: tabular-nums; }
+.loc-label .venue-cue[hidden] { display: none; }
+.venue-cue svg { display: block; width: 15px; height: 15px; flex: none; }
+.venue-cue-count:empty { display: none; }
+.loc-label[aria-pressed='true'] .loc-name { text-decoration-line: underline; text-underline-offset: 4px; }
+.loc-label[aria-pressed='true'][data-crossed='true'] .loc-name { text-decoration-line: underline line-through; }
+.venue-investment { font: 400 13px/1.45 var(--body); margin: 8px 0; }
+.venue-investment[hidden] { display: none; }
+.venue-investment p { margin: 0 0 5px; }
+.venue-investment progress { display: block; width: 100%; height: 5px; accent-color: var(--reply); }

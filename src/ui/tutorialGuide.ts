@@ -17,6 +17,7 @@ export class TutorialGuide {
   readonly root = document.createElement('section');
   private readonly step = document.createElement('p');
   private readonly title = document.createElement('h2');
+  private readonly toggle = document.createElement('button');
   private readonly text = document.createElement('p');
   private readonly counter = document.createElement('p');
   private readonly actions = document.createElement('div');
@@ -24,8 +25,9 @@ export class TutorialGuide {
   private dismissed = false;
   private covered = false;
   private skillsReviewed = false;
+  private published: HTMLButtonElement[] = [];
 
-  constructor(parent: HTMLElement, private readonly callbacks: TutorialGuideActions) {
+  constructor(parent: HTMLElement, private readonly callbacks: TutorialGuideActions, private readonly publishActions: (buttons: HTMLButtonElement[]) => void) {
     this.root.className = 'tutorial-guide';
     this.root.setAttribute('aria-label', t('Tutorial objective'));
     this.root.hidden = true;
@@ -35,7 +37,16 @@ export class TutorialGuide {
     this.counter.className = 'tutorial-counter';
     this.counter.setAttribute('role', 'status');
     this.actions.className = 'tutorial-actions';
-    this.root.append(this.step, this.title, this.text, this.counter, this.actions);
+    this.toggle.type = 'button';
+    this.toggle.className = 'tutorial-toggle selection-heading';
+    this.toggle.setAttribute('aria-expanded', 'true');
+    this.toggle.addEventListener('click', () => {
+      const folded = this.root.dataset.collapsed !== 'true';
+      this.root.dataset.collapsed = String(folded);
+      this.toggle.setAttribute('aria-expanded', String(!folded));
+    });
+    this.title.append(this.toggle);
+    this.root.append(this.step, this.title, this.text, this.counter);
     parent.append(this.root);
   }
 
@@ -46,16 +57,26 @@ export class TutorialGuide {
 
   set(progress: TutorialProgress | null): void {
     this.root.hidden = !progress || this.dismissed || this.covered;
-    if (!progress || this.dismissed) return;
+    if (!progress || this.dismissed) {
+      if (this.published.length) { this.published = []; this.publishActions([]); }
+      return;
+    }
     if (this.stage !== progress.stage || this.skillsReviewed !== progress.reviewedSkills) {
       this.skillsReviewed = progress.reviewedSkills;
-      const restoreFocus = this.actions.contains(document.activeElement);
+      const restoreFocus = document.activeElement?.classList.contains('tutorial-action');
       this.stage = progress.stage;
       this.actions.replaceChildren();
       this.step.textContent = progress.active ? t('Tutorial: {step} of {total}', { step: TUTORIAL_STAGES.indexOf(progress.stage) + 1, total: 6 }) : t('Tutorial complete');
       this.root.dataset.stage = progress.stage;
       this.renderStage(progress.stage);
-      if (restoreFocus) (this.actions.querySelector('button') ?? this.title).focus({ preventScroll: true });
+      this.toggle.textContent = this.title.textContent;
+      this.title.replaceChildren(this.toggle);
+      const next = [...this.actions.querySelectorAll('button')];
+      if (next.length !== this.published.length || next.some((button, i) => button.textContent !== this.published[i].textContent)) {
+        this.published = next;
+        this.publishActions(next);
+        if (restoreFocus) this.toggle.focus({ preventScroll: true });
+      }
     }
     const service = progress.stage === 'outreach' ? (progress.reviewedSkills ? 'outreach' : null) : progress.stage === 'dropIn' ? 'dropIn' : progress.stage === 'nightlife' ? 'clubHr' : null;
     const count = progress.stage === 'patrol' ? t('People reached: {count} of {goal}', { count: Math.min(3, progress.patrolContacts), goal: 3 }) : service ? t('Visits completed: {count} of {goal}', { count: Math.min(5, progress.visits[service] ?? 0), goal: 5 }) : '';
@@ -66,6 +87,7 @@ export class TutorialGuide {
   private button(label: string, action: () => void): void {
     const button = document.createElement('button');
     button.type = 'button';
+    button.className = 'opt tutorial-action';
     button.textContent = label;
     button.addEventListener('click', action);
     this.actions.append(button);

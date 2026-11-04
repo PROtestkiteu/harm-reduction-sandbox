@@ -56,6 +56,9 @@ details > summary::marker { content: ''; }
 .goals-head[aria-expanded='true']::after, .events-heading[aria-expanded='true']::after,
 .legend-heading[aria-expanded='true']::after, .selection-heading[aria-expanded='true']::after { --ui-mark: var(--ui-minus); }
 details[open] > summary::after, .opt.group[aria-expanded='true']::after { transform: rotate(90deg); }
+/* Nested disclosures belong with their label; select controls retain a trailing arrow. */
+details > summary { padding-left: calc(var(--ui-mark-slot) + var(--ui-mark-gap)); padding-right: 0; }
+details > summary::after { left: 0; right: auto; }
 .sandbox-backlink::before, .options[data-drill] > li.drill-head .opt::before { transform: rotate(180deg); }
 .sandbox-backlink { display: inline-flex; align-items: center; gap: var(--ui-mark-gap); font: 500 14px/1.4 var(--body); }
 .employee-assignment::after, .team-member::after { position: absolute; right: 8px; top: calc(50% - var(--ui-mark-slot) / 2); transform: rotate(90deg); }
@@ -80,3 +83,8 @@ details[open] > summary::after, .opt.group[aria-expanded='true']::after { transf
 /* Drill heads already have a Back indicator at the leading edge. */
 .options[data-drill] > li.drill-head .opt.group::after { display: none; }
 @media (forced-colors: active) { :root { --ui-mark-color: CanvasText; } }
+
+/* Publication titles wrap naturally within the existing evidence list. */
+.cite-reference { display: block; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.cite-reference + .cite-reference { margin-top: 4px; }
+.cite-reference a { color: var(--reply); text-decoration: underline; text-underline-offset: 3px; }

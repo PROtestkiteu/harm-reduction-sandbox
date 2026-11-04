@@ -16,6 +16,6 @@ const SYMBOLS: Readonly<Record<string, string>> = {
 
 export function scenarioIllustration(id: string): string {
   if (FLAGS[id]) return FLAGS[id];
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 176 124"><g fill="none" stroke="#b79c62" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">${SYMBOLS[id] ?? SYMBOLS.sandbox}</g></svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="32 8 112 104"><g fill="none" stroke="#b79c62" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">${SYMBOLS[id] ?? SYMBOLS.sandbox}</g></svg>`;
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }

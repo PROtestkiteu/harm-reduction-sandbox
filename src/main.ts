@@ -151,6 +151,9 @@ portraitBox.tabIndex = 0;
 portraitBox.setAttribute('role', 'button');
 portraitBox.setAttribute('aria-haspopup', 'menu');
 hudRoot.append(portraitBox);
+hudRoot.addEventListener('selectionfold', (event) => {
+  if (portraitBox.dataset.who === 'person') portraitBox.setAttribute('aria-expanded', String(!(event as CustomEvent<boolean>).detail));
+});
 
 // Version counter in the corner: small, quiet, never in the way of input.
 const versionTag = document.createElement('p');
@@ -678,8 +681,8 @@ function portraitOpen(): void {
   if (portraitBox.dataset.who === 'player') { openOrg(); return; }
   const sel = interaction.selected;
   const p = sel?.kind === 'person' ? crowd.person(sel.id) : undefined;
-  hud.setFolded(false);
-  if (p) rig.lookAt(p.root.position);
+  hud.setFolded(!hud.isFolded);
+  if (p && !hud.isFolded) rig.lookAt(p.root.position);
 }
 
 // A posted officer's card says until when they stand there and why, and what would move them.
@@ -1820,7 +1823,6 @@ function syncSeason(): void {
 let lastNight = -1;
 let lastDay = -1;
 let pageHaze = '';
-const themeColor = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]') ?? document.head.appendChild(Object.assign(document.createElement('meta'), { name: 'theme-color' }));
 function syncNight(): void {
   const night = nightFactor(sim.clockMinutes, sim.calendar.sunset);
   const day = dayFactor(sim.clockMinutes, sim.calendar.sunset);
@@ -1832,7 +1834,7 @@ function syncNight(): void {
   lastDay = d;
   world.setNight(q, d);
   pipeline.setNight(q, d);
-  // The HUD follows the scene: dark at night even on a light-mode device (see style.css).
+  // Scene lighting stays independent of the device UI theme.
   const scene = q > 0.5 ? 'night' : 'day';
   if (document.documentElement.dataset.scene !== scene) document.documentElement.dataset.scene = scene;
   // The page behind the scene takes the horizon's colour, so phone browsers tint their bars to match.
@@ -1840,7 +1842,6 @@ function syncNight(): void {
   if (haze !== pageHaze) {
     pageHaze = haze;
     document.documentElement.style.setProperty('--page', haze);
-    themeColor.content = haze;
   }
   dirty = true;
 }
@@ -1848,7 +1849,10 @@ function syncNight(): void {
 // `?set=` mirrors settings that differ from the defaults, written at most every 400 ms.
 let urlTimer = 0;
 /** AI-painted cast art loads only when selected; superseded loads cannot publish. */
-const portraitLibrary = new PortraitLibrary(portraitView);
+const portraitLibrary = new PortraitLibrary(portraitView, (state) => {
+  portraitBox.hidden = state !== 'ready';
+  hudRoot.dataset.portraitReady = String(state === 'ready');
+});
 let portraitKey = '';
 /** Where the coordinator portrait you chose on the welcome's first page is kept (per device). */
 const LOOK_KEY = 'hrp-player-look';
@@ -1862,6 +1866,9 @@ function syncPortrait(): boolean {
   // Your key names your portrait, so choosing another coordinator redraws it.
   const key = person ? `person:${sel!.id}` : sel ? '' : `player:${playerPortraitId()}`;
   const you = key.startsWith('player:');
+  if (you) portraitBox.removeAttribute('aria-controls');
+  else portraitBox.setAttribute('aria-controls', 'selection-details');
+  portraitBox.setAttribute('aria-expanded', String(you ? orgSheet.isOpen : !hud.isFolded));
   const card = person ? describePerson(person) : null;
   const caption = card ? card.title : key ? t('You') : '';
   const sub = card ? card.subtitle : key ? t('Coordinator, {org}', { org: orgName() }) : '';
@@ -1872,7 +1879,7 @@ function syncPortrait(): boolean {
   }
   if (key === portraitKey) return false;
   portraitKey = key;
-  portraitBox.hidden = !key;
+  portraitBox.hidden = !key || portraitView.dataset.state !== 'ready';
   portraitBox.dataset.who = you ? 'player' : 'person';
   // A person's painted face wears their figure's top (a jacket's colour when they have one); role portraits keep their uniforms.
   const tint = person && portraitTinted(person) ? (person.look.extra === 'jacket' ? person.look.accent : person.look.top) : null;
@@ -1942,13 +1949,6 @@ function writeUrl(): void {
   }
 }
 
-/** How long `fn` took, in ms. */
-function timed(fn: () => void): number {
-  const t0 = performance.now();
-  fn();
-  return performance.now() - t0;
-}
-
 /** The sun's shadow map at the quality tier's size (the sun is the scene's one shadow-casting directional light). */
 function syncShadowMap(): void {
   const sun = world.scene.children.find((o): o is DirectionalLight => o instanceof DirectionalLight && o.castShadow);
@@ -1956,6 +1956,7 @@ function syncShadowMap(): void {
 }
 
 function layout(): void {
+  hud.invalidateLayout();
   // A phone mid-screenshot or mid-rotation can report a near-empty page for a moment: framing for
   // that would aim the camera at the sky until the next move. Skip it; the next resize sets it right.
   const w = canvas.clientWidth || window.innerWidth;
@@ -2138,12 +2139,24 @@ function frame(now: number): void {
 
 tutorialGuide = new TutorialGuide(hudRoot, {
   inspectCamp: () => { interaction.select({ kind: 'building', id: world.camps.park }); rig.lookAt(new Vector3(CAMP_AT.x, 0, CAMP_AT.z)); sim.tutorialInspectCamp(); refreshHud(); },
-  openPatrol: () => { interaction.selectLocation('footPatrol'); sim.tutorialOpenPatrol(); refreshHud(); },
-  dispatchCamp: () => queueOrg(() => { sim.sendPatrol('camp', patrolPoint('camp')); refreshHud(); }),
-  selectService: (id) => { interaction.selectLocation(locationOf(id)); refreshHud(); },
+  openPatrol: () => { interaction.selectLocation('footPatrol'); rig.lookAt(world.locations.footPatrol.labelAnchor); sim.tutorialOpenPatrol(); refreshHud(); },
+  dispatchCamp: () => queueOrg(() => { sim.sendPatrol('camp', patrolPoint('camp')); rig.lookAt(new Vector3(CAMP_AT.x, 0, CAMP_AT.z)); refreshHud(); }),
+  selectService: (id) => { const place = locationOf(id); interaction.selectLocation(place); rig.lookAt(world.locations[place].labelAnchor); refreshHud(); },
   reviewTeam: () => { openOrg(true); refreshHud(); },
   continueCity: () => { refreshHud(); },
+}, (buttons) => hud.setTutorialActions(buttons));
+// Reframe only on actual layout changes, including folding the objective or selection.
+const hudLayoutObserver = new ResizeObserver(() => {
+  hud.invalidateLayout(); rig.invalidate(); dirty = true;
+  const dock = hudRoot.querySelector<HTMLElement>('.column')!.getBoundingClientRect();
+  const guide = tutorialGuide?.root.getBoundingClientRect();
+  const viewport = hudRoot.getBoundingClientRect();
+  const bottom = dock.left < viewport.width / 2 && dock.height > 0 ? dock.top : viewport.bottom - 26;
+  const room = `${Math.max(80, bottom - (guide?.height ? guide.bottom : viewport.top + 70) - 20)}px`;
+  if (portraitBox.style.getPropertyValue('--portrait-room') !== room) portraitBox.style.setProperty('--portrait-room', room);
 });
+for (const element of hudRoot.querySelectorAll<HTMLElement>('.tutorial-guide, .column, .top-bar, .hud-header')) hudLayoutObserver.observe(element);
+window.visualViewport?.addEventListener('scroll', () => { hud.invalidateLayout(); rig.invalidate(); dirty = true; });
 function syncTutorial(): void {
   if (sim.tutorial && !tutorialArea) tutorialArea = new TutorialArea(world, rig, sim.tutorialCapabilities);
   if (tutorialArea?.set(sim.tutorialCapabilities)) { applyView(); dirty = true; }
@@ -2192,13 +2205,18 @@ syncTutorial();
 layout();
 rig.step(0, true);
 applyView();
-// Warm the scene briefly so the first frame already shows staff at work.
+// Warm deterministically in short batches, yielding so the splash stays responsive.
+let warmupYieldAt = performance.now();
 for (let i = 0; !continuingGame && !launchConfiguration?.save && !sim.tutorial?.active && i < 90 * 30; i++) {
   sim.tick(STEP);
   for (let i = 0, parts = Math.max(1, Math.ceil(sim.pace)); i < parts; i++) crowd.update((STEP * sim.pace) / parts);
   syncServiceVisuals();
   world.update(STEP, sceneTime);
   sceneTime += STEP;
+  if (performance.now() - warmupYieldAt >= 8) {
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    warmupYieldAt = performance.now();
+  }
 }
 // Every game starts with something mild going on, so the first night is never empty.
 const STARTING_TROUBLE = ['staffIllness', 'kitShortage', 'busyNight', 'withdrawalWave', 'streetMarketForms', 'equipmentComplaints'] as const;
@@ -2210,11 +2228,14 @@ refreshHud();
 applyView();
 applyAnisotropy(world.scene, renderer.capabilities.getMaxAnisotropy(), quality.tier);
 syncShadowMap();
-pipeline.render(world.scene, camera);
 // Every tier's finishing pass is compiled now, behind the loading screen, so switching never hitches.
 // So is every material already in the world, hidden ones included (night-only signs, event lights,
 // the parked fleet): the first frame compiled only what it drew, and the rest would compile mid-play.
-const precompileMs = pipeline.precompile() + timed(() => renderer.compile(world.scene, camera));
+const precompileStarted = performance.now();
+await pipeline.precompile();
+await renderer.compileAsync(world.scene, camera);
+const precompileMs = performance.now() - precompileStarted;
+pipeline.render(world.scene, camera);
 // Installed on an iPhone the page gets its full height just after launch: the loading screen stays
 // up until then, so the first frame shown is already framed for the whole screen. One more re-aim
 // for whatever the HUD settled into meanwhile, drawn by the main loop before the screen lifts.

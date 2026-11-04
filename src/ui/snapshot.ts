@@ -1,14 +1,15 @@
+import { venueStatus } from './venueStatus';
 import { price } from './money';
 import { t } from '../i18n';
 import { ACTIVITY, SERVICE_ACTIVITIES } from '../config/serviceMix';
+import { ILLUSTRATIVE } from '../config/illustrative';
 import { ORG } from '../config/organisation';
 import { displayName } from './names';
-import { CAMPER_SPOTS } from '../world/scene';
 import { EXPOSURE, aidSeason } from '../sim/exposure';
 import { HUSTLE } from '../config/hustles';
-import { camperSpot } from '../world/layout';
+import { CAMPER_SPOTS, camperSpot } from '../world/layout';
 import { INVEST } from '../sim/simulation';
-import { stageCount, stageOf } from '../config/serviceStages';
+import { BASE_STAGE, NEW_STAGE, stageCount, stageOf } from '../config/serviceStages';
 import { PROPERTY } from '../sim/property';
 import { LOCATION_NAMES, SERVICE_TEXT } from '../config/places';
 import { PARAM_BY_ID, type ParamId } from '../config/sandboxParams';
@@ -54,19 +55,26 @@ function serviceChips(s: ServiceModel, servedAt: string): Chip[] {
 
 function serviceSnapshot(id: LocationId, s: ServiceModel, sim?: Simulation): LocationSnapshot {
   const text = SERVICE_TEXT[s.id];
-  return {
+  const closed = closedNote(s);
+  const availability = sim?.serviceAvailability(s.id);
+  const permitted = availability !== 'notPermitted';
+  const venueReason = availability && availability !== 'switchedOff' ? availability : s.closedReason;
+  const view: LocationSnapshot = {
     name: displayName('location', id, LOCATION_NAMES[id]),
     service: text.label,
     status: s.status,
-    closed: closedNote(s),
+    venue: venueStatus({ status: s.status, permitted, reason: venueReason, queue: s.queue.length, waitingRoom: s.waitingRoom,
+      staff: s.staffOnSite, requested: s.requested, assigned: s.assigned,
+      reopening: sim?.org.reopening.some(r => r.id === s.id), moving: s.id === 'outreach' && sim?.outreachMoving,
+      maintenanceRisk: !!sim && sim.upgrades[s.id].level > (ORG.startServices.includes(s.id) ? BASE_STAGE : NEW_STAGE) && sim.upgrades[s.id].progress <= 0.1 }),
+    closed,
     chips: serviceChips(s, text.servedAt),
     // The stage it has grown to, of how many, as the first fact.
     // Why it is closed is said once, under the name; the facts keep the stage.
     facts: sim ? [[t('Stage'), t('{stage} ({n} of {max})', { stage: stageOf(s.id, sim.upgrades[s.id].level).label, n: sim.upgrades[s.id].level, max: stageCount(s.id) })]] : [],
     metrics: { ...s.metrics },
     metricsLabel: t('Tonight so far'),
-    blockedByLaw: s.closedReason === 'notPermitted',
-    level: sim && { level: sim.upgrades[s.id].level, progress: sim.upgrades[s.id].progress, max: stageCount(s.id) },
+    blockedByLaw: !permitted || s.closedReason === 'notPermitted',
     actions: sim && {
       service: s.id,
       wanted: s.params.staff,
@@ -104,6 +112,8 @@ function serviceSnapshot(id: LocationId, s: ServiceModel, sim?: Simulation): Loc
       } : undefined,
     },
   };
+  if (venueReason === 'hours' && s.closedReason === 'hours' && closed && view.venue) view.venue.message = closed.text;
+  return view;
 }
 
 function clubSnapshot(sim: Simulation): LocationSnapshot {
@@ -111,10 +121,12 @@ function clubSnapshot(sim: Simulation): LocationSnapshot {
   const stand = sim.services.clubHr;
   const club = serviceSnapshot('club', stand, sim);
   club.chips = [
-    { icon: 'venue', value: `${c.inside}/${c.capacity}`, label: t('Venue: open, {n} of {max} inside, {queue} queuing', { n: c.inside, max: c.capacity, queue: c.queue.length }) },
+    { icon: 'venue', value: `${c.inside}/${c.capacity}`, label: t('Venue: {status}, {n} of {max} inside, {queue} queuing', { status: sim.clubOpen ? t('Open') : t('Closed'), n: c.inside, max: c.capacity, queue: c.queue.length }) },
     { icon: 'door', value: String(c.entered), label: t('Door (venue): {n} let in, {adverse} adverse (placeholder)', { n: c.entered, adverse: c.adverse }) },
     ...serviceChips(stand, SERVICE_TEXT.clubHr.servedAt),
   ];
+  club.venue = venueStatus({ status: sim.clubOpen ? 'open' : 'closed', reason: sim.clubOpen ? null : 'hours',
+    queue: c.queue.length, waitingRoom: ILLUSTRATIVE.club.queueSlots, atCapacity: c.inside >= c.capacity, staff: 1, requested: 1, assigned: 1 });
   club.metricsLabel = t('Stand, tonight so far');
   return club;
 }

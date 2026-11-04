@@ -1,9 +1,7 @@
-import { t } from '../i18n';
-
 export interface SheetOptions {
   /** Accessible name of the sheet. */
   label: string;
-  /** An existing content heading can close the sheet when collapsed, without a second icon. */
+  /** An existing disclosure to focus when opening; folding it keeps the sheet open. */
   disclosure?(): HTMLDetailsElement | null;
   /** Fires when the sheet opens, so other panels in the same place can close. */
   onOpen?(): void;
@@ -14,20 +12,20 @@ export interface SheetOptions {
  * A panel in the settings' place and style (a column on the left, a bottom
  * sheet on phones) for one section opened from elsewhere, such as the
  * organisation from the money in the top bar. It has no toggle of its own:
- * the caller toggles it; an existing disclosure heading or Escape shuts it.
+ * the caller toggles it; Escape also shuts it.
  */
 export class Sheet {
   private readonly root: HTMLElement;
   private readonly body: HTMLElement;
   private disclosure: HTMLDetailsElement | null = null;
-  private disclosureHint: string | undefined;
-  private readonly collapsed = () => {
-    if (this.disclosure && !this.disclosure.open) this.setOpen(false, true);
-  };
   private readonly opts: SheetOptions;
   /** Where focus was before opening, to return it on close. */
   private returnTo: HTMLElement | null = null;
   private returnRegion: HTMLElement | null = null;
+  private readonly outside = (event: PointerEvent) => {
+    if (!(event.target instanceof Node) || this.body.contains(event.target) || this.returnTo?.contains(event.target)) return;
+    this.setOpen(false);
+  };
 
   constructor(parent: HTMLElement, content: HTMLElement, opts: SheetOptions) {
     this.opts = opts;
@@ -55,19 +53,7 @@ export class Sheet {
 
   setOpen(open: boolean, returnFocus = false): void {
     const disclosure = open ? this.opts.disclosure?.() ?? null : null;
-    if (disclosure !== this.disclosure) {
-      const previous = this.disclosure?.querySelector<HTMLElement>('summary');
-      if (previous) {
-        if (this.disclosureHint === undefined) delete previous.dataset.iconHint;
-        else previous.dataset.iconHint = this.disclosureHint;
-      }
-      this.disclosure?.removeEventListener('toggle', this.collapsed);
-      this.disclosure = disclosure;
-      disclosure?.addEventListener('toggle', this.collapsed);
-      const summary = disclosure?.querySelector<HTMLElement>('summary');
-      this.disclosureHint = summary?.dataset.iconHint;
-      if (summary) summary.dataset.iconHint = t('Close {name}', { name: this.opts.label });
-    }
+    this.disclosure = disclosure;
     if (open === this.isOpen) return;
     if (open) {
       this.returnTo = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -75,6 +61,8 @@ export class Sheet {
       this.opts.onOpen?.();
     }
     this.body.hidden = !open;
+    if (open) document.addEventListener('pointerdown', this.outside, true);
+    else document.removeEventListener('pointerdown', this.outside, true);
     this.root.dataset.open = String(open);
     this.opts.onChange?.(open);
     if (open) (this.disclosure?.querySelector<HTMLElement>('summary') ?? this.body).focus({ preventScroll: true });

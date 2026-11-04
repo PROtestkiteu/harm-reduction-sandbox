@@ -5,8 +5,12 @@ export function trackUiViewport(): void {
   const update = () => {
     scheduled = 0;
     const style = document.documentElement.style;
-    style.setProperty('--ui-top', `${viewport?.offsetTop ?? 0}px`);
-    style.setProperty('--ui-height', `${viewport?.height ?? window.innerHeight}px`);
+    const bounds = { top: viewport?.offsetTop ?? 0, left: viewport?.offsetLeft ?? 0,
+      height: viewport?.height ?? window.innerHeight, width: viewport?.width ?? window.innerWidth };
+    for (const [key, value] of Object.entries(bounds)) {
+      const name = `--ui-${key}`, px = `${value}px`;
+      if (style.getPropertyValue(name) !== px) style.setProperty(name, px);
+    }
   };
   const schedule = () => {
     if (!scheduled) scheduled = requestAnimationFrame(update);
