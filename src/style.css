@@ -116,7 +116,8 @@ h1, h2, h3 { text-wrap: pretty; }
 
 html, body {
   margin: 0;
-  height: 100%;
+  /* The root clips fixed descendants too. Keep it as tall as the recovered scene. */
+  height: var(--scene-height, 100%);
   overflow: hidden;
   /* The scene's horizon colour once the game runs (set from main.ts); dark until then, whatever the
      theme, because phone browsers take their bars' colour from the first paint: a light page then
@@ -170,6 +171,9 @@ button:focus-visible {
 .loading {
   position: fixed;
   inset: 0;
+  bottom: auto;
+  height: var(--scene-height, 100%);
+  box-sizing: border-box;
   display: grid;
   place-content: center;
   justify-items: center;
@@ -212,16 +216,6 @@ button:focus-visible {
   .loading-lit[data-still='on'] { opacity: 1; }
 }
 @media (max-height: 520px) { .loading { padding-bottom: 40px; } }
-
-/*
- * Installed on an iPhone, the page starts one status bar short (innerHeight 812 of 874 on an
- * iPhone 17 Pro) and the viewport grows a moment later; a screen pinned to the viewport grew with
- * it and its mark slid down. Pinned instead to the root block, which keeps the short height, plus
- * the status bar, the loading screen has the whole screen's size from its first frame to its last.
- */
-@media (display-mode: standalone), (display-mode: fullscreen) {
-  .loading { position: fixed; inset: 0; height: auto; }
-}
 
 @keyframes shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
 

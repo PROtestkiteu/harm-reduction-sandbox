@@ -1,7 +1,6 @@
 import { installIconHints } from './ui/iconHints';
 import { supportFit, type PersonSupport } from './sim/personSupport';
 import type { StaffingAdvice } from './ui/personSupport';
-import { trackUiViewport } from './ui/viewportBounds';
 import './ui/panelControls.css';
 import { TutorialArea } from './world/tutorialArea';
 import { TutorialGuide } from './ui/tutorialGuide';
@@ -132,7 +131,6 @@ document.documentElement.lang = LANG;
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
 canvas.setAttribute('aria-label', t('Isometric neighbourhood with a drop-in centre, an outreach camper and a music club. Select a location for details.'));
 const hudRoot = document.getElementById('hud') as HTMLElement;
-trackUiViewport();
 installIconHints();
 // Portrait of the selection, bottom left: a framed live close-up with a caption.
 const portraitBox = document.createElement('figure');
@@ -2152,6 +2150,8 @@ const hudLayoutObserver = new ResizeObserver(() => {
   const dock = hudRoot.querySelector<HTMLElement>('.column')!.getBoundingClientRect();
   const guide = tutorialGuide?.root.getBoundingClientRect();
   const viewport = hudRoot.getBoundingClientRect();
+  const contextBottom = `${(guide?.height ? guide.bottom : hudRoot.querySelector('.hud-header')!.getBoundingClientRect().bottom) - viewport.top}px`;
+  if (hudRoot.style.getPropertyValue('--context-bottom') !== contextBottom) hudRoot.style.setProperty('--context-bottom', contextBottom);
   const bottom = dock.left < viewport.width / 2 && dock.height > 0 ? dock.top : viewport.bottom - 26;
   const room = `${Math.max(80, bottom - (guide?.height ? guide.bottom : viewport.top + 70) - 20)}px`;
   if (portraitBox.style.getPropertyValue('--portrait-room') !== room) portraitBox.style.setProperty('--portrait-room', room);

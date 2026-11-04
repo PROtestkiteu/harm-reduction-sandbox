@@ -54,7 +54,13 @@
   .column .options { display: block; }
   .portrait[data-who='player'] { width: 44px; }
   .top-bar { width: min(300px, 40%); }
-  .column { top: calc(var(--topbar-h, 44px) + 20px); right: 10px; left: auto; bottom: 10px; width: min(300px, 40%); padding: 0; overflow-y: auto; pointer-events: auto; }
+  .column { top: calc(var(--topbar-h, 44px) + 20px); right: 10px; left: auto; bottom: 10px; width: min(300px, 40%); padding: 0; overflow-y: auto; pointer-events: none; }
+  .column > * { pointer-events: auto; }
+  .map-legend {
+    top: calc(var(--context-bottom, 66px) + 10px); left: 12px; right: auto;
+    width: min(340px, calc(60% - 34px)); box-sizing: border-box;
+    max-height: calc(var(--ui-height, 100vh) - var(--context-bottom, 66px) - 20px);
+  }
   .column .outliner, .column .window { flex: none; max-height: none; overflow: visible; }
   .column > *, .column .log, .column .options { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
   .column .column-top { flex-wrap: wrap; gap: 4px 12px; }
@@ -70,7 +76,7 @@
 [data-portrait-ready='true'] .column[data-mode='person'] .window[data-collapsed='true'] { display: none; }
 [data-portrait-ready='true'] .column[data-mode='person'] .selection-heading { display: none; }
 @media (max-width: 760px) {
-  .portrait[data-who='person'] {
+  .portrait {
     bottom: calc(var(--sheet-h, 0px) + max(10px, var(--safe-bottom, 0px)) + 10px);
     z-index: 2;
   }
