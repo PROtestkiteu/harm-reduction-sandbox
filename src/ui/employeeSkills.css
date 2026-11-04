@@ -1,22 +1,24 @@
 /* Staff strengths remain readable, keyboard accessible and optional to manage. */
-.team-identity { position: relative; padding-inline-start: 40px; }
+.team-identity { position: relative; padding-inline-start: 44px; min-height: 40px; }
 .team-identity-text { min-width: 0; }
 .team-portrait { position: absolute; inset-inline-start: 0; top: 0; width: 32px; height: 40px; object-fit: cover; }
 .org-team-mode > :not(.org-team):not(legend),
 .org-team-mode .org-team-actions, .org-team-mode .org-team > .org-recruiting { display: none !important; }
-.team-member .team-who { align-self: start; grid-column: 1 / -1; }
+.team-member .team-who { display: grid; gap: 12px; align-self: start; grid-column: 1 / -1; }
 .org-team .team-assign { grid-column: 1 / -1; max-width: 100%; width: 100%; }
 .team-member .team-who .team-name { white-space: normal; overflow-wrap: anywhere; }
-.team-member .team-strength { white-space: normal; color: var(--reply); font-size: 13px; margin-top: 7px; }
-.employee-skills { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; margin: 10px 0; }
+.team-member .team-strength { white-space: normal; color: var(--reply); font-size: 13px; margin: 0; }
+.employee-skills { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; margin: 0; }
 .employee-skill { display: flex; justify-content: space-between; gap: 6px; font-size: 13px; line-height: 1.4; min-width: 0; }
 .employee-skill dt { overflow-wrap: anywhere; color: var(--muted); }
 .employee-skill dd { margin: 0; color: var(--text); font-variant-numeric: tabular-nums; flex-shrink: 0; }
-.employee-background { font-size: 13px; margin-bottom: 6px; }
+.employee-background { font-size: 13px; margin: 0; }
 .employee-background summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; color: var(--reply); }
 .team-member .employee-background p { white-space: normal; overflow-wrap: anywhere; margin: 6px 0; line-height: 1.4; }
 .employee-background summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.org-team .team-member { padding-top: 12px; padding-bottom: 10px; }
+.org-team .team-list { margin: 0; }
+.org-team .team-member { padding: 20px 0; row-gap: 12px; border-bottom-color: var(--muted); }
+.org-team .team-energy { margin-top: 0; }
 @media (max-width: 520px) {
   .org-team .team-member { grid-template-columns: minmax(0, 1fr); row-gap: 8px; }
   .org-team .team-assign { max-width: 100%; width: 100%; }
@@ -28,4 +30,8 @@
 .org-team .employee-assignment .team-assign { min-height: 44px; padding: 8px 28px 8px 10px; border: 1px solid var(--muted); text-align: left; text-align-last: left; }
 
 .employee-context { margin: 8px 0 12px; font-size: 14px; line-height: 1.45; color: var(--reply); overflow-wrap: anywhere; }
-.employee-skill-help > .factor-summary { margin: 8px 0; font-size: 13px; line-height: 1.5; }
+.org-team > summary { margin-bottom: 12px; }
+.org-team > .factor-summary { margin: 0 0 12px; line-height: 1.5; }
+.employee-skill-help { margin: 16px 0; }
+.employee-skill-help > summary { display: flex; align-items: center; min-height: 44px; }
+.employee-skill-help > .factor-summary { margin: 12px 0; font-size: 13px; line-height: 1.5; }

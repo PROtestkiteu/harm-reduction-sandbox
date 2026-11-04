@@ -9,7 +9,7 @@ export interface SheetOptions {
 }
 
 /**
- * A panel centered in the desktop map area, and a bottom sheet on phones,
+ * A panel centered in the full desktop viewport, and a bottom sheet on phones,
  * for a section opened from elsewhere, such as the
  * organisation from the money in the top bar. It has no toggle of its own:
  * the caller toggles it; Escape also shuts it.

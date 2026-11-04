@@ -1933,21 +1933,20 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
   .top-bar .stress-bar { height: 5px; min-width: 20px; }
 }
 
-/* The organisation's own sheet (src/ui/sheet.ts): the settings' place and look, below the Settings button. */
+/* Shared organisation/detail sheets use the panel style with responsive placement. */
 .sandbox.sheet { margin-top: 50px; }
 .sandbox.sheet:not([data-open='true']) { display: none; }
 @media (min-width: 761px) { .sheet .sandbox-body { position: relative; } }
-/* Wide-screen sheets open in the map area beside their action column. */
+/* Wide-screen detail sheets are centered in the complete visible viewport. */
 @media (min-width: 761px) and (min-height: 521px) {
   .sandbox { top: calc(var(--hud-header-bottom, 65px) + 8px); }
   .sandbox.sheet {
-    top: calc(var(--hud-controls-bottom, 112px) + 12px); margin-top: 0;
-    left: calc((100% - var(--window-w) - var(--window-edge) - 24px) / 2); right: auto;
-    transform: translateX(-50%);
-    width: min(560px, calc(100% - var(--window-w) - var(--window-edge) - 48px));
+    top: 50%; left: 50%; right: auto; margin-top: 0;
+    transform: translate(-50%, -50%);
+    width: min(640px, calc(100% - 48px));
   }
   .sandbox:not(.sheet) .sandbox-body { max-height: calc(var(--ui-height, 100dvh) - var(--hud-controls-bottom, 112px) - 18px); }
-  .sheet .sandbox-body { max-height: calc(var(--ui-height, 100dvh) - var(--hud-controls-bottom, 112px) - 24px); }
+  .sheet .sandbox-body { max-height: calc(var(--ui-height, 100dvh) - 48px); }
 }
 
 .sheet-head { position: absolute; top: 8px; right: 8px; }
