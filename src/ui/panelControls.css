@@ -71,7 +71,8 @@
 
 }
 /* Follow browser chrome and the software keyboard without resizing the scene. */
-#hud { --safe-top: 0px; --safe-right: 0px; --safe-bottom: 0px; --safe-left: 0px; top: var(--ui-top, 0px); left: var(--ui-left, 0px); width: var(--ui-width, 100%); height: var(--ui-height, 100%); bottom: auto; right: auto; }
+#hud { --safe-top: 0px; --safe-right: 0px; --safe-bottom: 0px; --safe-left: 0px; --ui-top-gap: 0px; top: calc(var(--ui-top, 0px) + var(--ui-top-gap)); left: var(--ui-left, 0px); width: var(--ui-width, 100%); height: calc(var(--ui-height, 100%) - var(--ui-top-gap)); bottom: auto; right: auto; }
+@media (orientation: portrait) { #hud { --ui-top-gap: 15px; } }
 /* A character's portrait is its disclosure. No second collapsed name bar. */
 [data-portrait-ready='true'] .column[data-mode='person'] .window[data-collapsed='true'] { display: none; }
 [data-portrait-ready='true'] .column[data-mode='person'] .selection-heading { display: none; }

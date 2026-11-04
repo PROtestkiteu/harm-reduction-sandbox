@@ -4,7 +4,8 @@ import { drive, SKIP_WELCOME } from './chrome.mjs';
 const layout=`(()=>{const ids=['#hud','.hud-header','.top-bar','.column','.tutorial-guide','.tutorial-counter'];return {stage:document.querySelector('.tutorial-guide')?.dataset.stage,options:[...document.querySelectorAll('.column .options>li')].filter(e=>!e.hidden&&e.getClientRects().length).map(e=>e.textContent.trim()),portrait:document.querySelector('.portrait').getBoundingClientRect().toJSON(),root:document.documentElement.getBoundingClientRect().toJSON(),size:[innerWidth,innerHeight],errors:window.__qaErrors,rects:Object.fromEntries(ids.map(s=>{const e=document.querySelector(s),r=e.getBoundingClientRect();return[s,{left:r.left,right:r.right,top:r.top,bottom:r.bottom,scroll:e.scrollHeight,client:e.clientHeight}]})),overflow:document.documentElement.scrollWidth>innerWidth,zoom:window.__sandbox.rig.zoom,canvas:document.getElementById('scene').getBoundingClientRect().toJSON()};})()`;
 const result=await drive(process.argv[2] ?? 'http://127.0.0.1:5202/?scenario=tutorial&packs=none',[
 ...SKIP_WELCOME,
-{eval:`document.querySelector('.viewport-safe-area').style.padding='62px 0px 34px';true`},
+{eval:`document.querySelector('.viewport-safe-area').style.padding='62px 0px 34px';true`},{wait:200},
+{eval:`({lateSafeTop:parseFloat(document.documentElement.style.getPropertyValue('--ui-top'))})`},
 {eval:"dispatchEvent(new Event('resize'));window.__sandbox.sim.tutorial.state.stage='outreach';window.__sandbox.sim.tutorial.state.reviewedSkills=true;window.__sandbox.syncEvents();true"},{wait:500},{eval:layout},{shot:'portrait.png'},
 {eval:`document.documentElement.style.setProperty('--scene-height','911px');({recoveredRoot:document.documentElement.getBoundingClientRect().height,recoveredCanvas:document.querySelector('#scene').getBoundingClientRect().height})`},
 {eval:`dispatchEvent(new Event('resize'));true`},
@@ -30,13 +31,14 @@ console.log(JSON.stringify(result,null,2));
 
 const views=result.filter(v=>v?.rects);
 assert.equal(views.length,5);
+assert.equal(result.find(v=>v?.lateSafeTop!==undefined).lateSafeTop,62,'Late safe-area padding updates without a viewport event');
 const folded=result.find(v=>v?.legendFolded),expanded=result.find(v=>v?.legendExpanded);
 assert.equal(folded.legendFolded,folded.guideFolded+10);assert.equal(expanded.legendExpanded,expanded.guideExpanded+10);assert(expanded.legendExpanded>folded.legendFolded);
 assert.equal(result.find(v=>v?.rightMapHit)?.rightMapHit,'scene','Empty landscape column passes input to the map');
 for(const v of views){assert(!v.overflow);assert.equal(v.errors.length,0);for(const r of Object.values(v.rects)){assert(r.left>=v.rects['#hud'].left-1);assert(r.right<=v.rects['#hud'].right+1);assert(r.top>=v.rects['#hud'].top-1);assert(r.bottom<=v.rects['#hud'].bottom+1);}}
 assert(views[0].portrait.bottom <= views[0].rects['.column'].top, 'Player portrait clears the numbered actions');
 const recovered=result.find(v=>v?.recoveredRoot);assert.equal(recovered.recoveredRoot,911);assert.equal(recovered.recoveredCanvas,911);
-assert.equal(views[0].rects['#hud'].top,62);assert(views[0].rects['.hud-header'].top>=74);
+assert.equal(views[0].rects['#hud'].top,77);assert.equal(views[0].rects['#hud'].bottom,818);assert(views[0].rects['.hud-header'].top>=89);
 assert.equal(views[1].rects['#hud'].left,62);assert.equal(views[1].rects['#hud'].right,790);
 assert(views[1].rects['.top-bar'].bottom>0);assert(views[2].zoom>views[1].zoom*2);
 assert.equal(views[1].stage,'outreach');assert.deepEqual(views[0].options,views[1].options);assert.deepEqual(views[0].options,views[3].options);

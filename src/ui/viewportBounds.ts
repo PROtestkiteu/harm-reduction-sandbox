@@ -28,6 +28,9 @@ export function trackUiViewport(): void {
   const schedule = () => {
     if (!scheduled) scheduled = requestAnimationFrame(update);
   };
+  // iOS can publish safe-area padding after launch without resizing the viewport.
+  // Observe the padded box, since its content box remains empty.
+  new ResizeObserver(schedule).observe(probe, { box: 'border-box' });
   viewport?.addEventListener('resize', schedule);
   viewport?.addEventListener('scroll', schedule);
   window.addEventListener('resize', schedule);
