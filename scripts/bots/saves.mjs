@@ -55,7 +55,7 @@ const saveAndReload = (strip, plainAddress = false) => `(async () => { ${MODS}
   const text = JSON.stringify(save);
   sessionStorage.setItem(RESUME_KEY, text);
   // A plain address: only the save can carry the mark (the address's settings would mark it too).
-  setTimeout(() => { if (${plainAddress}) history.replaceState(null, '', location.pathname); location.reload(); }, 50);
+  setTimeout(() => { if (${plainAddress}) history.replaceState(null, '', location.pathname + '?play=1'); location.reload(); }, 50);
   return { bytes: text.length, liveSaveChars: sg.encodeSave(save).length };
 })()`;
 

@@ -38,9 +38,9 @@ export function rememberMenuRun(save: SaveData): boolean {
   return true;
 }
 
+/** Explicit opt-in for development bots; public builds always show the menu. */
 export function hasAutomaticLaunch(): boolean {
   const q = new URLSearchParams(location.search);
   if (q.has('menu')) return false;
-  if (q.has('play') || q.has('scenario') || q.has('g') || location.hash.startsWith('#g=')) return true;
-  try { return sessionStorage.getItem(RESUME_KEY) !== null; } catch { return false; }
+  return q.has('play');
 }

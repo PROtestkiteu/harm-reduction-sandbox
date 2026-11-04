@@ -14,6 +14,8 @@ Every number in it is illustrative. It shows directions of effect that the resea
 - Watch a day go by. Seasons, weekdays, match nights and festivals change who is out.
 - Click a place or a person to see what is going on there.
 
+Every launch opens the main menu. Continue restores your last game only when selected, including after an update. Shared game links are prefilled under Load Game.
+
 ## Controls
 
 | | Mouse | Touch | Keys |

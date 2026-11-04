@@ -70,7 +70,7 @@ export function showMainMenu(): Promise<void> {
       try {
         // Full field validation happens in main before restoration. Importing its parser
         // here would initialize the world layout before a scenario has been selected.
-        const raw: unknown = JSON.parse(kept(key) ?? 'null');
+        const raw: unknown = JSON.parse((key === RESUME_KEY ? sessionStorage.getItem(key) : kept(key)) ?? 'null');
         const save = menuSave(raw);
         if (token !== request || launching) return;
         if (!save) { status.textContent = t('This saved game is unavailable. Choose another save or try again.'); return; }
@@ -88,8 +88,10 @@ export function showMainMenu(): Promise<void> {
       page.append(el('p', 'menu-introduction', t('Help people stay alive without going bankrupt.')));
       const actions = el('nav', 'main-menu-actions');
       const status = el('p', 'menu-status'); status.setAttribute('role', 'status');
-      const resume = button(t('Continue'), () => void loadStored(CONTINUE_KEY, status), true);
-      try { resume.disabled = !menuSave(JSON.parse(kept(CONTINUE_KEY) ?? 'null')); } catch { resume.disabled = true; }
+      let resumeKey = CONTINUE_KEY;
+      try { if (menuSave(JSON.parse(sessionStorage.getItem(RESUME_KEY) ?? 'null'))) resumeKey = RESUME_KEY; } catch { /* Durable Continue is still available. */ }
+      const resume = button(t('Continue'), () => void loadStored(resumeKey, status), true);
+      try { resume.disabled = !menuSave(JSON.parse((resumeKey === RESUME_KEY ? sessionStorage.getItem(resumeKey) : kept(resumeKey)) ?? 'null')); } catch { resume.disabled = true; }
       resume.classList.toggle('menu-primary', !resume.disabled);
       actions.append(resume, button(t('New Game'), scenarios, resume.disabled), button(t('Load Game'), saves), button(t('Settings'), preferences), button(t('About'), about));
       page.append(actions, status);
@@ -152,7 +154,9 @@ export function showMainMenu(): Promise<void> {
       const status = el('p', 'menu-status'); status.setAttribute('role', 'status');
       const local = button(t('Load saved'), () => void loadStored('hrp-save', status)); local.disabled = !kept('hrp-save');
       const label = el('label', 'menu-link-label', t('Game link'));
-      const input = el('input', 'menu-link'); input.type = 'url'; input.autocomplete = 'off'; label.append(input);
+      const input = el('input', 'menu-link'); input.type = 'url'; input.autocomplete = 'off';
+      if (new URLSearchParams(location.search).has('g') || location.hash.startsWith('#g=')) input.value = location.href;
+      label.append(input);
       const load = button(t('Open game link'), () => void openLink());
       async function openLink(): Promise<void> {
         const token = ++request;

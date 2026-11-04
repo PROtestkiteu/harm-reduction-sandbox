@@ -201,7 +201,7 @@ function showStartFailure(error: unknown): void {
 // cannot load, parse or run rejects here; the loading screen then explains instead of hanging.
 const text = loadCatalogue().catch(() => { /* offline mid-load: English */ });
 void Promise.all([text, loadCompat()]).then(async () => {
-  if (!hasAutomaticLaunch()) {
+  if (!import.meta.env.DEV || !hasAutomaticLaunch()) {
     const { showMainMenu } = await import('./ui/mainMenu');
     await showMainMenu();
   } else {

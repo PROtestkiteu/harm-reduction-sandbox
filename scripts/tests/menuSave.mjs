@@ -69,3 +69,16 @@ globalThis.location = new URL('http://localhost:5202/?g=0123456789abcdef01234567
 globalThis.fetch = async () => ({ ok: false });
 await assert.rejects(prepareAutomaticLaunch(), /Saved game unavailable/);
 console.log('Direct saved-game links and update-resume layout checks passed');
+
+// Ordinary reopening, saved addresses and update snapshots never opt into a dev launch.
+store.set('hrp-resume', JSON.stringify(tutorialSave));
+for (const suffix of ['', '?scenario=tutorial', '?g=0123456789abcdef01234567', '#g=saved']) {
+  globalThis.location = new URL('http://localhost:5202/' + suffix);
+  assert.equal(launch.hasAutomaticLaunch(), false, suffix || 'plain reopen');
+}
+globalThis.location = new URL('http://localhost:5202/?play=1');
+assert.equal(launch.hasAutomaticLaunch(), true, 'Development bots explicitly opt in');
+globalThis.location = new URL('http://localhost:5202/?play=1&menu=1');
+assert.equal(launch.hasAutomaticLaunch(), false, 'Explicit menu takes precedence');
+store.clear();
+console.log('Menu-first launch policy checks passed');
