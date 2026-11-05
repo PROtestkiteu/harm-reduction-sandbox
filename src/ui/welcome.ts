@@ -44,7 +44,7 @@ const PAGES: Page[] = [
       t('Every visit costs money. Funders and grants pay for results, so a busy night can still leave you short.'),
       t('People turned away do not vanish: they end up with the police and the medics. The meters at the top show that strain.'),
       t('Your team has its own morale. People turned away and deaths wear it down; below a point, people quit.'),
-      t('Now and then a big crisis comes, with a day of warning. Prepare for it, or the city spirals. In a Hardcore game or a scenario, it can end the project.'),
+      t('Now and then a big crisis comes, with a day of warning. Prepare for it, or the city spirals. In a scenario, it can end the project.'),
     ],
   },
   {

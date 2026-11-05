@@ -1,3 +1,4 @@
+import { RecipientCare, careUrgency, patience, type CareEnvironment } from './recipientCare';
 import { TutorialProgress, FULL_TUTORIAL_CAPABILITIES, type TutorialCapabilities } from '../game/tutorial';
 import { Exposure, EXPOSURE, exposureNow, type ExposureHarm } from './exposure';
 import { ServiceMix } from './serviceMix';
@@ -349,6 +350,8 @@ export class Simulation {
   /** Reputation earns favours; spending schedules one pending concession. */
   favours = 1;
   readonly reputation = new Reputation();
+  readonly recipientCare = new RecipientCare();
+  private readonly restoredCareVisitors = new Set<number>();
   private favourViewRevision = -1;
   private favourViewTutorial = false;
   private favourViewCache?: ReturnType<typeof favourView>;
@@ -644,6 +647,8 @@ export class Simulation {
     this.goals.tick(minutes, false);
     if (before < MORNING && this.clockMinutes >= MORNING) {
       const report = this.goals.end(this.totals.nights, this.totals.helped, this.turnedAwayTotal, this.deaths, this.org.budget, this.totals.helped, false);
+      report.care = this.recipientCare.settle(this.totals.nights);
+      this.reputation.award(report.care.points);
       this.totals.nights++;
       // Check before notifying UI; a report must occur after entering the final stage.
       tutorial.night((['outreach', 'dropIn', 'clubHr'] as const).every((id) => {
@@ -842,7 +847,13 @@ export class Simulation {
     // A foot patrol out on the street keeps its crew: the table is shut, the work goes on.
     const crewed = (id: ServiceId) => !reasons[id] || reasons[id] === 'onPatrol';
     for (const m of pool) if (m.assignment !== 'auto' && m.assignment !== 'rest' && crewed(m.assignment)) crew[m.assignment].push(m);
-    const free = pool.filter((m) => m.assignment === 'auto');
+    // A running activity keeps its automatic worker until completion; explicit moves/rest still win.
+    const reserved = new Set<number>();
+    for (const v of this.recipientCare.visits.values()) if ((v.task || v.referralWorker !== undefined) && crewed(v.site)) {
+      const m = pool.find(m => m.id === (v.task?.worker ?? v.referralWorker) && m.assignment === 'auto');
+      if (m && !reserved.has(m.id)) { crew[v.site].push(m); reserved.add(m.id); }
+    }
+    const free = pool.filter((m) => m.assignment === 'auto' && !reserved.has(m.id));
     for (const id of SERVICE_IDS) {
       if (!crewed(id)) continue;
       const s = this.services[id];
@@ -1814,6 +1825,14 @@ export class Simulation {
 
   /** Clears a person's profile once they have left the scene. */
   forget(visitor: VisitorId): void {
+    this.recipientCare.finish(visitor);
+    this.restoredCareVisitors.delete(visitor);
+    for (const id of SERVICE_IDS) {
+      this.services[id].inService.delete(visitor);
+      const queue = this.services[id].queue;
+      const index = queue.findIndex(w => w.visitor === visitor);
+      if (index >= 0) queue.splice(index, 1);
+    }
     this.profiles.delete(visitor);
     this.supportProfiles.delete(visitor);
   }
@@ -1952,7 +1971,12 @@ export class Simulation {
   arrive(id: ServiceId, visitor: VisitorId): ArrivalResult {
     if (!this.tutorialAllowsService(id)) return 'turnedAway';
     const s = this.services[id];
+    if (s.inService.has(visitor)) return 'admitted';
+    if (s.queue.some(w => w.visitor === visitor)) return 'queued';
     s.metrics.demand++;
+    const card = this.recipientCare.arrive(visitor, id);
+    // Guided first contacts introduce one priority before the full 1–5-state simulation.
+    if (this.tutorial?.active && card.states.every(s => Object.keys(s.completed).length === 0)) card.states = card.states.slice(0, 1);
     if (s.status !== 'open') {
       this.recordUnmet(s, visitor, false);
       return 'turnedAway';
@@ -1993,6 +2017,8 @@ export class Simulation {
       const report = this.goals.end(this.totals.nights, this.totals.helped, this.turnedAwayTotal, this.deaths, this.org.budget, this.totals.helped, this.stakes.runOver !== null);
       this.stakes.nightBegins();
       report.district = { size: this.growth.size, street: this.growth.street };
+      report.care = this.recipientCare.settle(this.totals.nights);
+      this.reputation.award(report.care.points);
       this.totals.nights++;
       this.emit({ type: 'nightReport', report });
     }
@@ -2275,48 +2301,96 @@ export class Simulation {
     }
   }
 
-  private tickService(s: ServiceModel, dt: number): void {
-    for (const [visitor, remaining] of s.inService) {
-      const left = remaining - dt;
-      if (left <= 0) {
-        s.inService.delete(visitor);
-        const c = this.context;
-        // The drug checking service always checks; other services only where the context puts checking.
-        // The place's budget mix scales how often checking happens there (and lets places check that otherwise would not).
-        const checkMix = this.mix.relative(s.id, 'checking', c.checkingAllowed);
-        const checks = s.id === 'drugChecking' || c.checkingSites.includes(s.id) || (checkMix ?? 0) > 0;
-        const night = s.id === 'outreach' && this.camperPath === 'nightlife';
-        if (c.checkingAllowed && checks && this.random() < Math.min(1, ILLUSTRATIVE.checkingShare[s.id] * this.mods.checkingBoost * (checkMix ?? 1) * (night ? CAMPER_PATH_EFFECT.nightlifeChecking : 1))) this.recordCheck(s.id, visitor);
-        // Test strips and reagent kits: legal or not, people can test their own.
-        const kitsMix = this.mix.relative(s.id, 'kits', c.checkingAllowed);
-        if (kitsMix && this.random() < Math.min(1, 0.5 * kitsMix * (night ? CAMPER_PATH_EFFECT.nightlifeKits : 1)) && this.stakes.supplies.use('kits')) this.selfTest(visitor);
-        // Leaflets go out on the street and at the stand while there are any.
-        if (s.id === 'outreach' || s.id === 'footPatrol' || s.id === 'clubHr') this.stakes.supplies.use('leaflets');
-        if (s.id !== 'clubHr' && this.profiles.get(visitor)?.injects) {
-          // Kits cost money; with none in stock, no money, or kits not in this place's mix, the person leaves without them.
-          const kitMix = this.mix.relative(s.id, 'needles', c.checkingAllowed);
-          // A health camper makes its kits go further: only some visits take one from the shelf.
-          const spares = s.id === 'outreach' && this.camperPath === 'health' && this.random() >= CAMPER_PATH_EFFECT.healthKitCost;
-          if (this.mods.kitsOut || (kitMix !== null && this.random() >= kitMix) || !(spares || this.stakes.supplies.use('kits'))) this.unsafeInjecting();
-          else {
-            this.health.sterileKits++;
-            this.neighbourhood.note('kits');
-          }
-        }
-        this.emit({ type: 'served', service: s.id, visitor });
-      } else {
-        s.inService.set(visitor, left);
-      }
+  careEnvironment(): CareEnvironment {
+    return {
+      workers: this.team.members, open: id => this.services[id].status === 'open',
+      equipment: this.org.equipment || this.mix.isSetUp('drugChecking', 'checking'),
+      machine: this.org.equipment || (this.upgrades.drugChecking.level >= 2 && this.mix.isSetUp('drugChecking', 'checking')), checking: this.context.checkingAllowed,
+      has: id => this.stakes.supplies.has(id), use: id => this.stakes.supplies.use(id),
+      timeFactor: id => this.mods.serviceTime[id] * this.mix.factors(id, this.context.checkingAllowed).time,
+      canPerform: action => !(action === 'kit' && this.mods.kitsOut) && ((action !== 'tlc' && action !== 'machine') || this.org.budget >= (this.context.turnaround === 'lab' ? ORG.costs.labCheck : ORG.costs.onsiteCheck)),
+      commit: (visitor, action) => (action !== 'tlc' && action !== 'machine') || this.recordCheck(this.recipientCare.visits.get(visitor)!.site, visitor),
+      completed: (visitor, action) => {
+        if (action === 'strip') this.selfTest(visitor);
+        if (action === 'kit') { if (this.profiles.get(visitor)?.injects) this.health.sterileKits++; this.neighbourhood.note('kits'); }
+      },
+    };
+  }
+
+  /** Restore simulation-owned queues and work, without replaying admission costs or events. */
+  recipientProfiles(): [number, Profile][] {
+    return [...this.recipientCare.visits.keys()].flatMap(id => this.profiles.has(id) ? [[id, { ...this.profiles.get(id)! }] as [number, Profile]] : []);
+  }
+
+  restoreRecipientProfiles(raw: unknown): void {
+    if (!Array.isArray(raw)) return;
+    for (const entry of raw.slice(0, 1000)) {
+      if (!Array.isArray(entry) || !this.recipientCare.visits.has(entry[0])) continue;
+      const p = entry[1];
+      if (p && ['opioid', 'stimulant', 'mdma', 'cocaine', 'cannabis', 'alcohol', 'none'].includes(p.substance) && typeof p.injects === 'boolean') this.profiles.set(entry[0], { substance: p.substance, injects: p.injects });
     }
-    if (s.status === 'open') {
+  }
+
+  restoreRecipientCare(raw: unknown): void {
+    this.recipientCare.restore(raw);
+    this.restoredCareVisitors.clear();
+    for (const id of SERVICE_IDS) { this.services[id].queue.splice(0); this.services[id].inService.clear(); }
+    for (const v of this.recipientCare.visits.values()) {
+      this.restoredCareVisitors.add(v.visitor);
+      this.nextVisitor = Math.max(this.nextVisitor, v.visitor + 1);
+      if (v.phase === 'active') this.services[v.site].inService.set(v.visitor, 0);
+      else if (v.phase === 'queued') this.services[v.site].queue.push({ visitor: v.visitor, waited: v.waited / ILLUSTRATIVE.clockMinutesPerSecond });
+    }
+  }
+
+  private tickService(s: ServiceModel, dt: number): void {
+    for (const v of this.recipientCare.visits.values()) {
+      if (v.site !== s.id || v.phase !== 'transfer' || !this.restoredCareVisitors.has(v.visitor)) continue;
+      v.waited += dt * (this.cycle ? this.clockRate / this.timeScale : 0);
+      if (v.waited >= 60 && v.destination) this.arrive(v.destination, v.visitor);
+    }
+    const env = this.careEnvironment();
+    for (const visitor of this.recipientCare.tick(s.id, dt * (this.cycle ? this.clockRate / this.timeScale : 0), env)) {
+      s.inService.delete(visitor);
+      const visit = this.recipientCare.visits.get(visitor);
+      if (visit?.phase !== 'transfer') {
+        if (this.profiles.get(visitor)?.injects && !visit?.states.some(s => s.completed.kit)) this.unsafeInjecting();
+        this.recipientCare.finish(visitor);
+        this.restoredCareVisitors.delete(visitor);
+      }
+      this.emit({ type: 'served', service: s.id, visitor });
+    }
+    s.queue.sort((a, b) => {
+      const av = this.recipientCare.visits.get(a.visitor), bv = this.recipientCare.visits.get(b.visitor);
+      return (bv ? careUrgency(bv) : 0) - (av ? careUrgency(av) : 0) || b.waited - a.waited;
+    });
+    if (this.cycle && s.status === 'open') {
       while (s.queue.length > 0 && s.inService.size < s.capacity) this.admit(s, s.queue.shift()!.visitor, true);
     }
     for (let i = s.queue.length - 1; i >= 0; i--) {
       const w = s.queue[i];
-      w.waited += dt;
-      if (w.waited > s.params.patienceSeconds * this.mods.patience[s.id]) {
-        s.queue.splice(i, 1);
-        this.recordUnmet(s, w.visitor);
+      w.waited += this.cycle ? dt : 0;
+      const visit = this.recipientCare.visits.get(w.visitor);
+      if (visit) {
+        visit.waited = w.waited * ILLUSTRATIVE.clockMinutesPerSecond;
+        if (!visit.escalated && visit.waited >= patience(visit) * 0.75) {
+          visit.escalated = true;
+          this.org.notice(this.clockMinutes, t('Recipient {n} needs help soon: waiting tolerance is running out.', { n: w.visitor }));
+        }
+      }
+      if (visit ? visit.waited > patience(visit) : w.waited > s.params.patienceSeconds * this.mods.patience[s.id]) {
+        const destination = visit && this.recipientCare.findDestination(visit, env);
+        if (visit && destination) {
+          visit.destination = destination;
+          if (visit.waited < patience(visit) + 10) continue;
+          visit.phase = 'transfer'; visit.waited = 0;
+          s.queue.splice(i, 1);
+          this.emit({ type: 'served', service: s.id, visitor: w.visitor });
+        } else {
+          s.queue.splice(i, 1);
+          this.org.notice(this.clockMinutes, t('No available referral for recipient {n}; they left without further support.', { n: w.visitor }));
+          this.recordUnmet(s, w.visitor);
+        }
       }
     }
   }
@@ -2347,18 +2421,18 @@ export class Simulation {
     if (event && this.random() < CHECKING.changePlans.value * 0.6) this.checking.changedPlans++;
   }
 
-  private recordCheck(service: ServiceId, visitor: VisitorId): void {
+  private recordCheck(service: ServiceId, visitor: VisitorId): boolean {
     const c = this.checking;
-    if (!this.org.spend(this.context.turnaround === 'lab' ? ORG.costs.labCheck : ORG.costs.onsiteCheck)) return;
+    if (!this.org.spend(this.context.turnaround === 'lab' ? ORG.costs.labCheck : ORG.costs.onsiteCheck)) return false;
     c.samples++;
-    if (this.context.turnaround === 'lab' && this.random() >= CHECKING.labCollected.value * this.mods.labCollected) return;
+    if (this.context.turnaround === 'lab' && this.random() >= CHECKING.labCollected.value * this.mods.labCollected) return false;
     c.resultsReceived++;
     // Charged-for checking: the client pays, but results seldom reach the early warning and there is less advice.
     const sold = this.commercialChecking && service === 'drugChecking';
     if (sold) { this.org.budget += HUSTLE.checkFee; this.flow('drugChecking', HUSTLE.checkFee); }
     const substance = this.profiles.get(visitor)?.substance ?? 'none';
     const event = this.events.supplyEventFor(substance);
-    if (!event && this.random() >= CHECKING.unexpected.value) return;
+    if (!event && this.random() >= CHECKING.unexpected.value) return true;
     c.unexpected++;
     const warns = !sold || this.random() < HUSTLE.commercialWarning;
     if (warns && event && event.detectedAt === null) event.detectedAt = this.clockMinutes;
@@ -2371,6 +2445,7 @@ export class Simulation {
       this.emit({ type: 'alert', service, word: event ? EVENTS[event.id].boardWord : 'ALERT' });
     }
     if (this.random() < CHECKING.changePlans.value * (sold ? HUSTLE.commercialAdvice : 1)) c.changedPlans++;
+    return true;
   }
 
   private admit(s: ServiceModel, visitor: VisitorId, notify: boolean): void {
@@ -2390,11 +2465,15 @@ export class Simulation {
     }
     // Someone who needs a particular skill is quicker with the right worker, much slower without.
     const match = this.stakes.admitted(s.id, this.crisis, this.supportOf(visitor));
-    s.inService.set(visitor, range(this.random, s.params.serviceSeconds) * this.mods.serviceTime[s.id] * mix.time * match);
+    this.recipientCare.ensure(visitor, s.id).timeFactor = match;
+    this.recipientCare.activate(visitor);
+    s.inService.set(visitor, 0);
     if (notify) this.emit({ type: 'admitted', service: s.id, visitor });
   }
 
   private recordUnmet(s: ServiceModel, visitor: VisitorId, notify = true, reachedDoor = true): void {
+    this.recipientCare.ensure(visitor, s.id);
+    this.recipientCare.finish(visitor);
     s.metrics.unmetNeed++;
     if (reachedDoor) {
       this.unmetLog.push(this.org.now);

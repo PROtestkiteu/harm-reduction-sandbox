@@ -1,4 +1,7 @@
+import { RecipientCarePanel, type RecipientCareView } from './recipientCare';
 import { PersonSupportView, type StaffingAdvice } from './personSupport';
+import './clockControls.css';
+import './mapFirst.css';
 import { cameraArea } from './cameraArea';
 import type { TutorialCapabilities } from '../game/tutorial';
 import './tutorialGuide.css';
@@ -24,6 +27,7 @@ import { METRIC_KEYS, MetricTrend, sparkPoints, TREND_BUCKET_MINUTES, TREND_BUCK
 import { LOCALE, plural, t } from '../i18n';
 
 export interface HudCallbacks {
+  onPause(): void;
   onSpeed(speed: number): void;
   onService(id: ServiceId, on: boolean): void;
   /** A location label was activated; `null` closes the selection. */
@@ -101,6 +105,7 @@ export interface PlaceLevers {
 }
 
 export interface LocationSnapshot {
+  recipientCare?: RecipientCareView;
   name: string;
   service: string;
   status: ServiceStatus;
@@ -260,6 +265,7 @@ export class Hud {
   private readonly said: HTMLElement;
   private readonly aside: HTMLElement;
   private readonly locationView: HTMLElement;
+  private readonly recipientCarePanel = new RecipientCarePanel();
   private readonly buildingView: HTMLElement;
   private readonly buildingChips: HTMLElement;
   private readonly facts: HTMLElement;
@@ -273,8 +279,11 @@ export class Hud {
   private readonly personNote: HTMLElement;
   private readonly profileView: HTMLElement;
   private readonly personSupportView: PersonSupportView;
+  private readonly personTeamOpt: HTMLElement;
+  readonly servicesToggle = document.createElement('button');
   private readonly selectionWindow: HTMLElement;
   private folded = false;
+  private tutorialReplyCount = 0;
   private headerBottom = 0;
   /** Building work under way: a slim strip at the foot of the panel (no bar to press; pausing is on the speed toggle). */
   private readonly works: HTMLElement;
@@ -282,6 +291,9 @@ export class Hud {
   /** One row per thing under way: text and a bar each, reused as the list changes. */
   private readonly workRows: { root: HTMLElement; text: HTMLElement; fill: HTMLElement }[] = [];
   private readonly speedBtn: HTMLButtonElement;
+  private readonly pauseBtn: HTMLButtonElement;
+  private readonly clockFull = el('span', 'clock-full');
+  private readonly clockShort = el('span', 'clock-short');
   private readonly money: HTMLElement;
   private readonly moneyButton: HTMLButtonElement;
   /** City hall favours held, beside the money: a small icon and the count. */
@@ -352,31 +364,29 @@ export class Hud {
 
   constructor(root: HTMLElement, cb: HudCallbacks) {
     this.root = root;
+    this.root.classList.add('map-first');
     this.renameAction = () => { if (this.canRename()) this.startRename(cb); };
     for (const id of LOCATION_IDS) this.trends[id] = new MetricTrend();
 
     this.header = el('header', 'hud-header');
-    // "How it works" lives in the Settings menu.
-    const subtitle = el('p', 'subtitle', t('Help people stay alive without going bankrupt.'));
-    // The title opens the settings, like the Settings link under it.
-    const titleBtn = button('hud-title', t('Harm reduction project'));
-    titleBtn.dataset.iconHint = t('Change the night, the street and the services');
-    titleBtn.addEventListener('click', () => cb.onTitle());
-    const h1 = el('h1');
-    h1.append(titleBtn);
-    this.header.append(h1, subtitle);
+    this.header.setAttribute('aria-label', t('Details and controls'));
 
     this.column = el('aside', 'column');
     this.column.setAttribute('aria-label', t('Details and controls'));
     const top = el('div', 'column-top');
     this.clock = el('span', 'clock', '19:40');
+    this.clock.setAttribute('role', 'timer');
     this.clock.setAttribute('aria-label', t('Scene clock'));
-    // One toggle beside the clock steps through the speeds.
-    // One toggle steps 1x, 4x, 16x, then pause (0), then 1x again; Space pauses too.
+    this.clock.replaceChildren(this.clockFull, this.clockShort);
+    this.clockShort.setAttribute('aria-hidden', 'true');
+    this.pauseBtn = button('time-pause');
+    this.pauseBtn.addEventListener('click', () => cb.onPause());
     this.speedBtn = button('speed-toggle', '1x');
-    this.speedBtn.addEventListener('click', () => cb.onSpeed(this.paused ? SPEEDS[0] : this.speed === SPEEDS[SPEEDS.length - 1] ? 0 : SPEEDS[SPEEDS.indexOf(this.speed as (typeof SPEEDS)[number]) + 1]));
+    this.speedBtn.addEventListener('click', () => cb.onSpeed(SPEEDS[(SPEEDS.indexOf(this.speed as (typeof SPEEDS)[number]) + 1) % SPEEDS.length]));
+    const controls = el('div', 'clock-controls');
+    controls.append(this.pauseBtn, this.speedBtn);
     const time = el('div', 'column-time');
-    time.append(this.clock, this.speedBtn);
+    time.append(this.clock, controls);
     // Money on hand, always in view: everything priced is greyed out when it runs short.
     this.money = el('span', 'money');
     this.money.setAttribute('role', 'status');
@@ -446,13 +456,14 @@ export class Hud {
     this.locationView.append(
       this.chips,
       this.facts,
+      this.recipientCarePanel.root,
       this.investment,
       this.metricsLabel,
       metrics,
       el('p', 'note metrics-note', t('Lines: last {min} min. Illustrative counts.', { min: TREND_BUCKET_MINUTES * TREND_BUCKETS })),
     );
     this.locationView.querySelector<HTMLElement>('.metrics-note')!.dataset.tutorialFeature = 'maintenance';
-    this.personSupportView = new PersonSupportView(() => cb.onPersonTeam());
+    this.personSupportView = new PersonSupportView();
     this.profileView = el('div', 'profile');
     this.personNote = el('p', 'note', t('People here are archetypes drawn from research on people who use drugs. Each figure is illustrative, not a real person.'));
     this.buildingView = el('dl', 'facts building-facts');
@@ -484,6 +495,10 @@ export class Hud {
     this.personCamperBtn.append(this.personCamperLong, camperShort);
     this.personCamperBtn.addEventListener('click', () => cb.onPersonCamper());
     this.personCamperOpt = opt(this.personCamperBtn);
+    const team = button('opt', t('Compare team skills'));
+    team.addEventListener('click', () => cb.onPersonTeam());
+    this.personTeamOpt = opt(team); this.personTeamOpt.hidden = true;
+    this.personTeamOpt.dataset.tutorialFeature = 'staff';
     this.personCamperOpt.hidden = true;
     // Staffing actions fold under one reply, so the list stays short.
     this.staffGroupBtn = button('opt group');
@@ -744,7 +759,10 @@ export class Hud {
     const selection = this.selectionWindow = el('div', 'window');
     selection.id = 'selection-details';
     selection.append(this.log, this.options, this.works);
-    this.column.append(top, this.stressRow, this.unmet, outliner, selection);
+    this.servicesToggle.type = 'button'; this.servicesToggle.className = 'service-module-toggle';
+    this.servicesToggle.textContent = t('Services'); this.servicesToggle.setAttribute('aria-expanded', 'false'); this.servicesToggle.setAttribute('aria-controls', 'selection-details');
+    this.servicesToggle.addEventListener('click', () => { this.setServicesOpen(!this.servicesOpen); if (this.servicesOpen) this.setFolded(false); });
+    this.column.append(top, this.stressRow, this.unmet, this.servicesToggle, outliner, selection);
     // Phones and wide screens: the clock, money and meters live in a block at the top of the screen
     // (wide screens add the crisis line to it); the column keeps the rest in both phone orientations.
     this.topBar = el('div', 'top-bar');
@@ -802,8 +820,6 @@ export class Hud {
     this.eventsSlot.dataset.tutorialFeature = 'organisation';
     moneyBtn.dataset.tutorialFeature = 'budget';
     this.guideOpt.dataset.tutorialFeature = 'fullUi';
-    this.facts.dataset.tutorialFeature = 'maintenance';
-    this.chips.dataset.tutorialFeature = 'maintenance';
     for (const id of SERVICE_IDS) this.switchOpts[id].dataset.tutorialService = id;
     root.append(labelLayer, this.header, this.topBar, this.column);
     // Label widths depend on the web fonts, which arrive after first layout.
@@ -897,15 +913,19 @@ export class Hud {
   setSpeed(speed: number): void {
     this.speed = speed;
     const p = this.paused;
-    // Paused, the button draws two bars itself (style.css), centred in it whatever the font; the label says it.
-    setText(this.speedBtn, p ? '' : `${speed}x`);
-    const last = speed === SPEEDS[SPEEDS.length - 1];
-    setAttr(this.speedBtn, 'aria-label', p
-      ? t('Paused. Press to play at 1x (Space)')
-      : last ? t('Speed {speed}x. Press to pause (Space)', { speed }) : t('Speed {speed}x. Switch to {next}x', { speed, next: SPEEDS[SPEEDS.indexOf(speed as (typeof SPEEDS)[number]) + 1] }));
-    setAttr(this.speedBtn, 'aria-pressed', String(p));
-    this.speedBtn.dataset.fast = String(!p && speed > 1);
-    if (this.speedBtn.dataset.paused !== String(p)) this.speedBtn.dataset.paused = String(p);
+    setText(this.speedBtn, `${speed}x`);
+    const speedHint = t('Speed {speed}x. Switch to {next}x', { speed, next: SPEEDS[(SPEEDS.indexOf(speed as (typeof SPEEDS)[number]) + 1) % SPEEDS.length] });
+    setAttr(this.speedBtn, 'aria-label', speedHint);
+    this.speedBtn.dataset.iconHint = speedHint;
+    this.speedBtn.dataset.fast = String(speed > 1);
+    const pauseHint = p ? t('Resume (Space)') : t('Pause (Space)');
+    setAttr(this.pauseBtn, 'aria-label', pauseHint);
+    this.pauseBtn.dataset.iconHint = pauseHint;
+    setAttr(this.pauseBtn, 'aria-pressed', String(p));
+    if (this.pauseBtn.dataset.paused !== String(p)) {
+      this.pauseBtn.dataset.paused = String(p);
+      this.pauseBtn.innerHTML = `<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">${p ? '<path d="m5 3 8 5-8 5z" fill="currentColor"/>' : '<path d="M5 3v10M11 3v10" stroke="currentColor" stroke-width="3"/>'}</svg>`;
+    }
   }
 
   /** Offers the overview option only while the camera is away from it. */
@@ -953,9 +973,12 @@ export class Hud {
     else this.showGuide();
   }
 
+  get urgentMessage(): string { return this.guide?.step.urgent ? this.guide.step.said : ''; }
+
   private showGuide(): void {
+    if (this.tutorialReplyCount > 0 && !this.servicesOpen) { setText(this.speaker, t('Actions')); setText(this.said, ''); return; }
     const g = this.guide;
-    if (!g) return;
+    if (!g) { setText(this.speaker, t('Services')); return; }
     const tut = g.step.tutorial;
     setText(this.speaker, tut ? t('{who}: first steps, {n} of {all}', { who: g.who, n: tut.n, all: tut.of }) : g.who);
     setText(this.said, g.step.said);
@@ -1072,7 +1095,9 @@ export class Hud {
     if (this.said.dataset.alert) delete this.said.dataset.alert;
     // The camera always follows a selected person; only say so when they are out of sight.
     const camera = card && following && !card.inView ? ' ' + t('Out of view inside; the camera waits.') : '';
-    setText(this.aside, card ? `${card.subtitle}.${camera}` : t('The camera returns to the overview.'));
+    const identity = card?.subtitle ? `${card.subtitle}.` : '';
+    setText(this.aside, card ? `${identity}${camera}` : t('The camera returns to the overview.'));
+    this.aside.hidden = !this.aside.textContent?.trim();
     this.personPlace = card ? place : null;
     if (place) {
       const text = t('Go to {place}.', { place });
@@ -1081,7 +1106,9 @@ export class Hud {
       setAttr(this.focusBtn, 'aria-label', text);
     }
     this.focusOpt.hidden = !card || !place;
-    this.personSupportView.set(card?.support, staffing, card?.worker);
+    this.personNote.hidden = !card?.profile;
+    this.personSupportView.set(card?.support, staffing, card?.worker, card?.mood);
+    this.personTeamOpt.hidden = !card || !this.personSupportView.canCompare;
     const pr = card?.profile;
     const key = pr?.name ?? '';
     if (this.profileView.dataset.key !== key) {
@@ -1213,12 +1240,18 @@ export class Hud {
 
   /** Tutorial actions use the same numbering and keyboard handling as ordinary replies. */
   setTutorialActions(buttons: HTMLButtonElement[]): void {
+    this.tutorialReplyCount = buttons.length;
     for (const row of this.options.querySelectorAll(':scope > .tutorial-reply')) row.remove();
     for (const button of buttons) {
       const row = el('li', 'tutorial-reply');
       row.append(button);
       this.options.append(row);
     }
+    this.render();
+  }
+
+  private syncWindowVisibility(): void {
+    this.selectionWindow.hidden = this.mode === null && !this.servicesOpen && this.tutorialReplyCount === 0;
   }
 
   private cameraInsets: Insets | null = null;
@@ -1229,7 +1262,7 @@ export class Hud {
   insets(): Insets {
     if (this.cameraInsets) return this.cameraInsets;
     const viewport = this.root.getBoundingClientRect();
-    const panels = [...this.root.querySelectorAll<HTMLElement>('.hud-header, .top-bar, .column, .tutorial-guide:not([hidden])')]
+    const panels = [...this.root.querySelectorAll<HTMLElement>('.hud-header, .top-bar, .column, .tutorial-guide:not([hidden]), .panels-toggle, .map-layers-direct, .map-layer-rail')]
       .filter(panel => panel.getClientRects().length > 0)
       .map(panel => panel.getBoundingClientRect());
     const canvas = document.getElementById('scene')!;
@@ -1240,7 +1273,10 @@ export class Hud {
   update(s: HudSnapshot): void {
     if (!this.lastSnapshot) requestAnimationFrame(() => this.root.classList.add('hud-ready'));
     this.lastSnapshot = s;
-    setText(this.clock, s.clock);
+    setText(this.clockFull, s.clock);
+    setText(this.clockShort, s.clock.match(/\d{1,2}:\d{2}/)?.[0] ?? s.clock);
+    if (this.clock.dataset.iconHint !== s.clock) this.clock.dataset.iconHint = s.clock;
+    setAttr(this.clock, 'aria-label', s.clock);
     if (s.money) {
       const b = Math.round(s.money.budget);
       const rate = Math.round(s.money.perHour);
@@ -1298,6 +1334,7 @@ export class Hud {
     const aidHidden = !aid || this.servicesOpen || this.mode !== null;
     if (this.aidOpt.hidden !== aidHidden) this.aidOpt.hidden = aidHidden;
     const on = SERVICE_IDS.filter((id) => s.enabled[id]).length;
+    setText(this.servicesToggle, t('Services ({on}/{all}).', { on, all: SERVICE_IDS.length }));
     setText(this.reviewName, t('Services ({on}/{all}).', { on, all: SERVICE_IDS.length }));
     setText(this.reviewShort, t('Services ({on}/{all}).', { on, all: SERVICE_IDS.length }));
     for (const id of SERVICE_IDS) {
@@ -1352,7 +1389,7 @@ export class Hud {
     const venueMessage = loc.venue?.message ?? statusText(loc);
     setText(this.said, this.mode.id === 'club'
       ? t('Venue: {status}. {service}: {state}.', { status: venueMessage, service: loc.service, state: statusText(loc) })
-      : loc.venue?.indicator ? venueMessage : (loc.status === 'open' || loc.closed?.ownChoice) && !loc.blockedByLaw ? '' : `${statusText(loc)}.`);
+      : loc.venue?.indicator ? venueMessage : `${statusText(loc)}.`);
     const law = String(!!loc.blockedByLaw);
     if (this.said.dataset.alert !== law) this.said.dataset.alert = law;
     if (this.column.dataset.status !== loc.status) this.column.dataset.status = loc.status;
@@ -1509,6 +1546,7 @@ export class Hud {
   }
 
   private render(): void {
+    this.syncWindowVisibility();
     queueMicrotask(() => this.syncDrill());
     const m = this.mode;
     // A new selection opens its own module; overview modules keep their chosen state.
@@ -1517,7 +1555,7 @@ export class Hud {
     if (m?.kind !== 'person') { delete this.column.dataset.role; delete this.column.dataset.mood; this.column.style.removeProperty('--mood'); }
     if (m?.kind !== 'location') delete this.column.dataset.status;
     this.idle.hidden = m !== null;
-    (this.speaker.parentElement as HTMLElement).hidden = m === null && !this.guide;
+    (this.speaker.parentElement as HTMLElement).hidden = false;
     if (m === null) this.showGuide();
     else delete this.root.dataset.guide;
     this.aside.hidden = m?.kind !== 'person';
@@ -1531,6 +1569,7 @@ export class Hud {
     const open = this.servicesOpen;
     this.focusOpt.hidden = m === null || open || m.kind !== 'person' || !this.personPlace;
     this.personCamperOpt.hidden = m?.kind !== 'person' || open || !this.personCamper;
+    this.personTeamOpt.hidden = m?.kind !== 'person' || open || !this.personSupportView.canCompare;
     if (m?.kind !== 'building') for (const o of this.buildingOpts) o.li.hidden = true;
     if (m?.kind !== 'location') {
       for (const action of ACTIONS) this.actionOpts[action].li.hidden = true;
@@ -1545,11 +1584,14 @@ export class Hud {
     // The services review is for when nothing is selected. The guide's reply stands in for the
     // standing one it would repeat (My organisation, Services).
     const act = this.guide?.step.act?.kind;
-    this.reviewOpt.hidden = open || m !== null || act === 'services';
+    this.reviewOpt.hidden = true;
     this.orgOpt.hidden = open || m !== null || act === 'org';
     this.guideOpt.hidden = open || m !== null || !this.guide?.step.act;
     this.aidOpt.hidden = open || m !== null || !this.lastSnapshot?.aid;
     this.backOpt.hidden = !open;
+    if (m === null && this.tutorialReplyCount > 0 && !open) {
+      this.idle.hidden = true; this.reviewOpt.hidden = true; this.orgOpt.hidden = true; this.guideOpt.hidden = true; this.aidOpt.hidden = true;
+    }
     const own = m?.kind === 'location' ? serviceAt(m.id) : null;
     for (const id of SERVICE_IDS) {
       this.switchOpts[id].hidden = !(open || id === own);
@@ -1560,15 +1602,18 @@ export class Hud {
   }
 
   /** Opens or closes the services list; focus moves into or back out of it. */
-  private setServicesOpen(open: boolean): void {
+  setServicesOpen(open: boolean): void {
+    if (this.servicesOpen === open) return;
     this.servicesOpen = open;
+    setAttr(this.servicesToggle, 'aria-expanded', String(open));
     this.render();
     const first = SERVICE_IDS.find((id) => this.switchOpts[id].dataset.tutorialLocked !== 'true') ?? SERVICE_IDS[0];
-    const target = open ? this.switches[first] : this.reviewOpt.querySelector('button');
+    const target = open ? this.switches[first] : this.servicesToggle;
     target?.focus({ preventScroll: true });
   }
 
   private renderLocation(loc: LocationSnapshot, trend: MetricTrend): void {
+    this.recipientCarePanel.update(loc.recipientCare);
     const chipKeys = loc.chips.map((c) => c.icon).join('|');
     if (chipKeys !== this.chipKeys) {
       this.chipKeys = chipKeys;

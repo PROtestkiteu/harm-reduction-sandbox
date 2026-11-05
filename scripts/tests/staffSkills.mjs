@@ -137,7 +137,7 @@ const admission = (skill) => {
 const skilledVisit = admission(20), noviceVisit = admission(0);
 assert.equal(supportFit(skilledVisit.team.members[0], skilledVisit.supportOf(402)), 1);
 assert.equal(supportFit(noviceVisit.team.members[0], noviceVisit.supportOf(402)), 0);
-assert(Math.abs(skilledVisit.services.dropIn.inService.get(402) / noviceVisit.services.dropIn.inService.get(402) - .85 / 1.35) < 1e-12);
+assert(Math.abs(skilledVisit.recipientCare.visits.get(402).timeFactor / noviceVisit.recipientCare.visits.get(402).timeFactor - .85 / 1.35) < 1e-12);
 assert.equal(skilledVisit.stakes.matchedTonight, 1); assert.equal(noviceVisit.stakes.matchedTonight, 0);
 assert.equal(noviceVisit.stakes.admitted('dropIn',0), 1); // Anonymous/legacy early visits keep their grace period.
 

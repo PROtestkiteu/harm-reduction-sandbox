@@ -1,4 +1,4 @@
-# Harm reduction sandbox (https://github.com/PROtestkiteu/harm-reduction-sandbox)
+# Harm Reduction Project (https://github.com/PROtestkiteu/harm-reduction-sandbox)
 # Static files only. Basic firewall rules, security headers and caching.
 
 Options -Indexes -MultiViews

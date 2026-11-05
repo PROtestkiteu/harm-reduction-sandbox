@@ -1,0 +1,10 @@
+<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:16px;background:#222;color:#eee;font:16px system-ui;--muted:#888;--reply:#d8b138}main{max-width:400px}@media(prefers-color-scheme:light){body{background:#fafafa;color:#222;--reply:#775600}}</style></head><body><main></main><script type="module">
+window.__careStage='catalogue';const {loadCatalogue}=await import('/src/i18n/index.ts');await loadCatalogue();
+window.__careStage='panel';const {RecipientCarePanel}=await import('/src/ui/recipientCare.ts');
+window.__careStage='domain';const {RecipientCare}=await import('/src/sim/recipientCare.ts');
+const care=new RecipientCare(), v=care.ensure(1,'clinic',['jaw','housing']);care.activate(1);
+v.states[0].completed={talk:10,leaflet:5};v.task={state:0,action:'talk',worker:1,points:30,remaining:7};
+const panel=new RecipientCarePanel();document.querySelector('main').append(panel.root);
+const view={visits:[v],workers:[{id:1,name:'Pracownik A'},{id:2,name:'Pracownik B'}],destinations:[],stock:{leaflets:true,kits:true},equipment:true,machine:true,assign:(id,worker,interrupt)=>care.assign(id,worker,interrupt),refer:()=>{},canRefer:()=>false};
+panel.root.open=true;panel.update(view);window.__careFixture={care,panel,view,v};
+</script></body></html>

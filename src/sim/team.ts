@@ -14,7 +14,7 @@ import { SKILL_IDS, SKILL_MAX, SKILL_NEUTRAL, SKILL_CAPACITY_PER_POINT, SKILL_PR
  * fit first. ILLUSTRATIVE effects throughout.
  */
 
-export type TraitId = 'peer' | 'nurse' | 'chemist' | 'social' | 'languages' | 'calm' | 'nightOwl' | 'new';
+export type TraitId = 'peer' | 'nurse' | 'chemist' | 'social' | 'languages' | 'calm' | 'nightOwl' | 'new' | 'psychologist';
 
 export interface Trait {
   label: string;
@@ -31,6 +31,7 @@ export const TRAITS: Record<TraitId, Trait> = {
   chemist: { label: t('Chemist'), detail: t('Runs the analysis and explains results. Less at home on the street'), bonus: { drugChecking: 0.5, outreach: -0.15, footPatrol: -0.15, clubHr: -0.1 } },
   social: { label: t('Social worker'), detail: t('Housing, benefits and referrals. Less used to the club floor'), bonus: { shelter: 0.35, dropIn: 0.2, clubHr: -0.15 } },
   languages: { label: t('Several languages'), detail: t('Reaches people others cannot'), bonus: {}, everywhere: 0.12 },
+  psychologist: { label: t('Psychologist'), detail: t('Qualified psychological support; distinct from calm under pressure'), bonus: { dropIn: 0.3, outreach: 0.1 } },
   calm: { label: t('Calm under pressure'), detail: t('Good with crowds and crises'), bonus: { clubHr: 0.25, outreach: 0.15 } },
   nightOwl: { label: t('Night owl'), detail: t('Tires slower after midnight'), bonus: {} },
   new: { label: t('New to the work'), detail: t('Still learning; a little slower'), bonus: {}, everywhere: -0.15 },
@@ -79,7 +80,7 @@ const NAMES = [
   'Samir', 'Ida', 'Malik', 'Greta', 'Arash', 'Vera', 'Tomasz', 'Ayla', 'Luca', 'Johanna', 'Kwame', 'Nadia',
 ] as const;
 
-const PAID_TRAITS: readonly TraitId[] = ['nurse', 'nurse', 'social', 'social', 'chemist', 'peer', 'languages', 'calm', 'nightOwl'];
+const PAID_TRAITS: readonly TraitId[] = ['psychologist', 'nurse', 'nurse', 'social', 'social', 'chemist', 'peer', 'languages', 'calm', 'nightOwl'];
 const VOLUNTEER_TRAITS: readonly TraitId[] = ['peer', 'peer', 'peer', 'new', 'new', 'languages', 'calm', 'nightOwl', 'social'];
 
 export class Team {

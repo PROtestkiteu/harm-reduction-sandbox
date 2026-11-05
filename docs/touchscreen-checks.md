@@ -3,7 +3,7 @@
 Interaction contract:
 
 - The portrait toggles character details. A ready portrait replaces the redundant character disclosure bar. While an image is unavailable, the text disclosure remains usable; an empty portrait frame is never shown.
-- Existing module headings fold content in place. Nested disclosure chevrons precede labels; select controls retain trailing arrows. Folding a team section does not dismiss its sheet. Its source control, a tap outside, or Escape dismisses the sheet without another button.
+- Existing module headings fold content in place. Nested disclosure chevrons precede labels; select controls retain trailing arrows. Folding a team section does not dismiss its sheet. Floating sheets and Settings have one compact X for direct dismissal, without a separate header row. Source toggles, outside taps and Escape remain available. No dismissal requires a numbered Back action. The idle action panel retains a heading disclosure so it can fold independently.
 - The tutorial objective has one compact fold toggle. Tutorial actions live in the ordinary numbered action list, including keyboard shortcuts. Folding the objective preserves those actions and its chosen state through progress updates.
 - Informational indicators have hover/tap hints dismissed by the next tap anywhere. Actionable indicators preserve their tap action and expose hints on hover.
 - Device color preference controls UI colors and browser theme colors. Game time changes scene lighting only.
@@ -44,3 +44,7 @@ In each mode, pan and pinch with details folded and expanded; repeatedly tap the
 - User accepted the native top blur and requested 15 px more portrait UI clearance. Apply that gap at the shared HUD boundary, subtracting it from HUD height so the bottom stays fixed. Physical live measurement: HUD top=74, bottom=818, header top=88; panel y=693..808 and portrait y=582..683 stay unchanged. The user confirmed landscape close pinch zoom works; native blur remained after the deprecated meta key was removed and the app cold-launched.
 
 Desktop panel checks: `node scripts/bots/desktopPanels.mjs [dev-url] [artifact-directory]` verifies the shared organisation/team sheet in the full viewport, separate Settings placement, measured header clearance, open-panel scroll bounds and focus return. Compact layouts keep their established sheet placement.
+
+Tutorial team review: opening the team panel records review immediately and displays confirmation. The next tutorial reply becomes Open outreach controls. The player chooses Open up. and lets five visits finish with the clock running; manual assignment changes are optional. The browser tutorial regression verifies this path through UI controls, direct X dismissal, focus return and progression to the drop-in lesson.
+
+Clock controls: separate Pause/Resume and 1× → 4× → 16× → 1× speed controls share the existing clock row. Pausing preserves rate; changing rate while paused keeps the game paused. Compact bars show the time with the full date in its hint and accessible name. Run `node scripts/bots/clockControls.mjs` for functional checks and six viewport comparisons against the single-control row height.

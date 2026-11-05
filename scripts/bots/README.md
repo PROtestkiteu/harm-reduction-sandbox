@@ -45,3 +45,5 @@ Keep the existing manifest fullscreen-to-standalone fallback. Display modes vary
 [the browser vendor's PWA guidance](https://web.dev/learn/pwa/app-design/). The oldest documented Safari
 baseline already supports dynamic viewport units, `:has()` and `:focus-visible`; see
 [WebKit's Safari 15.4 release notes](https://webkit.org/blog/12445/new-webkit-features-in-safari-15-4/).
+
+`node scripts/bots/releaseCopy.mjs [dev-url]` checks the Latin America title in all four languages, the retained Colombian flag, the existing scenario ID/failure rules and removal of legacy mode copy.

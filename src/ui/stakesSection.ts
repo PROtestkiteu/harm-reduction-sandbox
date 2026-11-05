@@ -76,7 +76,7 @@ export class StakesSection {
   private readonly unlockLine: HTMLElement;
   private readonly moraleLine: HTMLElement;
   private readonly needsLine: HTMLElement;
-  private readonly hardcoreLine: HTMLElement;
+  private readonly projectEndLine: HTMLElement;
   private readonly patrolBox: HTMLElement;
   private readonly patrolLine: HTMLElement;
   /** The short state beside a fold's title. */
@@ -153,9 +153,9 @@ export class StakesSection {
     this.moraleNote = moraleFold.note;
     this.moraleLine = el('p', 'org-summary');
     this.needsLine = el('p', 'factor-summary');
-    this.hardcoreLine = el('p', 'factor-summary', t('Hardcore: the game ends if the whole team quits or your first places stay shut {hours} h.', { hours: Math.round(ORG.foldAfterShut / 60) }));
-    this.hardcoreLine.hidden = true;
-    // How a Hardcore project can fold stays in the open, under the morale fold, never behind it.
+    this.projectEndLine = el('p', 'factor-summary', t('The project ends if the whole team quits or your first places stay shut {hours} h.', { hours: Math.round(ORG.foldAfterShut / 60) }));
+    this.projectEndLine.hidden = true;
+    // How a scenario project can fold stays in the open, under the morale fold, never behind it.
     morale.append(this.moraleLine, this.needsLine);
 
     const supplies = el('details', 'sandbox-sub stakes-supplies');
@@ -186,7 +186,7 @@ export class StakesSection {
       this.rows[id] = { stock, order, standing: box };
     }
     supplies.append(el('p', 'factor-summary', t('Bought ahead in batches and used up per visit. An empty shelf means people go without.')), list);
-    this.root.append(this.stormBox, this.patrolBox, standing, morale, this.hardcoreLine, supplies);
+    this.root.append(this.stormBox, this.patrolBox, standing, morale, this.projectEndLine, supplies);
   }
 
   update(v: StakesView): void {
@@ -245,7 +245,7 @@ export class StakesSection {
     if (this.standingBox.hidden === showStanding) this.standingBox.hidden = !showStanding;
     if (this.suppliesBox.hidden === showSupplies) this.suppliesBox.hidden = !showSupplies;
     if (this.needsLine.hidden === showNeeds) this.needsLine.hidden = !showNeeds;
-    if (this.hardcoreLine.hidden === stakes.hardcore) this.hardcoreLine.hidden = !stakes.hardcore;
+    if (this.projectEndLine.hidden === stakes.hardcore) this.projectEndLine.hidden = !stakes.hardcore;
     const st = stakes.standing;
     const next = st.toNext;
     setText(this.standingLine, next === null

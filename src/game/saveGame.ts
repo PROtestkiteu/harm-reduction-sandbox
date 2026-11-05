@@ -1,3 +1,4 @@
+import type { CareSave } from '../sim/recipientCare';
 import { Reputation } from '../sim/reputation';
 import type { ReputationSave } from '../config/reputation';
 import { LAUNCH_SEED } from '../config/launch';
@@ -49,7 +50,7 @@ export interface SaveData {
   /** The services ever run this game (older saves: those switched on). */
   ran?: ServiceId[];
   /** Morale, hours at each place and a specialism are newer: older saves load at the start values. */
-  team: { name: string; paid: boolean; traits: TraitId[]; energy: number; assignment: Assignment; worn?: true; morale?: number; hours?: Partial<Record<ServiceId, number>>; special?: ServiceId; skills?: SkillValues }[];
+  team: { id?: number; name: string; paid: boolean; traits: TraitId[]; energy: number; assignment: Assignment; worn?: true; morale?: number; hours?: Partial<Record<ServiceId, number>>; special?: ServiceId; skills?: SkillValues }[];
   /** Each service's stage (see SERVICE_STAGES) and progress; older saves wrote `level` on a scale one lower. */
   upgrades: Record<string, { stage: number; progress: number }>;
   units: UnitState[];
@@ -81,6 +82,8 @@ const CRIMES: readonly CrimeType[] = ['bikeTheft', 'carBreakIn', 'pickpocket', '
 export interface SaveMore {
   /** `org.now`: minutes since the start, never wrapping. */
   now: number;
+  recipientCare?: CareSave;
+  recipientProfiles?: ReturnType<Simulation['recipientProfiles']>;
   /** Funder trust and the last day's helped per hour (sim/funders.ts); checked there on restore. */
   funders?: { trust?: number; hours?: number[]; covered?: number };
   /** The district's size and street scene (sim/growth.ts); checked there on restore. Older saves start at the first evening's. */
@@ -201,6 +204,8 @@ function captureMore(sim: Simulation): SaveMore {
   const s = sim.cityStress;
   return {
     now: r3(now),
+    recipientCare: sim.recipientCare.snapshot(),
+    recipientProfiles: sim.recipientProfiles(),
     funders: sim.funders.snapshot(),
     growth: sim.growth.snapshot(),
     petty: sim.petty.snapshot(),
@@ -307,6 +312,8 @@ function parseMore(raw: unknown): SaveMore | undefined {
     weights[id] = out;
   }
   return {
+    recipientCare: m.recipientCare as CareSave | undefined,
+    recipientProfiles: m.recipientProfiles as SaveMore['recipientProfiles'],
     funders: obj(m.funders) as SaveMore['funders'],
     growth: obj(m.growth) as SaveMore['growth'],
     petty: obj(m.petty) as SaveMore['petty'],
@@ -392,6 +399,8 @@ function applyMore(sim: Simulation, m: SaveMore): void {
   if (m.visitors) sim.visitors.restore(m.visitors);
   sim.daemon.restore(m.daemon);
   sim.stakes.restore(m.stakes);
+  sim.restoreRecipientCare(m.recipientCare);
+  sim.restoreRecipientProfiles(m.recipientProfiles);
   sim.patrol.restore(m.patrol);
   sim.restoreGoals(m.goals);
   sim.turnedAwayTotal = m.turnedAway ?? 0;
@@ -473,13 +482,13 @@ export function captureSave(sim: Simulation, name: string, run?: SaveData['run']
     worldSeed: LAUNCH_SEED,
     tutorial: sim.tutorial?.snapshot(),
     name,
-    clock: Math.round(sim.clockMinutes),
+    clock: sim.clockMinutes,
     day: sim.calendar.dayOfYear,
     year: sim.calendar.year,
     org: { budget: Math.round(o.budget), paid: o.paid, volunteers: o.volunteers, grantIncome: o.grantIncome, closedDown: [...o.closedDown] },
     on: SERVICE_IDS.filter((id) => sim.services[id].switchedOn),
     ran: SERVICE_IDS.filter((id) => sim.services[id].everRun),
-    team: sim.team.members.map((m) => ({ name: m.name, paid: m.paid, traits: [...m.traits], skills: { ...m.skills }, energy: Math.round(m.energy * 100) / 100, assignment: m.assignment, ...(m.worn ? { worn: true as const } : {}),
+    team: sim.team.members.map((m) => ({ id: m.id, name: m.name, paid: m.paid, traits: [...m.traits], skills: { ...m.skills }, energy: Math.round(m.energy * 100) / 100, assignment: m.assignment, ...(m.worn ? { worn: true as const } : {}),
       morale: Math.round(m.morale * 1000) / 1000, hours: Object.fromEntries(Object.entries(m.hours).map(([k, h]) => [k, Math.round((h ?? 0) * 10) / 10])), ...(m.special ? { special: m.special } : {}) })),
     upgrades: Object.fromEntries(SERVICE_IDS.map((id) => [id, { stage: sim.upgrades[id].level, progress: Math.round(sim.upgrades[id].progress * 1000) / 1000 }])),
     units: sim.property.units.map((u) => ({ ...u })),
@@ -526,6 +535,7 @@ export function parseSave(raw: unknown): SaveData | null {
       const m = (t ?? {}) as Record<string, unknown>;
       const traits = (Array.isArray(m.traits) ? m.traits : []).filter((x): x is TraitId => typeof x === 'string' && x in TRAITS).slice(0, 3);
       return {
+        id: int(m.id, 1, 1e9, team.indexOf(t) + 1),
         name: text(m.name, 24, 'Worker') || 'Worker',
         paid: m.paid === true,
         traits,
@@ -594,13 +604,13 @@ export function applySave(sim: Simulation, s: SaveData): void {
   members.length = 0;
   s.team.forEach((t, i) => {
     const m: Member = {
-      id: i + 1, name: t.name, paid: t.paid, traits: [...t.traits], energy: t.energy, assignment: t.assignment, workingAt: null, worn: t.worn === true,
+      id: t.id ?? i + 1, name: t.name, paid: t.paid, traits: [...t.traits], energy: t.energy, assignment: t.assignment, workingAt: null, worn: t.worn === true,
       skills: t.skills ? { ...t.skills } : Team.initialSkills(t.name, t.traits),
       morale: t.morale ?? MORALE.start, hours: { ...t.hours }, special: t.special ?? null, blows: Team.noBlows(), warned: false,
     };
     members.push(m);
   });
-  (sim.team as unknown as { nextId: number }).nextId = s.team.length + 1;
+  (sim.team as unknown as { nextId: number }).nextId = Math.max(0, ...members.map(m => m.id)) + 1;
   for (const id of SERVICE_IDS) sim.upgrades[id] = { level: s.upgrades[id].stage, progress: s.upgrades[id].progress };
   sim.property.units.splice(0, sim.property.units.length, ...s.units.slice(0, sim.property.units.length));
   sim.property.campers.splice(0, sim.property.campers.length, ...s.campers);

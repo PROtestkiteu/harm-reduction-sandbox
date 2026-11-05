@@ -1,11 +1,13 @@
 import { citationReference } from './citationReference';
-import { memberTraitLabel } from './personWording';
 import { supportFit, type PersonSupport } from '../sim/personSupport';
 import './employeeSkills.css';
+import { TraitStrip, SkillStrip, ConditionStrip } from './indicatorStrips';
+import { indicatorMetadata } from './indicatorCatalog';
+import type { Member } from '../sim/team';
 import { COORDINATOR_IDS, portraitUrl } from '../render/portraitLibrary';
 import { ReputationDisclosure } from './reputation';
 import type { FavourView } from '../sim/favourView';
-import { SKILL_IDS, SKILLS, type SkillId } from '../config/employeeSkills';
+import { SKILL_IDS, SKILLS } from '../config/employeeSkills';
 import { serviceNeeds, type Need } from '../config/needs';
 import { METER_ORDER, NEED_NAME, NEED_HINT, NEED_ICONS, meterState, needsFor } from './needIcons';
 import { GRANT_IDS, GRANTS, ORG, RECRUIT, recruitChance, type ApplicationContext, type GrantId, type RecruitId } from '../config/organisation';
@@ -16,7 +18,7 @@ import { LOCALE, plural, t } from '../i18n';
 import type { Organisation } from '../sim/organisation';
 import type { ServiceModel } from '../sim/simulation';
 import { SERVICE_IDS, type ServiceId } from '../sim/types';
-import { Team, TRAITS, TIRED, type Assignment } from '../sim/team';
+import { Team, type Assignment } from '../sim/team';
 import { formatClock } from '../sim/clock';
 import { displayName, NAME_MAX, rename } from './names';
 
@@ -55,12 +57,9 @@ export interface OrgView {
 }
 
 interface MemberRow {
-  row: HTMLElement;
-  status: HTMLElement;
-  energy: HTMLElement;
-  select: HTMLSelectElement;
-  skills: Map<SkillId, HTMLElement>;
-  strength: HTMLElement;
+  row: HTMLElement; status: HTMLElement; select: HTMLSelectElement; strength: HTMLElement;
+  head: HTMLButtonElement; name: HTMLElement; traits: TraitStrip; skills: SkillStrip; conditions: ConditionStrip;
+  details: HTMLElement; member: Member; detailsKey: string;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -90,9 +89,6 @@ function setText(e: HTMLElement, text: string): void {
   if (e.textContent !== text) e.textContent = text;
 }
 
-function setAttr(e: Element, name: string, value: string): void {
-  if (e.getAttribute(name) !== value) e.setAttribute(name, value);
-}
 
 interface GrantRow {
   status: HTMLElement;
@@ -122,11 +118,11 @@ export class OrgPanel {
   private readonly staffStat: HTMLElement;
   private readonly shiftStat: HTMLElement;
   private readonly teamSummary: HTMLElement;
-  private teamKey = '';
   private readonly teamDetails: HTMLDetailsElement;
   private allowedServices: readonly ServiceId[] = SERVICE_IDS;
   private staffingContext: { support: PersonSupport; service: ServiceId } | null = null;
   private readonly staffingNote: HTMLElement;
+  private readonly reviewNote = el('p', 'employee-context tutorial-review-status');
   private readonly memberRows = new Map<number, MemberRow>();
   private readonly cb: OrgPanelCallbacks;
   private readonly meters = {} as Record<Need, { root: HTMLElement; fill: HTMLElement }>;
@@ -309,15 +305,19 @@ export class OrgPanel {
     this.teamDetails = team;
     this.staffingNote = el('p', 'employee-context');
     this.staffingNote.hidden = true;
+    this.reviewNote.hidden = true;
+    this.reviewNote.setAttribute('role', 'status');
+    this.reviewNote.textContent = t('Team reviewed. Next: open outreach controls, switch the service on and complete five visits. Assignments are optional.');
     this.teamSummary = el('summary', undefined, t('Your team'));
     team.classList.add('sandbox-sub');
-    team.append(this.teamSummary, this.staffingNote, el('p', 'factor-summary', t('Pin someone to a service or send them to rest. Automatic places people where they fit best, paid staff first; tired people go home until rested.')));
+    team.append(this.teamSummary, this.reviewNote, this.staffingNote, el('p', 'factor-summary', t('Pin someone to a service or send them to rest. Automatic places people where they fit best, paid staff first; tired people go home until rested.')));
     team.append(el('p', 'factor-summary', t('Skills grow through practice. Automatic placement uses each person’s strengths; individual assignments are optional.')));
     const skillHelp = el('details', 'employee-skill-help');
     skillHelp.append(el('summary', undefined, t('How skills help')), el('p', 'factor-summary', t('Skills are rated out of 20. They improve service capacity and patrol reach, but do not replace professional qualifications.')));
     for (const id of SKILL_IDS) skillHelp.append(el('p', 'factor-summary', `${SKILLS[id].label}: ${SKILLS[id].detail}`));
     team.append(skillHelp);
     this.teamList = el('ul', 'team-list');
+    this.teamList.dataset.empty = t('No team members.');
     team.append(this.recruiting, teamActions, this.teamList);
     // The long lists fold behind a reply of their own.
     const fold = (label: string, part: HTMLElement) => {
@@ -347,6 +347,8 @@ export class OrgPanel {
     this.allowedServices = services;
     this.section.classList.toggle('org-team-mode', teamOnly);
   }
+
+  setReviewComplete(reviewed: boolean): void { this.reviewNote.hidden = !reviewed; }
 
   get teamDisclosure(): HTMLDetailsElement { return this.teamDetails; }
 
@@ -462,98 +464,86 @@ export class OrgPanel {
     }
   }
 
-  /** Rows are rebuilt only when people join or leave; otherwise only their text changes. */
+  /** Reconcile identities only; live values and trait changes retain controls and disclosure state. */
   private updateTeam(team: Team): void {
-    // Rebuilt too when someone's qualities change (no longer new, specialised): the fit percentages move.
-    const key = team.members.map((m) => `${m.id}:${m.traits.join('+')}:${m.special ?? ''}`).join(',');
-    if (key !== this.teamKey) {
-      this.teamKey = key;
-      this.memberRows.clear();
-      this.teamList.replaceChildren(...team.members.map((m) => {
-        const row = el('li', 'team-member');
-        const who = el('div', 'team-who');
-        const portrait = document.createElement('img');
-        portrait.className = 'team-portrait';
-        portrait.src = portraitUrl(COORDINATOR_IDS[m.id % COORDINATOR_IDS.length]);
-        portrait.alt = '';
-        portrait.width = 32; portrait.height = 40;
-        portrait.loading = 'lazy'; portrait.decoding = 'async';
+    const present = new Set(team.members.map(m => m.id));
+    for (const [id, row] of this.memberRows) if (!present.has(id)) { row.row.remove(); this.memberRows.delete(id); }
+    setText(this.teamSummary, t('Your team ({working} of {total} on shift)', { working: team.members.filter(m => m.workingAt).length, total: team.members.length }));
+    for (const member of team.members) {
+      let row = this.memberRows.get(member.id);
+      if (!row) {
+        const root = el('li', 'team-member compact-member');
+        const head = el('button', 'member-disclosure'); head.type = 'button';
+        head.setAttribute('aria-expanded', 'false'); head.setAttribute('aria-controls', `member-details-${member.id}`);
+        const portrait = document.createElement('img'); portrait.className = 'team-portrait';
+        portrait.src = portraitUrl(COORDINATOR_IDS[member.id % COORDINATOR_IDS.length]);
+        portrait.alt = ''; portrait.width = 32; portrait.height = 40; portrait.loading = 'lazy'; portrait.decoding = 'async';
         portrait.addEventListener('error', () => { portrait.hidden = true; }, { once: true });
-        // Two short lines: who and what they are good at, then their contract and where they work.
-        const name = el('p', 'team-name');
-        name.append(el('strong', undefined, m.name), el('span', 'team-traits', ` · ${m.traits.map((x) => memberTraitLabel(m, x)).join(', ')}`));
-        name.dataset.iconHint = m.traits.map((x) => `${memberTraitLabel(m, x)}: ${TRAITS[x].detail}`).join('\n');
-        const status = el('p', 'team-status');
-        const strength = el('p', 'team-strength');
-        const skillList = el('dl', 'employee-skills');
-        skillList.setAttribute('aria-label', t('Skills'));
-        const skills = new Map<SkillId, HTMLElement>();
-        for (const id of SKILL_IDS) {
-          const item = el('div', 'employee-skill');
-          const value = el('dd');
-          item.append(el('dt', undefined, SKILLS[id].label), value);
-          skillList.append(item); skills.set(id, value);
-        }
-        const background = el('details', 'employee-background');
-        background.append(el('summary', undefined, t('Background and traits')), ...m.traits.map((id) => el('p', undefined, `${memberTraitLabel(m, id)}: ${TRAITS[id].detail}`)));
-        const identity = el('div', 'team-identity');
-        const identityText = el('div', 'team-identity-text');
-        identityText.append(name, status);
-        identity.append(portrait, identityText);
-        who.append(identity, strength, skillList, background);
-        const energy = el('span', 'team-energy');
-        energy.tabIndex = 0;
-        energy.setAttribute('role', 'img');
+        const identity = el('span', 'member-identity');
+        const name = el('strong', 'team-name'), status = el('span', 'team-status'); identity.append(name, status); head.append(portrait, identity);
+        const traits = new TraitStrip(), skills = new SkillStrip(), conditions = new ConditionStrip();
+        const strength = el('span', 'team-strength');
         const select = el('select', 'team-assign');
-        select.setAttribute('aria-label', t('Where {name} works', { name: m.name }));
-        // Each service shows how well this person works there, so strengths and weak spots are visible.
-        for (const [value, text] of WORKS_AT) {
-          const svc = value === 'auto' || value === 'rest' ? null : value;
-          const o = el('option', undefined, svc ? t('{place} ({pct}%)', { place: text, pct: Math.round(Team.potentialFit(m, svc) * 100) }) : text);
-          o.value = value;
-          select.append(o);
-        }
-        select.addEventListener('change', () => this.cb.onAssign(m.id, select.value as Assignment));
-        const assignment = el('div', 'employee-assignment');
-        assignment.append(select);
-        row.append(who, assignment, energy);
-        this.memberRows.set(m.id, { row, status, energy, select, skills, strength });
-        return row;
-      }));
-    }
-    const working = team.members.filter((m) => m.workingAt).length;
-    setText(this.teamSummary, t('Your team ({working} of {total} on shift)', { working, total: team.members.length }));
-    for (const m of team.members) {
-      const r = this.memberRows.get(m.id);
-      if (!r) continue;
-      const kind = m.paid ? t('paid') : t('volunteer');
-      // Energy is the bar under the row; the line names the place and how well they work there.
-      const where = m.workingAt
-        ? t('{place} {fit}%', { place: PICK_NAMES[m.workingAt], fit: Math.round(Team.fit(m, m.workingAt) * 100) })
-        : m.assignment === 'rest' ? t('resting') : m.worn ? t('gone home tired') : t('off shift');
-      const pct = Math.round(m.energy * 100);
-      // Morale in words and numbers, and where they have specialised.
-      for (const id of SKILL_IDS) setText(r.skills.get(id)!, t('{value}/20', { value: Math.round(Team.skill(m, id)) }));
-      const best = this.allowedServices.reduce((a, b) => Team.potentialFit(m, b) > Team.potentialFit(m, a) ? b : a, this.allowedServices[0] ?? 'footPatrol');
-      setText(r.strength, this.staffingContext
-        ? t('Support match for {place}: {fit}%', { place: PICK_NAMES[this.staffingContext.service], fit: Math.round(supportFit(m, this.staffingContext.support) * 100) })
-        : t('Best fit: {place} · {fit}%', { place: PICK_NAMES[best], fit: Math.round(Team.potentialFit(m, best) * 100) }));
-      for (const option of r.select.options) {
-        const id = option.value as Assignment;
-        const service = id === 'auto' || id === 'rest' ? null : id;
-        option.disabled = !!service && !this.allowedServices.includes(service);
-        option.hidden = option.disabled;
-        if (service && document.activeElement !== r.select) setText(option, t('{place} ({pct}%)', { place: PICK_NAMES[service], pct: Math.round(Team.potentialFit(m, service) * 100) }));
+        select.setAttribute('aria-label', t('Where {name} works', { name: member.name }));
+        for (const [value, label] of WORKS_AT) { const option = el('option', undefined, label); option.value = value; select.append(option); }
+        select.addEventListener('change', () => this.cb.onAssign(member.id, select.value as Assignment));
+        const assignment = el('div', 'employee-assignment'); assignment.append(select);
+        const details = el('div', 'member-details'); details.id = `member-details-${member.id}`; details.hidden = true;
+        row = { row: root, head, name, status, select, traits, skills, conditions, strength, details, member, detailsKey: '' };
+        const current = row;
+        head.addEventListener('click', () => {
+          const open = current.details.hidden;
+          for (const other of this.memberRows.values()) {
+            other.details.hidden = true; other.head.setAttribute('aria-expanded', 'false');
+          }
+          current.details.hidden = !open; current.head.setAttribute('aria-expanded', String(open));
+          if (open) this.renderMemberDetails(current);
+        });
+        root.append(head, assignment, traits.root, strength, skills.root, conditions.root, details);
+        this.teamList.append(root); this.memberRows.set(member.id, row);
       }
-      const heart = Team.shaken(m) ? t('shaken, morale {pct}%', { pct: Math.round(m.morale * 100) }) : t('morale {pct}%', { pct: Math.round(m.morale * 100) });
-      const special = m.special ? ` · ${t('specialist: {place}', { place: PICK_NAMES[m.special] })}` : '';
-      setText(r.status, `${kind[0].toUpperCase()}${kind.slice(1)} · ${where} · ${heart}${special}`);
-      r.status.dataset.state = Team.shaken(m) ? 'short' : 'ok';
-      setAttr(r.energy, 'aria-label', t('Energy {pct}%', { pct }));
-      r.energy.style.setProperty('--energy', String(m.energy));
-      r.energy.dataset.low = String(m.energy < TIRED + 0.1);
-      // Never fight a picker the user is using.
-      if (document.activeElement !== r.select && r.select.value !== m.assignment) r.select.value = m.assignment;
+      row.member = member;
+      setText(row.name, member.name);
+      const assignmentLabel = t('Where {name} works', {name:member.name});
+      if (row.select.getAttribute('aria-label') !== assignmentLabel) row.select.setAttribute('aria-label', assignmentLabel);
+      const contract = member.paid ? t('Paid staff') : t('Volunteer');
+      const where = member.workingAt ? PICK_NAMES[member.workingAt] : member.assignment === 'rest' || member.worn ? '' : t('off shift');
+      setText(row.status, `${contract}${where ? ` · ${where}` : ''}`);
+      row.traits.update(member); row.skills.update(member); row.conditions.update(member, undefined, false);
+      const match = this.staffingContext ? supportFit(member, this.staffingContext.support) : member.workingAt ? Team.fit(member, member.workingAt) : null;
+      if (row.strength.hidden !== (match === null)) row.strength.hidden = match === null;
+      setText(row.strength, match === null ? '' : t('Match {pct}%', { pct: Math.round(match * 100) }));
+      const strengthHint = this.staffingContext ? t('Support match for {place}: {fit}%', { place: PICK_NAMES[this.staffingContext.service], fit: Math.round((match ?? 0) * 100) }) : member.workingAt ? t('{place} {fit}%', { place: PICK_NAMES[member.workingAt], fit: Math.round((match ?? 0) * 100) }) : '';
+      if (row.strength.dataset.iconHint !== strengthHint) row.strength.dataset.iconHint = strengthHint;
+      for (const option of row.select.options) {
+        const service = option.value as Assignment;
+        const disabled = service !== 'auto' && service !== 'rest' && !this.allowedServices.includes(service);
+        if (option.disabled !== disabled) option.disabled = disabled;
+        if (option.hidden !== disabled) option.hidden = disabled;
+      }
+      if (document.activeElement !== row.select && row.select.value !== member.assignment) row.select.value = member.assignment;
+      if (!row.details.hidden) this.renderMemberDetails(row);
     }
+  }
+
+  private renderMemberDetails(row: MemberRow): void {
+    const member = row.member;
+    const key = JSON.stringify([member.traits, member.skills, SKILL_IDS.map(id => Math.round(Team.skill(member,id))), Object.entries(member.hours).map(([id,hours]) => [id,Math.round(hours! * 10)]), member.special, this.allowedServices]);
+    if (row.detailsKey === key) return;
+    row.detailsKey = key;
+    const traits = el('section', 'member-background');
+    traits.append(el('h4', undefined, t('Background and traits')));
+    for (const id of member.traits) {
+      const meta = indicatorMetadata(`trait:${id}`, member);
+      traits.append(el('p', undefined, `${meta.label}: ${meta.description}`));
+    }
+    const fits = el('dl', 'member-fits');
+    const best = this.allowedServices.reduce((a,b) => Team.potentialFit(member,b) > Team.potentialFit(member,a) ? b : a, this.allowedServices[0] ?? 'footPatrol');
+    row.details.replaceChildren(traits, el('h4', undefined, t('Best fit: {place} · {fit}%', {place:PICK_NAMES[best],fit:Math.round(Team.potentialFit(member,best)*100)})), fits);
+    for (const service of this.allowedServices) fits.append(el('dt', undefined, PICK_NAMES[service]), el('dd', undefined, `${Math.round(Team.potentialFit(member,service)*100)}%`));
+    if (member.special) row.details.append(el('p', 'note', t('specialist: {place}', { place: PICK_NAMES[member.special] })));
+    row.details.append(el('p', 'note', t('Skills grow through practice. Automatic placement uses each person’s strengths; individual assignments are optional.')));
+    for (const id of SKILL_IDS) row.details.append(el('p', 'member-practice', `${SKILLS[id].label}: ${member.skills[id]} → ${Math.round(Team.skill(member,id))}/20`));
+    for (const [service,hours] of Object.entries(member.hours)) row.details.append(el('p','member-practice', `${PICK_NAMES[service as ServiceId]}: ${hours!.toFixed(1)} h`));
   }
 }

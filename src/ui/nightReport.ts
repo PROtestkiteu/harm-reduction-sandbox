@@ -46,6 +46,13 @@ export class NightReportBox {
       d.append(Object.assign(document.createElement('strong'), { textContent: value }), Object.assign(document.createElement('span'), { textContent: label }));
       tiles.append(d);
     };
+    if (r.care) {
+      tile(`+${r.care.points}`, t('Reputation'), 'good');
+      tile(String(r.care.bronze), t('Bronze support ratings'));
+      tile(String(r.care.silver), t('Silver support ratings'));
+      tile(String(r.care.gold), t('Gold support ratings'));
+      tile(String(r.care.none), t('Unrated support visits'));
+    }
     tile(String(r.helped), t('helped'), r.helped ? 'good' : '');
     tile(String(r.turnedAway), t('turned away'), r.turnedAway ? 'bad' : '');
     tile(`${money >= 0 ? '+' : '−'}${Math.abs(Math.round(money)).toLocaleString(LOCALE)}`, t('money'), money < 0 ? 'bad' : '', t('Money: {start} to {end}', { start: price(r.moneyStart), end: price(r.moneyEnd) }));

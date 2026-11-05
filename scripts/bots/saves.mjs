@@ -61,6 +61,7 @@ const saveAndReload = (strip, plainAddress = false) => `(async () => { ${MODS}
 
 const steps = [
   ...SKIP_WELCOME,
+  { cdp: 'Page.addScriptToEvaluateOnNewDocument', params: { source: `Object.defineProperty(window,'__sandbox',{configurable:true,set(value){Object.defineProperty(window,'__sandbox',{value,writable:true,configurable:true});value.sim.cycle=false;}});` } },
   // 1. Use the city hall favour, win the council grant, push the stress meters.
   { eval: `(async () => { ${MODS}
     // Some hours of play first, so the game's own minute count is well past a fresh page's.

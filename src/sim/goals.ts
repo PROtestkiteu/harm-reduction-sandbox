@@ -9,6 +9,7 @@ import type { Scenario } from '../config/scenarios';
 export interface GoalResult { id: GoalId; target: number; value: number; met: boolean }
 
 export interface NightReport {
+  care?: import('./recipientCare').CareSummary;
   /** Nights survived including this one. */
   night: number;
   helped: number;

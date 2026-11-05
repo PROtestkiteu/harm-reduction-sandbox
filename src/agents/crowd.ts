@@ -784,6 +784,25 @@ export class Crowd {
   private onServed(service: ServiceId, visitor: VisitorId): void {
     const a = this.byVisitor.get(visitor);
     if (!a) return;
+    const destination = this.sim.recipientCare.visits.get(visitor)?.destination;
+    if (destination) {
+      const transfer = () => {
+        const sat = a.satellite;
+        const inside = sat?.inside ?? (service === 'dropIn' ? SPOTS.centerInside : isWalkIn(service) && service !== 'footPatrol' ? LOTS[service].inside : a.pos);
+        const door = sat?.door ?? (service === 'dropIn' ? SPOTS.centerDoor : isWalkIn(service) && service !== 'footPatrol' ? LOTS[service].door : a.pos);
+        this.show(a, inside); a.satellite = undefined; a.staffPost = undefined;
+        a.mode = 'walking'; a.pose = 'stand'; a.service = destination;
+        this.walk(a, [door], () => this.walk(a, this.routeTo(a.pos, SERVICE_NODES[destination], a.offset), () => {
+          if (destination === 'dropIn') this.arriveAtDropIn(a);
+          else if (destination === 'outreach') this.arriveAtOutreach(a);
+          else if (destination === 'clubHr') this.arriveAtStand(a);
+          else this.arriveAtWalkIn(a, destination);
+        }));
+      };
+      if (a.mode === 'walking') a.onArrive = transfer;
+      else transfer();
+      return;
+    }
     this.setMood(a, 'relieved', 12);
     // They leave with something from the visit in hand; the club stand's guests go back in line with water.
     this.setCarry(a, SERVED_CARRY[service], 14);

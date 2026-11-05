@@ -35,4 +35,5 @@
 }
 @media (orientation: landscape) and (max-height: 520px) { .tutorial-guide { top: 76px; left: 12px; width: min(340px, calc(60% - 34px)); max-height: min(calc(var(--ui-height, 100vh) * .6), calc(var(--ui-height, 100vh) - 160px)); overflow: hidden; } }
 
-[data-tutorial-restricted="true"] .column[data-mode="idle"] .line { display: none; }
+[data-tutorial-restricted="true"] .column[data-mode="idle"] .line { display: block; }
+.tutorial-guide[data-collapsed='true'] > .tutorial-counter:not([hidden]) { display: block; margin: 2px 0 0; font-size: 12px; line-height: 1.3; }

@@ -1,6 +1,6 @@
 {
-  "name": "Harm Reduction Sandbox",
-  "short_name": "HR Sandbox",
+  "name": "Harm Reduction Project",
+  "short_name": "HR Project",
   "start_url": "./",
   "scope": "./",
   "display": "fullscreen",

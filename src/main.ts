@@ -209,6 +209,8 @@ const hazePoint = new Vector3();
 const rig = new CameraRig(world.frame.full.getCenter(new Vector3()), DISTRICT - 4);
 let tutorialArea: TutorialArea | null = null;
 let tutorialGuide: TutorialGuide | null = null;
+let closeUtilityPanels: () => void = () => {};
+let teamPanelOnly = false;
 // Phones (narrow, or short in landscape) see less at once: zoomed out no further than about the
 // inner blocks, so the screen never fills with a tiny far city. (Closer haze was tried: in portrait
 // the top of the screen is the far distance, and it fogged a tall band.)
@@ -460,11 +462,11 @@ let speed = 1;
 let dirty = true;
 
 const hud = new Hud(hudRoot, {
-  // 0 is the toggle's pause step: the speed is kept for when play resumes.
+  onPause: () => setPaused(!paused),
+  // Choosing a rate preserves pause; the separate pause control resumes at that rate.
   onSpeed: (s) => {
     if (s === 0) { setPaused(true); return; }
     speed = s;
-    if (paused) setPaused(false);
     hud.setSpeed(s);
     if (s > 1) markTried('speed');
   },
@@ -1023,11 +1025,11 @@ const sandbox = new SandboxPanel(hudRoot, settings, {
     setContext(defaultContext(), null);
   },
   // One panel at a time in the settings' place.
-  onOpen: () => orgSheet.setOpen(false),
+  onOpen: () => { closeUtilityPanels(); orgSheet.setOpen(false); },
   onVisibilityChange: (open) => tutorialGuide?.setCovered(open || orgSheet.isOpen),
 });
 
-sandbox.placeCompactToggle(hudRoot.querySelector<HTMLElement>('.hud-header h1')!);
+sandbox.placeToggle(hudRoot.querySelector<HTMLElement>('.hud-header')!);
 
 // Context factors (national law down to service design) follow the same path:
 // input records the selection, the next frame applies the combined effects.
@@ -1147,12 +1149,14 @@ org.section.insertBefore(stakesSection.root, org.section.querySelector('.org-tea
 // The storm warning and the run's end wait for the pop-up to be free, ahead of other big events.
 const stakesBoxes: MajorEvent[] = [];
 // The organisation has its own sheet, opened from the money in the top bar or the organisation bar.
-const orgSheet = new Sheet(hudRoot, org.section, { label: t('Organisation'), disclosure: () => org.section.classList.contains('org-team-mode') ? org.teamDisclosure : null, onOpen: () => sandbox.setOpen(false), onChange: (open) => tutorialGuide?.setCovered(open || sandbox.isOpen) });
+const orgSheet = new Sheet(hudRoot, org.section, { label: t('Organisation'), fallbackFocus: () => hudRoot.querySelector<HTMLElement>('.tutorial-reply button'), disclosure: () => org.section.classList.contains('org-team-mode') ? org.teamDisclosure : null, onOpen: () => { closeUtilityPanels(); sandbox.setOpen(false); }, onChange: (open) => tutorialGuide?.setCovered(open || sandbox.isOpen) });
 function openOrg(teamOnly = false, support?: PersonSupport, service?: ServiceId): void {
   if (teamOnly ? !sim.tutorialCapabilities.staff : !sim.tutorialCapabilities.organisation) return;
-  org.setTeamAccess(sim.tutorialCapabilities.services, teamOnly && !sim.tutorialCapabilities.organisation);
+  teamPanelOnly = teamOnly;
+  org.setTeamAccess(sim.tutorialCapabilities.services, teamOnly);
   org.setStaffingContext(support, service);
   if (teamOnly) { org.showTeam(); sim.tutorialReviewSkills(); }
+  org.setReviewComplete(teamOnly && sim.tutorial?.stage === 'outreach' && sim.tutorial.reviewedSkills);
   refreshOrg();
   orgSheet.setOpen(true);
   markTried('org');
@@ -1424,7 +1428,8 @@ const mapLayers = new MapLayers(hudRoot, (kind) => {
   rig.lookAt(new Vector3(x, 0, z), Math.min(rig.zoom, past ? 0.5 : 1));
 });
 // A round button of its own over the map, clear of the top bar and the panel.
-hudRoot.append(mapLayers.button);
+mapLayers.hideLegend();
+// The Panels launcher below owns the map-layer menu; no duplicate Layers button.
 
 /** The answers, each with its price and odds; the box says what came of it. */
 function showDaemonBox(): void {
@@ -1634,13 +1639,22 @@ async function startGame(): Promise<void> {
   }
   void ensureRun().catch(() => { /* leaderboard offline: the game plays the same */ });
 }
-feed.prependBar(org.bar);
+// Organisation remains reachable from money; avoid duplicating it in the event history.
 // Goals, news and why the meters move, where the player looks (above the event feed and on the meters).
 // Folded to its line of stars on every screen: the goals open on a press, the rest of the time they take one line.
 const goalsStrip = new GoalsStrip(false);
 
 const notices = new NoticeStrip();
-hud.eventsSlot.before(goalsStrip.root, notices.root);
+const rightOverview = hudRoot.querySelector('.column .outliner')!;
+rightOverview.append(goalsStrip.root, hud.eventsSlot);
+hud.eventsSlot.querySelector('.events')!.append(notices.root);
+const urgentStatus = document.createElement('p'); urgentStatus.className = 'right-urgent'; urgentStatus.hidden = true; urgentStatus.setAttribute('role', 'status');
+rightOverview.before(urgentStatus);
+closeUtilityPanels = () => { mapLayers.hideLegend(); hud.setServicesOpen(false); };
+hud.servicesToggle.addEventListener('click', () => { orgSheet.setOpen(false); sandbox.setOpen(false); mapLayers.hideLegend(); }, { capture: true });
+hudRoot.querySelector('.hud-header')!.append(mapLayers.rail);
+mapLayers.button.addEventListener('click', () => { if (!actionMenu.openFor(mapLayers.button)) { closeUtilityPanels(); orgSheet.setOpen(false); sandbox.setOpen(false); } }, { capture: true });
+mapLayers.rail.addEventListener('click', (event) => { if ((event.target as Element).closest('button')) { actionMenu.close(); closeUtilityPanels(); orgSheet.setOpen(false); sandbox.setOpen(false); } }, { capture: true });
 const stressRow = document.querySelector<HTMLElement>('.stress-row');
 const meterCauses = stressRow ? new MeterCauses(stressRow, (m) => sim.cityStress.causesOf(m), meterActions) : null;
 // A scenario comes with the address (`?scenario=`); a loaded game brings its own.
@@ -1648,7 +1662,7 @@ const meterCauses = stressRow ? new MeterCauses(stressRow, (m) => sim.cityStress
   const q = new URLSearchParams(location.search);
   const s = scenarioById(q.get('scenario'));
   if (s && s.id !== 'tutorial' && s.id !== 'sandbox' && !sim.goals.scenario) sim.goals.scenario = s;
-  // Hardcore (the project can fold): a Hardcore game's address, any scenario, or the loaded game's own.
+  // Scenarios enable project failure; old URL and save flags remain compatible.
   if (q.get('mode') === 'hardcore' || sim.goals.scenario) sim.stakes.hardcore = true;
 }
 let pausedBeforeReport = false;
@@ -1659,7 +1673,7 @@ const nightBox = new NightReportBox(document.body, (open) => {
 /** The morning's report waits until no other box is open. */
 let pendingReport: NightReport | null = null;
 sim.on((e) => {
-  if (e.type === 'orgNotice') notices.push(e.notice.text, e.notice.at, sim.org.now);
+  if (e.type === 'orgNotice') { notices.push(e.notice.text, e.notice.at, sim.org.now); }
   else if (e.type === 'nightReport') pendingReport = e.report;
   else if (e.type === 'storm' && e.what === 'warned' && sim.stakes.storm.kind) stakesBoxes.push(stormWarning(sim.stakes.storm.kind, () => openOrg()));
   else if (e.type === 'runOver' && !isSandboxed() && !runOverShown) {
@@ -1722,12 +1736,15 @@ function refreshGoals(): void {
   const showGoals = sim.tutorialCapabilities.organisation;
   goalsStrip.root.hidden = !showGoals;
   notices.root.hidden = !sim.tutorialCapabilities.maintenance;
+  notices.refresh(sim.org.now, sim.deaths);
+  const urgentText = hud.urgentMessage || notices.criticalText;
+  if (urgentStatus.textContent !== urgentText) urgentStatus.textContent = urgentText;
+  urgentStatus.hidden = !urgentText;
   if (!showGoals) { pendingReport = null; return; }
   const s = sim.goals.scenario;
   goalsStrip.set(sim.goals.progress(sim.totals.helped, sim.org.budget), s
     ? scenarioProgress(s, { nights: sim.totals.nights, helped: sim.totals.helped, stars: sim.goals.stars, deaths: sim.deaths, won: sim.goals.won, folded: sim.stakes.runOver !== null })
     : null);
-  notices.refresh(sim.org.now, sim.deaths);
   if (pendingReport && !document.querySelector('dialog[open]')) {
     const r = pendingReport;
     pendingReport = null;
@@ -1754,7 +1771,7 @@ function refreshOrg(): void {
     stakes: sim.stakes, team: sim.team, budget: sim.org.budget, now: sim.org.now, clock: sim.clockMinutes, nights: sim.totals.nights,
     patrol: { running: sim.services.footPatrol.switchedOn, ready: sim.patrolReady, spots: sim.patrolSpots(), out: sim.patrol.spot, until: sim.patrol.until, reached: sim.patrol.reached },
   });
-  org.setTeamAccess(sim.tutorialCapabilities.services, !!sim.tutorial?.active && !sim.tutorialCapabilities.organisation);
+  org.setTeamAccess(sim.tutorialCapabilities.services, teamPanelOnly || (!!sim.tutorial?.active && !sim.tutorialCapabilities.organisation));
   org.update({ org: sim.org, stress: { police: sim.cityStress.police, medics: sim.cityStress.medics, sobering: sim.cityStress.sobering, district: sim.vitality.level }, services: sim.services, clock: sim.clockMinutes, incomePerHour: sim.fundingIncome, runningPerHour: sim.runningPerHour, payroll: sim.payroll, applicationContext: sim.applicationContext(), team: sim.team, drive: driveView(sim), favours: sim.favourView });
 }
 
@@ -2138,6 +2155,8 @@ function frame(now: number): void {
 }
 
 tutorialGuide = new TutorialGuide(hudRoot, {
+  patrolOut: () => !!sim.patrol.out,
+  canDispatchCamp: () => sim.patrolReady && !sim.patrol.out,
   inspectCamp: () => { interaction.select({ kind: 'building', id: world.camps.park }); rig.lookAt(new Vector3(CAMP_AT.x, 0, CAMP_AT.z)); sim.tutorialInspectCamp(); refreshHud(); },
   openPatrol: () => { interaction.selectLocation('footPatrol'); rig.lookAt(world.locations.footPatrol.labelAnchor); sim.tutorialOpenPatrol(); refreshHud(); },
   dispatchCamp: () => queueOrg(() => { sim.sendPatrol('camp', patrolPoint('camp')); rig.lookAt(new Vector3(CAMP_AT.x, 0, CAMP_AT.z)); refreshHud(); }),
@@ -2145,34 +2164,42 @@ tutorialGuide = new TutorialGuide(hudRoot, {
   reviewTeam: () => { openOrg(true); refreshHud(); },
   continueCity: () => { refreshHud(); },
 }, (buttons) => hud.setTutorialActions(buttons));
+hudRoot.querySelector('.column')!.prepend(tutorialGuide.root);
 // Reframe only on actual layout changes, including folding the objective or selection.
 const hudLayoutObserver = new ResizeObserver(() => {
   hud.invalidateLayout(); rig.invalidate(); dirty = true;
   const dock = hudRoot.querySelector<HTMLElement>('.column')!.getBoundingClientRect();
-  const guide = tutorialGuide?.root.getBoundingClientRect();
   const viewport = hudRoot.getBoundingClientRect();
+  const topBarRect = hudRoot.querySelector('.top-bar')!.getBoundingClientRect();
+  const topBarTop = `${topBarRect.top - viewport.top}px`;
+  if (hudRoot.style.getPropertyValue('--hud-topbar-top') !== topBarTop) hudRoot.style.setProperty('--hud-topbar-top', topBarTop);
+  const topBarWidth = `${topBarRect.width}px`;
+  if (hudRoot.style.getPropertyValue('--hud-topbar-width') !== topBarWidth) hudRoot.style.setProperty('--hud-topbar-width', topBarWidth);
   const headerBottom = hudRoot.querySelector('.hud-header')!.getBoundingClientRect().bottom - viewport.top;
   const settingsToggle = hudRoot.querySelector('.sandbox-toggle')!;
   const settingsHeight = settingsToggle.closest('.hud-header') ? 0 : settingsToggle.getBoundingClientRect().height;
-  const controlsBottom = headerBottom + (settingsHeight ? 8 + settingsHeight : 0);
+  const topBarBottom = hudRoot.querySelector('.top-bar')!.getBoundingClientRect().bottom - viewport.top;
+  const controlsBottom = Math.max(headerBottom, topBarBottom) + (settingsHeight ? 8 + settingsHeight : 0);
   for (const [name, value] of [['--hud-header-bottom', headerBottom], ['--hud-controls-bottom', controlsBottom]] as const) {
     const px = `${value}px`;
     if (hudRoot.style.getPropertyValue(name) !== px) hudRoot.style.setProperty(name, px);
   }
-  const contextBottom = `${(guide?.height ? guide.bottom : hudRoot.querySelector('.hud-header')!.getBoundingClientRect().bottom) - viewport.top}px`;
+  const portraitTop = `${portraitBox.getClientRects().length ? portraitBox.getBoundingClientRect().top - viewport.top : viewport.height}px`;
+  if (hudRoot.style.getPropertyValue('--portrait-top') !== portraitTop) hudRoot.style.setProperty('--portrait-top', portraitTop);
+  const contextBottom = `${headerBottom}px`;
   if (hudRoot.style.getPropertyValue('--context-bottom') !== contextBottom) hudRoot.style.setProperty('--context-bottom', contextBottom);
   const bottom = dock.left < viewport.width / 2 && dock.height > 0 ? dock.top : viewport.bottom - 26;
-  const room = `${Math.max(80, bottom - (guide?.height ? guide.bottom : viewport.top + 70) - 20)}px`;
+  const room = `${Math.max(80, bottom - (viewport.top + controlsBottom) - 20)}px`;
   if (portraitBox.style.getPropertyValue('--portrait-room') !== room) portraitBox.style.setProperty('--portrait-room', room);
 });
-for (const element of hudRoot.querySelectorAll<HTMLElement>('.tutorial-guide, .column, .top-bar, .hud-header, .sandbox-toggle')) hudLayoutObserver.observe(element);
+for (const element of hudRoot.querySelectorAll<HTMLElement>('.tutorial-guide, .column, .top-bar, .hud-header, .sandbox-toggle, .panels-toggle, .map-layers-direct, .map-layer-rail, .portrait')) hudLayoutObserver.observe(element);
 window.visualViewport?.addEventListener('scroll', () => { hud.invalidateLayout(); rig.invalidate(); dirty = true; });
 function syncTutorial(): void {
   if (sim.tutorial && !tutorialArea) tutorialArea = new TutorialArea(world, rig, sim.tutorialCapabilities);
   if (tutorialArea?.set(sim.tutorialCapabilities)) { applyView(); dirty = true; }
   hud.setTutorialCapabilities(sim.tutorialCapabilities);
   sandbox.setWorldLocked(!!sim.tutorial?.active);
-  mapLayers.button.hidden = !sim.tutorialCapabilities.fullUi;
+  mapLayers.button.hidden = false;
   tutorialGuide?.set(sim.tutorial);
 }
 
@@ -2291,5 +2318,5 @@ requestAnimationFrame(frame);
 
 if (import.meta.env.DEV) {
   // Diagnostics for local profiling only; stripped from production builds.
-  Object.assign(window, { __sandbox: { renderer, pipeline, quality, lite, precompileMs, world, camera, sim, crowd, rig, interaction, actionMenu, props, street, cityProps, flavour, hud, nightBox, eventPopup, fx, syncEvents: () => { eventsDirty = true; syncEvents(); refreshOrg(); syncStreet(); } } });
+  Object.assign(window, { __sandbox: { CAMP_AT, renderer, pipeline, quality, lite, precompileMs, world, camera, sim, crowd, rig, interaction, actionMenu, props, street, cityProps, flavour, hud, nightBox, eventPopup, fx, syncEvents: () => { eventsDirty = true; syncEvents(); refreshOrg(); syncStreet(); } } });
 }

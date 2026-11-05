@@ -1,0 +1,294 @@
+{
+  "tool": "built-in imagegen",
+  "version": 1,
+  "style": "Original contemporary painted gouache/oil miniatures; transparent background; no baked frames, text, numbers, or game artwork. Warm ochre and muted teal accents, strong simple silhouettes at 28px.",
+  "assets": [
+    {
+      "id": "trait-peer",
+      "subject": "Two warmly painted human hands gently clasped in mutual support, equal partnership, peer support and lived experience.",
+      "master": "trait-peer.png",
+      "prompt": "Generate ONE original painted miniature game UI icon for a contemporary harm-reduction strategy game. Subject: peer support and lived experience, represented by two warmly painted human hands gently clasped in mutual support, equal partnership, no clinician symbols. Painterly gouache/oil miniature, tangible soft brushwork, warm ochre and muted teal highlights, strong simple silhouette that remains immediately readable at 28px. Centered isolated object, full silhouette visible, occupies 80 percent of square canvas, neutral directional light. Transparent background with genuine alpha. No backdrop, frame, ring, badge shape, numbers, letters, labels, watermark, game logos, or copied game artwork. This is the first asset of a consistent painted miniature icon family; rendering should have rich but restrained material texture rather than vector flatness.",
+      "files": {
+        "64": {
+          "path": "public/indicators/v1/trait-peer-64.webp",
+          "bytes": 1994
+        },
+        "128": {
+          "path": "public/indicators/v1/trait-peer-128.webp",
+          "bytes": 4778
+        }
+      }
+    },
+    {
+      "id": "trait-nurse",
+      "subject": "A coiled blue stethoscope resting against a small folded white gauze pad, clinical nursing expertise.",
+      "master": "trait-nurse.png",
+      "files": {
+        "64": {
+          "path": "public/indicators/v1/trait-nurse-64.webp",
+          "bytes": 3408
+        },
+        "128": {
+          "path": "public/indicators/v1/trait-nurse-128.webp",
+          "bytes": 8794
+        }
+      }
+    },
+    {
+      "id": "trait-chemist",
+      "subject": "One clear laboratory Erlenmeyer flask with amber liquid and a teal stopper, analytical chemistry expertise.",
+      "master": "trait-chemist.png",
+      "files": {
+        "64": {
+          "path": "public/indicators/v1/trait-chemist-64.webp",
+          "bytes": 2034
+        },
+        "128": {
+          "path": "public/indicators/v1/trait-chemist-128.webp",
+          "bytes": 5156
+        }
+      }
+    },
+    {
+      "id": "trait-social",
+      "subject": "A warm brass house key on a folded cream document, housing and benefits social work.",
+      "master": "trait-social.png",
+      "files": {
+        "64": {
+          "path": "public/indicators/v1/trait-social-64.webp",
+          "bytes": 3116
+        },
+        "128": {
+          "path": "public/indicators/v1/trait-social-128.webp",
+          "bytes": 8560
+        }
+      }
+    },
+    {
+      "id": "trait-languages",
+      "subject": "Two overlapping sculptural speech bubbles in muted teal and warm ochre, multilingual communication, absolutely no letters.",
+      "master": "trait-languages.png",
+      "files": {
+        "64": {
+          "path": "public/indicators/v1/trait-languages-64.webp",
+          "bytes": 2800
+        },
+        "128": {
+          "path": "public/indicators/v1/trait-languages-128.webp",
+          "bytes": 6954
+        }
+      }
+    },
+    {
+      "id": "trait-psychologist",
+      "subject": "A softly modeled human brain alongside a single small teal conversation bubble, qualified psychological support.",
+      "master": "trait-psychologist.png",
+      "files": {
+        "64": {
+          "path": "public/indicators/v1/trait-psychologist-64.webp",
+          "bytes": 2788
+        },
+        "128": {
+          "path": "public/indicators/v1/trait-psychologist-128.webp",
+          "bytes": 6732
+        }
+      }
+    },
+    {
+      "id": "trait-calm",
+      "subject": "A steady candle flame protected by a gently cupped hand, calm under pressure.",
+      "master": "trait-calm.png",
+      "files": {
+        "64": {
+          "path": "public/indicators/v1/trait-calm-64.webp",
+          "bytes": 2540
+        },
+        "128": {
+          "path": "public/indicators/v1/trait-calm-128.webp",
+          "bytes": 6304
+        }
+      }
+    },
+    {
+      "id": "trait-nightOwl",
+      "subject": "A little attentive owl head with a pale crescent moon beside it, night owl.",
+      "master": "trait-nightOwl.png",
+      "files": {
+        "64": {
+          "path": "public/indicators/v1/trait-nightOwl-64.webp",
+          "bytes": 3290
+        },
+        "128": {
+          "path": "public/indicators/v1/trait-nightOwl-128.webp",
+          "bytes": 8496
+        }
+      }
+    },
+    {
+      "id": "trait-new",
+      "subject": "An open small work notebook with one fresh green seedling emerging beside it, new to the work and learning.",
+      "master": "trait-new.png",
+      "files": {
+        "64": {
+          "path": "public/indicators/v1/trait-new-64.webp",
+          "bytes": 2590
+        },
+        "128": {
+          "path": "public/indicators/v1/trait-new-128.webp",
+          "bytes": 7458
+        }
+      }
+    },
+    {
+      "id": "skill-outreach",
+      "subject": "A listening human ear beside a small warm ochre speech bubble, listening and outreach skill.",
+      "master": "skill-outreach.png",
+      "files": {
+        "64": {
+          "path": "public/indicators/v1/skill-outreach-64.webp",
+          "bytes": 2662
+        },
+        "128": {
+          "path": "public/indicators/v1/skill-outreach-128.webp",
+          "bytes": 7610
+        }
+      }
+    },
+    {
+      "id": "skill-care",
+      "subject": "One open human hand gently cradling a neatly folded white bandage, practical care skill.",
+      "master": "skill-care.png",
+      "files": {
+        "64": {
+          "path": "public/indicators/v1/skill-care-64.webp",
+          "bytes": 2514
+        },
+        "128": {
+          "path": "public/indicators/v1/skill-care-128.webp",
+          "bytes": 6034
+        }
+      }
+    },
+    {
+      "id": "skill-analysis",
+      "subject": "A brass magnifying glass inspecting a translucent laboratory slide with one amber droplet, analysis skill.",
+      "master": "skill-analysis.png",
+      "files": {
+        "64": {
+          "path": "public/indicators/v1/skill-analysis-64.webp",
+          "bytes": 2624
+        },
+        "128": {
+          "path": "public/indicators/v1/skill-analysis-128.webp",
+          "bytes": 6514
+        }
+      }
+    },
+    {
+      "id": "skill-coordination",
+      "subject": "A small folded paper map with three colored location pins joined by simple paths, coordinating referrals.",
+      "master": "skill-coordination.png",
+      "files": {
+        "64": {
+          "path": "public/indicators/v1/skill-coordination-64.webp",
+          "bytes": 2904
+        },
+        "128": {
+          "path": "public/indicators/v1/skill-coordination-128.webp",
+          "bytes": 7152
+        }
+      }
+    },
+    {
+      "id": "support-language",
+      "subject": "Two differently colored speech bubbles bridged by a small pale arrow, requesting language interpretation, absolutely no writing.",
+      "master": "support-language.png",
+      "files": {
+        "64": {
+          "path": "public/indicators/v1/support-language-64.webp",
+          "bytes": 2180
+        },
+        "128": {
+          "path": "public/indicators/v1/support-language-128.webp",
+          "bytes": 5392
+        }
+      }
+    },
+    {
+      "id": "support-housing",
+      "subject": "A small sturdy contemporary home with a warm illuminated doorway, housing support need.",
+      "master": "support-housing.png",
+      "files": {
+        "64": {
+          "path": "public/indicators/v1/support-housing-64.webp",
+          "bytes": 2624
+        },
+        "128": {
+          "path": "public/indicators/v1/support-housing-128.webp",
+          "bytes": 7450
+        }
+      }
+    },
+    {
+      "id": "support-wound",
+      "subject": "A gently rolled white gauze bandage with a short unrolled tail and a teal fastening clip, wound care support.",
+      "master": "support-wound.png",
+      "files": {
+        "64": {
+          "path": "public/indicators/v1/support-wound-64.webp",
+          "bytes": 2536
+        },
+        "128": {
+          "path": "public/indicators/v1/support-wound-128.webp",
+          "bytes": 7324
+        }
+      }
+    },
+    {
+      "id": "support-trust",
+      "subject": "Two open palms reaching toward each other across a small gap, trust and safe conversation.",
+      "master": "support-trust.png",
+      "files": {
+        "64": {
+          "path": "public/indicators/v1/support-trust-64.webp",
+          "bytes": 1526
+        },
+        "128": {
+          "path": "public/indicators/v1/support-trust-128.webp",
+          "bytes": 3736
+        }
+      }
+    },
+    {
+      "id": "support-crisis",
+      "subject": "A calm open hand sheltering a small flickering amber spark, support during a crisis, no danger symbol or text.",
+      "master": "support-crisis.png",
+      "files": {
+        "64": {
+          "path": "public/indicators/v1/support-crisis-64.webp",
+          "bytes": 2526
+        },
+        "128": {
+          "path": "public/indicators/v1/support-crisis-128.webp",
+          "bytes": 6194
+        }
+      }
+    },
+    {
+      "id": "support-equipment",
+      "subject": "A sealed sterile injecting equipment kit: one slim capped syringe beside a small sealed swab packet. Contemporary medical harm reduction supplies, no drug, no blood, no logos or text.",
+      "master": "support-equipment.png",
+      "files": {
+        "64": {
+          "path": "public/indicators/v1/support-equipment-64.webp",
+          "bytes": 2626
+        },
+        "128": {
+          "path": "public/indicators/v1/support-equipment-128.webp",
+          "bytes": 6510
+        }
+      }
+    }
+  ],
+  "promptTemplate": "Generate ONE original painted miniature UI icon for a contemporary harm-reduction strategy game. Painterly gouache/oil miniature with tangible soft brushwork, warm ochre and muted teal accents, strong simple recognizable silhouette readable at 28px. Centered isolated full object occupying 80 percent of square canvas. Neutral directional light. Genuine transparent background alpha. No backdrop, frame, ring, badge shape, numbers, letters, labels, watermark, game logos, or copied game artwork. Rich restrained material texture, not flat vector, not photo. Subject: "
+}

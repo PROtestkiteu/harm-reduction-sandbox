@@ -51,6 +51,8 @@ export class NoticeStrip {
     this.root.hidden = true;
   }
 
+  get criticalText(): string { return this.deathCount ? this.deaths.textContent ?? '' : ''; }
+
   /** A notice from the organisation at `clock` (organisation minutes for the quiet period, clock minutes to show). */
   push(text: string, clock: number, now: number): void {
     const last = this.lastShown.get(text);

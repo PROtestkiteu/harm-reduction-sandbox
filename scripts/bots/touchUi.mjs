@@ -19,7 +19,7 @@ const inspect = `(() => {
   const click = (q) => { const e = document.querySelector(q); check(e, 'Missing ' + q); e.click(); return e; };
   const shown = (q) => { const e=document.querySelector(q); return e && getComputedStyle(e).display !== 'none' && e.getBoundingClientRect().height > 0; };
   const s = window.__sandbox;
-  check(document.title === 'Harm Reduction Sandbox', 'Wrong page');
+  check(document.title === 'Harm Reduction Project', 'Wrong page');
   check(!document.querySelector('vite-error-overlay'), 'Vite overlay');
   check(!document.querySelector('.module-toggle'), 'Unexpected extra panel buttons');
   check(!document.querySelector('.configure-opt'), 'Settings must not occupy a separate reply');

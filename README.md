@@ -1,4 +1,4 @@
-# Harm reduction sandbox
+# Harm Reduction Project
 
 A small city you can watch and poke at. People go to work, to the club, to the pharmacy or the drop-in. You run the services, change the rules around them, and see what happens on the street.
 
@@ -91,3 +91,7 @@ Three.js and TypeScript, built with Vite.
 ## Licence
 
 MIT. See [LICENSE](LICENSE).
+
+## Release version
+
+Set the release version in `package.json` and `package-lock.json` before building. The UI, `version.json`, and service worker use that version; each build also gets a unique build ID for update detection.

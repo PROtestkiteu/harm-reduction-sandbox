@@ -1,3 +1,5 @@
+import { panelDismiss } from './panelDismiss';
+
 export interface SheetOptions {
   /** Accessible name of the sheet. */
   label: string;
@@ -6,6 +8,7 @@ export interface SheetOptions {
   /** Fires when the sheet opens, so other panels in the same place can close. */
   onOpen?(): void;
   onChange?(open: boolean): void;
+  fallbackFocus?(): HTMLElement | null;
 }
 
 /**
@@ -36,7 +39,10 @@ export class Sheet {
     this.body.className = 'sandbox-body';
     this.body.hidden = true;
     this.body.tabIndex = -1;
-    this.body.append(content);
+    const dismissal = document.createElement('div');
+    dismissal.className = 'panel-dismiss-slot';
+    dismissal.append(panelDismiss(() => this.setOpen(false, true)));
+    this.body.append(dismissal, content);
     this.root.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && this.isOpen) {
         e.stopPropagation();
@@ -67,7 +73,7 @@ export class Sheet {
     this.opts.onChange?.(open);
     if (open) (this.disclosure?.querySelector<HTMLElement>('summary') ?? this.body).focus({ preventScroll: true });
     else if (returnFocus) {
-      const target = this.returnTo?.isConnected ? this.returnTo : this.returnRegion?.querySelector<HTMLElement>('button:not([disabled]), [tabindex="0"]');
+      const target = this.returnTo?.isConnected ? this.returnTo : this.opts.fallbackFocus?.() ?? this.returnRegion?.querySelector<HTMLElement>('button:not([disabled]), [tabindex="0"]');
       if (target?.getClientRects().length) target.focus({ preventScroll: true });
     }
   }

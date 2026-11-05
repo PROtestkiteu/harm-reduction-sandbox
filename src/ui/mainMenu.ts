@@ -239,5 +239,5 @@ function scenarioRules(scenario: ScenarioCard, custom: boolean): string {
   if (scenario.kind === 'sandbox') return t('Endless play. No project collapse and no leaderboard score.');
   const s = scenario.challenge!;
   const goals = t('Goal: {nights} nights, {helped} people helped, {stars} stars, no more than {deaths} deaths.', { nights: s.nights, helped: s.helped, stars: s.stars, deaths: s.deaths });
-  return `${goals} ${custom ? t('Custom settings. This run stays off the leaderboard.') : t('Hardcore rules: the project can fold.')}`;
+  return `${goals} ${custom ? t('Custom settings. This run stays off the leaderboard.') : t('Scenario rules: the project can fold.')}`;
 }

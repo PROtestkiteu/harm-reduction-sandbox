@@ -1,0 +1,8 @@
+.panel-dismiss { position: relative; display: inline-flex; align-items: center; justify-content: center; flex: none; width: 28px; height: 28px; min-width: 28px; min-height: 28px; padding: 0; border: 0; background: none; color: var(--reply); cursor: pointer; }
+.panel-dismiss svg { width: 16px; height: 16px; pointer-events: none; }
+.panel-dismiss::before { content: ''; position: absolute; inset: -6px; }
+.panel-dismiss:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.sandbox-head > .panel-dismiss { margin-left: auto; }
+.sheet .panel-dismiss-slot { position: sticky; top: 0; height: 0; z-index: 3; }
+.sheet .panel-dismiss-slot > .panel-dismiss { position: absolute; top: 0; right: 0; }
+.sheet .sandbox-body > fieldset > legend, .sheet .org-team > summary { padding-right: 38px; }

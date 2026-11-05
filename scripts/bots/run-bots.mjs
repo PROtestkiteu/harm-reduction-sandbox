@@ -32,7 +32,8 @@ for (const name of bots) {
   // without rows and is tried again, at most twice.
   let result = null;
   for (let attempt = 0; attempt < 3 && !result?.rows?.length; attempt++) {
-    [, result] = await drive(url.href, [...SKIP_WELCOME, call('./strategies.js', name, days, { clockSpeed: speed })], { seed, log: () => {} });
+    const values = await drive(url.href, [...SKIP_WELCOME, call('./strategies.js', name, days, { clockSpeed: speed }), call('./perf.js', 4)], { seed, log: () => {} });
+    result = values[1]; if (result) result.performance = values[2];
     if (!result?.rows?.length) console.error(name, 'run interrupted, retrying:', typeof result === 'string' ? result.slice(0, 120) : result);
   }
   if (!result?.rows?.length) { console.error(name, 'failed'); continue; }
@@ -40,7 +41,7 @@ for (const name of bots) {
   const rows = result.rows;
   const at = (f) => rows[Math.min(rows.length - 1, Math.floor(f * (rows.length - 1)))];
   summary.push({
-    bot: name, money: `${at(0).budget} / ${at(0.5).budget} / ${at(1).budget}`, 'net/h end': at(1).net,
+    bot: name, 'care ratings': JSON.stringify(result.careMetrics?.ratings), 'mean care': +(result.careMetrics?.scoreSum / Math.max(1,result.careMetrics?.finished)).toFixed(1), reputation: at(1).reputation, money: `${at(0).budget} / ${at(0.5).budget} / ${at(1).budget}`, 'net/h end': at(1).net,
     'first red h': result.firstRedHour ?? '-', 'red h': result.redHours, 'all shut h': result.gameOverHour ?? '-',
     helped: result.totals.helped, away: at(1).turnedAway, deaths: at(1).deaths, 'folded h': result.foldedHour ?? '-', quits: result.quits,
     storms: (result.storms ?? []).map((x) => `${x.kind}@${x.h}: ${x.deaths}d ${x.turnedAway}a`).join('; ') || '-',

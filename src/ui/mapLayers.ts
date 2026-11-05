@@ -69,24 +69,30 @@ const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
  */
 export class MapLayers {
   readonly button: HTMLButtonElement;
+  readonly rail = document.createElement('div');
+  private readonly layerButtons = new Map<OverlayKind, HTMLButtonElement>();
   private readonly legend: HTMLElement;
   private readonly title: HTMLButtonElement;
   private readonly rows: HTMLUListElement;
   private legendOpen = true;
   private rowsKey = '';
   kind: OverlayKind = 'off';
+  readonly openMenu: (owner?: HTMLElement) => void;
+  hideLegend(): void { this.legend.hidden = true; }
 
   constructor(parent: HTMLElement, private readonly onChange: (kind: OverlayKind) => void, actions: Pick<ActionMenu, 'show' | 'close' | 'openFor'>, private readonly focus: (x: number, z: number) => void) {
     this.button = document.createElement('button');
     this.button.type = 'button';
     this.button.className = 'layers-toggle';
     this.button.setAttribute('aria-haspopup', 'menu');
-    this.button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M12 3 2 8.5 12 14l10-5.5L12 3zM2 13l10 5.5L22 13M2 17.5 12 23l10-5.5"/></svg>';
+    this.button.classList.add('map-layers-direct');
+    this.button.textContent = t('Map layers');
     // The button opens and closes the menu of overlays; nothing else. In the menu a choice switches to that
     // overlay and the menu stays open, so they can be tried one after another; choosing the one that is on
     // turns it off. A press anywhere else, Escape or the button again closes the menu and keeps the overlay.
+    let owner: HTMLElement = this.button;
     const menu = () => {
-      const r = this.button.getBoundingClientRect();
+      const r = owner.getBoundingClientRect();
       actions.show(r.left, r.bottom + 4, t('Map overlay'), (Object.keys(ICON) as Exclude<OverlayKind, 'off'>[]).map((k) => ({
         label: LABEL[k],
         icon: ICON[k],
@@ -94,14 +100,26 @@ export class MapLayers {
         keepOpen: true,
         disabled: false,
         run: () => { this.set(k === this.kind ? 'off' : k); menu(); },
-      })), this.button);
+      })), owner);
     };
+    this.openMenu = (anchor = this.button) => { owner = anchor; this.legend.hidden = this.kind === 'off'; menu(); };
     this.button.setAttribute('aria-expanded', 'false');
     this.button.addEventListener('contextmenu', (e) => { e.preventDefault(); if (!actions.openFor(this.button)) menu(); });
     this.button.addEventListener('click', () => {
       if (actions.openFor(this.button)) actions.close();
-      else menu();
+      else this.openMenu();
     });
+
+    this.rail.className = 'map-layer-rail';
+    this.rail.setAttribute('role', 'group'); this.rail.setAttribute('aria-label', t('Map layers'));
+    for (const k of Object.keys(ICON) as Exclude<OverlayKind, 'off'>[]) {
+      const control = document.createElement('button'); control.type = 'button';
+      control.dataset.layer = k; control.dataset.iconHint = LABEL[k];
+      control.setAttribute('aria-label', LABEL[k]); control.setAttribute('aria-pressed', 'false');
+      control.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${ICON[k]}</svg>`;
+      control.addEventListener('click', () => this.set(k === this.kind ? 'off' : k));
+      this.layerButtons.set(k, control); this.rail.append(control);
+    }
 
     this.legend = document.createElement('section');
     this.legend.className = 'map-legend';
@@ -117,7 +135,7 @@ export class MapLayers {
     this.rows = document.createElement('ul');
     this.legend.append(head, this.rows);
     this.setLegendOpen(!window.matchMedia('(hover: none)').matches);
-    parent.append(this.legend);
+    parent.append(this.button, this.rail, this.legend);
 
     let kept: string | null = null;
     try { kept = localStorage.getItem(KEY); } catch { /* storage blocked */ }
@@ -134,6 +152,7 @@ export class MapLayers {
 
   private show(kind: OverlayKind): void {
     this.kind = kind;
+    for (const [k, control] of this.layerButtons) control.setAttribute('aria-pressed', String(k === kind));
     this.legend.hidden = kind === 'off';
     this.title.textContent = LABEL[kind];
     this.rowsKey = '';

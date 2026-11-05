@@ -55,6 +55,7 @@ function serviceChips(s: ServiceModel, servedAt: string): Chip[] {
 
 function serviceSnapshot(id: LocationId, s: ServiceModel, sim?: Simulation): LocationSnapshot {
   const text = SERVICE_TEXT[s.id];
+  const careEnvironment = sim?.careEnvironment();
   const closed = closedNote(s);
   const availability = sim?.serviceAvailability(s.id);
   const permitted = availability !== 'notPermitted';
@@ -69,6 +70,17 @@ function serviceSnapshot(id: LocationId, s: ServiceModel, sim?: Simulation): Loc
       maintenanceRisk: !!sim && sim.upgrades[s.id].level > (ORG.startServices.includes(s.id) ? BASE_STAGE : NEW_STAGE) && sim.upgrades[s.id].progress <= 0.1 }),
     closed,
     chips: serviceChips(s, text.servedAt),
+    recipientCare: sim ? {
+      visits: [...sim.recipientCare.visits.values()].filter(v => v.site === s.id),
+      workers: sim.team.members.filter(m => m.workingAt === s.id).map(m => ({ id: m.id, name: m.name })),
+      destinations: SERVICE_IDS.filter(id => sim.services[id].status === 'open'),
+      stock: { leaflets: sim.stakes.supplies.has('leaflets'), kits: sim.stakes.supplies.has('kits') },
+      equipment: careEnvironment!.equipment,
+      machine: careEnvironment!.machine ?? false,
+      assign: (visitor, worker, interrupt) => sim.recipientCare.assign(visitor, worker, interrupt),
+      canRefer: (visitor, site) => sim.recipientCare.canRefer(visitor, site, sim.careEnvironment()),
+      refer: (visitor, site) => { sim.recipientCare.refer(visitor, site, sim.careEnvironment()); },
+    } : undefined,
     // The stage it has grown to, of how many, as the first fact.
     // Why it is closed is said once, under the name; the facts keep the stage.
     facts: sim ? [[t('Stage'), t('{stage} ({n} of {max})', { stage: stageOf(s.id, sim.upgrades[s.id].level).label, n: sim.upgrades[s.id].level, max: stageCount(s.id) })]] : [],

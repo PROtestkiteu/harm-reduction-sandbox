@@ -107,7 +107,7 @@ ladder.tutorial.reviewSkills();
 for (const [service, expected] of [['outreach', 'dropIn'], ['dropIn', 'nightlife'], ['clubHr', 'night']]) {
   ladder.setEnabled(service, true); ladder.staffArrived(service);
   for (let i = 0; i < 5; i++) {
-    assert.equal(ladder.arrive(service, visitor++), 'admitted');
+    assert.equal(ladder.arrive(service, visitor++), 'admitted', JSON.stringify({ service, i, stage: ladder.tutorial.stage, status: ladder.services[service].status, reason: ladder.services[service].closedReason, staff: ladder.services[service].staffOnSite, inside: ladder.services[service].inService.size, queue: ladder.services[service].queue.length, now: ladder.org.now }));
     for (let j = 0; j < 120 && ladder.services[service].inService.size; j++) ladder.tick(1);
   }
   assert.equal(ladder.tutorial.stage, expected);

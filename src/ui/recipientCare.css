@@ -1,0 +1,21 @@
+.recipient-care { margin-block: 12px; min-width: 0; }
+.recipient-care summary { min-height: 44px; padding-block: 10px; cursor: pointer; box-sizing: border-box; }
+.recipient-care p { overflow-wrap: anywhere; }
+.recipient-care-list:empty::after { content: attr(data-empty); }
+.recipient-care-row { padding-block: 14px; min-width: 0; }
+.recipient-care-row + .recipient-care-row { border-top: 1px solid var(--muted); }
+.recipient-care-row[data-warning=true] h4::before { content: '! '; color: var(--reply); }
+.recipient-care-row h4 { margin: 0 0 8px; overflow-wrap: anywhere; }
+.recipient-care-row ul { list-style: none; padding: 0; margin: 0; }
+.recipient-care-row li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-block: 8px; }
+.recipient-trait { display: inline-grid; place-items: center; width: 24px; height: 24px; flex: 0 0 24px; font-size: 20px; }
+.recipient-care-row progress { appearance: none; -webkit-appearance: none; border: 0; border-radius: 0; background: rgba(128,128,128,.2); flex: 0 0 56px; width: 56px; height: 3px; margin-inline-start: auto; }
+.recipient-care-row progress::-webkit-progress-bar { background: rgba(128,128,128,.2); }
+.recipient-care-row progress::-webkit-progress-value { background: var(--reply, currentColor); }
+.recipient-care-row progress::-moz-progress-bar { background: var(--reply, currentColor); }
+.recipient-care-row label { display: block; margin-block: 8px; }
+.recipient-care-row select, .recipient-care-row button { display: block; width: 100%; min-height: 44px; max-width: 100%; box-sizing: border-box; color: inherit; background: transparent; border: 0; border-radius: 0; padding: 6px 0; font: inherit; white-space: normal; }
+.recipient-care-row select { border-bottom: 1px solid var(--muted); }
+.recipient-care-row button { color: var(--reply, inherit); text-align: start; text-decoration: underline; text-underline-offset: 3px; }
+.recipient-care-row button:disabled { opacity: .5; text-decoration: none; }
+.recipient-care-row :focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }

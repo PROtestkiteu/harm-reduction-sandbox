@@ -133,7 +133,7 @@ for (const [name, file] of [['male', 'Superhero_Male_FullBody.gltf'], ['female',
 
 writeFileSync(
   join(out, 'LICENSE.txt'),
-  `People in the harm-reduction sandbox are built from CC0 assets by Quaternius:
+  `People in Harm Reduction Project are built from CC0 assets by Quaternius:
 - Universal Base Characters (Standard): base bodies, eyes, brows and hairstyles
 - Universal Animation Library (Standard): animation clips
 https://quaternius.com

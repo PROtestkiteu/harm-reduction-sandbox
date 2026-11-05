@@ -15,6 +15,23 @@
 // opts.clockSpeed sets the game clock's speed (1 = default) for speed-dependence checks.
 async (name, days = 3, opts = {}) => {
   const { sim, crowd, world } = window.__sandbox;
+  const { visitScore } = await import('/src/sim/recipientCare.ts');
+  const careMetrics = { ratings: { none: 0, bronze: 0, silver: 0, gold: 0 }, finished: 0, scoreSum: 0, durationSum: 0, queuePeak: 0, activePeak: 0, urgentUnrated: 0, byStateCount: {}, nights: [] };
+  const born = new Map();
+  const care = sim.recipientCare;
+  const ensure = care.ensure.bind(care), finish = care.finish.bind(care);
+  care.ensure = (...args) => { const v = ensure(...args); if (!born.has(v.visitor)) born.set(v.visitor, sim.org.now); return v; };
+  care.finish = (visitor) => {
+    const v = care.visits.get(visitor), score = v ? visitScore(v) : 0;
+    const rating = finish(visitor);
+    if (rating && v) {
+      careMetrics.ratings[rating]++; careMetrics.finished++; careMetrics.scoreSum += score;
+      careMetrics.durationSum += sim.org.now - (born.get(visitor) ?? sim.org.now); born.delete(visitor);
+      if (rating === 'none' && v.escalated) careMetrics.urgentUnrated++;
+      const bucket = careMetrics.byStateCount[v.states.length] ??= { n: 0, score: 0 }; bucket.n++; bucket.score += score;
+    }
+    return rating;
+  };
   let sceneTime = 0;
   const STEP = 1 / 30;
   if (opts.clockSpeed) sim.configure({ clockSpeed: opts.clockSpeed });
@@ -24,7 +41,7 @@ async (name, days = 3, opts = {}) => {
   const did = (k, ok) => { if (ok !== false) acts[k] = (acts[k] ?? 0) + 1; };
   const grant = (above) => { for (const g of grants) if (sim.org.applications[g].status === 'idle' && sim.org.budget > above) did('grant', sim.applyFor(g)); };
   const st = sim.stakes;
-  // The bots measure the hardest setting: the project can fold (a Hardcore game).
+  // The bots enable scenario-style project failure while measuring balance.
   st.hardcore = true;
   // `careful`: hire only when the hour's surplus already covers the new wage, and never while a storm is coming.
   const grow = (careful = false) => {
@@ -111,6 +128,7 @@ async (name, days = 3, opts = {}) => {
     morale[k] = +((morale[k] ?? 0) + m.morale - before).toFixed(3);
   };
   sim.on((e) => {
+    if (e.type === 'nightReport' && e.report.care) careMetrics.nights.push({ night: e.report.night, ...e.report.care, reputation: sim.reputation.score });
     if (e.type === 'storm' && e.what === 'ended') storms.push({ ...e.report, h: Math.round((sim.org.now - start) / 60) });
     if (e.type === 'orgNotice' && / has quit: /.test(e.notice.text)) quits++;
   });
@@ -132,6 +150,8 @@ async (name, days = 3, opts = {}) => {
     if (overAt === null && sim.org.closedDown.size >= 3) overAt = Math.round(t / 60);
     if (foldedAt === null && st.runOver) foldedAt = Math.round(t / 60);
     if (wonAt === null && sim.goals.won) wonAt = Math.round(t / 60);
+    careMetrics.queuePeak = Math.max(careMetrics.queuePeak, ...ids.map(id => sim.services[id].queue.length));
+    careMetrics.activePeak = Math.max(careMetrics.activePeak, care.visits.size);
     if (t >= nextLog) {
       nextLog += 60;
       const s = sim.cityStress;
@@ -149,5 +169,5 @@ async (name, days = 3, opts = {}) => {
     if (guard % 240 === 0) await new Promise((r) => setTimeout(r, 0));
   }
   const totals = Object.fromEntries(Object.entries(sim.totals).filter(([, v]) => typeof v === 'number'));
-  return { name, days, clockSpeed: opts.clockSpeed ?? 1, firstRedHour: firstRed, redHours: Math.round(redHours), gameOverHour: overAt, foldedHour: foldedAt, quits, storms, scenario: sim.goals.scenario?.id ?? null, foldCause: st.runOver?.cause ?? null, closedDown: [...sim.org.closedDown], closedReasons: Object.fromEntries(ids.map((i) => [i, sim.services[i].closedReason])), wonHour: wonAt, stars: sim.goals.stars, nights: sim.totals.nights, morale, alone: sim.health.alone, acts, totals, rows };
+  return { careMetrics, name, days, clockSpeed: opts.clockSpeed ?? 1, firstRedHour: firstRed, redHours: Math.round(redHours), gameOverHour: overAt, foldedHour: foldedAt, quits, storms, scenario: sim.goals.scenario?.id ?? null, foldCause: st.runOver?.cause ?? null, closedDown: [...sim.org.closedDown], closedReasons: Object.fromEntries(ids.map((i) => [i, sim.services[i].closedReason])), wonHour: wonAt, stars: sim.goals.stars, nights: sim.totals.nights, morale, alone: sim.health.alone, acts, totals, rows };
 }

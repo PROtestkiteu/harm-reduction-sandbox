@@ -25,8 +25,8 @@ export class ReputationDisclosure {
   }
   update(view: FavourView): void { this.view = view; if (this.element.open) this.render(view); }
   private render(v: FavourView): void {
-    const standing = v.score < 20 ? t('Unproven') : v.score < 40 ? t('Known') : v.score < 70 ? t('Trusted') : t('Established');
-    const line = t('Reputation {n}/100: {standing}. Favours {held}/{cap}. Next favour: {p}%.', { n: v.score, standing, held: v.held, cap: v.capacity, p: v.progress });
+    const standing = v.score < 15 ? t('Unproven') : v.score < 35 ? t('Known') : v.score < 55 ? t('Trusted') : t('Established');
+    const line = t('Reputation {n}: {standing}. Favours {held}/{cap}. Next favour: {p}%.', { n: v.score, standing, held: v.held, cap: v.capacity, p: v.progress });
     if (this.status.textContent !== line) this.status.textContent = line;
     for (const node of REPUTATION_NODES) {
       const text = t('{node}: {state}', { node: node.label, state: v.earned.includes(node.id) ? t('Earned') : t('Locked') });

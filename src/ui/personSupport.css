@@ -9,3 +9,12 @@
 .profile-reference .profile-name { font-size: 16px; margin: 8px 0; }
 .profile-reference p, .profile-reference dd { overflow-wrap: anywhere; }
 .profile-reference .note { font-size: 12px; }
+.person-summary { display: grid; gap: 8px; margin: 8px 0; font: 400 14px/1.4 var(--body); }
+.person-summary .person-support-details { font-size: 14px; }
+.person-support-details > summary { min-height: 32px; display: flex; align-items: center; color: var(--reply); cursor: pointer; }
+.person-support-details p { white-space: pre-line; margin: 6px 0; }
+.person-summary .skill-strip { max-width: 300px; }
+/* The selected-person inspector explains its numbers without requiring hints. */
+.person-summary .skill-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: none; }
+.person-summary .skill-strip .indicator-label { position: static; width: auto; height: auto; overflow: visible; clip-path: none; font-size: 14px; }
+.person-summary .skill-strip .indicator-value { margin-inline-start: auto; }

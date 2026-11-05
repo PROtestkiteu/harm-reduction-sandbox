@@ -49,9 +49,9 @@ export class Stakes {
   readonly supplies = new Supplies();
   readonly storm = new Storm();
   /**
-   * Hardcore: the project can fold (the whole team gone, or every starting place shut too long).
+   * Scenario failure rules: the project can fold (the whole team gone, or every starting place shut too long).
    * Off in an ordinary game, which is about growth: the city spirals instead, and play goes on.
-   * On for a Hardcore game (`?mode=hardcore`) and for scenarios; saved with the game.
+   * Enabled by scenarios and retained for legacy URLs/saves under the original field name.
    */
   hardcore = false;
   /** The project has folded: when and why. Null while it runs (and always in an ordinary game). */

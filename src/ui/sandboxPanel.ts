@@ -1,4 +1,5 @@
 import { t } from '../i18n';
+import { panelDismiss } from './panelDismiss';
 import { PARAM_GROUPS, PARAMS, PARAM_BY_ID, normalize, type ParamId, type SandboxSettings } from '../config/sandboxParams';
 
 export interface SandboxPanelCallbacks {
@@ -92,7 +93,7 @@ export class SandboxPanel {
     reset.addEventListener('click', () => cb.onReset());
     // The existing Settings toggle closes this panel; Back only navigates within it.
     this.title = title;
-    head.append(title);
+    head.append(title, panelDismiss(() => this.setOpen(false, true)));
     const resetRow = el('p', 'sandbox-reset-row');
     resetRow.append(reset);
     this.resetRow = resetRow;
@@ -259,16 +260,8 @@ export class SandboxPanel {
     this.show(this.current);
   }
 
-  /** Reuse the same toggle beside the title on touch layouts; no duplicate button state. */
-  placeCompactToggle(title: HTMLElement): void {
-    const compact = window.matchMedia('(max-width: 760px), (max-height: 520px), (pointer: coarse)');
-    const place = () => {
-      if (compact.matches) title.append(this.toggle);
-      else this.root.prepend(this.toggle);
-    };
-    compact.addEventListener('change', place);
-    place();
-  }
+  /** One Settings control in the gameplay toolbar on every viewport. */
+  placeToggle(toolbar: HTMLElement): void { toolbar.append(this.toggle); }
 
   get isOpen(): boolean { return !this.body.hidden; }
 
