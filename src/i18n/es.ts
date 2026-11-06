@@ -4,6 +4,14 @@
  * plural() looks up each English form here (one, other).
  */
 export const ES: Record<string, string> = {
+  "Ukraine (Drugstore outreach)": "Ucrania (trabajo comunitario de Drugstore)",
+  "Beyond the dancefloor": "Más allá de la pista",
+  "Ukraine: build trust through nightlife outreach, inspired by Drugstore’s research and service model. Reach people beyond the party and keep support available. Online delivery and wartime disruption are not simulated; undocumented policy factors retain game defaults.": "Ucrania: genera confianza mediante trabajo comunitario nocturno inspirado en los estudios y el modelo de Drugstore. Llega más allá de la fiesta y mantén el apoyo disponible. No se simulan las entregas en línea ni las interrupciones por la guerra; los factores políticos no documentados conservan los valores predeterminados del juego.",
+  "Running on volunteers": "A fuerza de voluntariado",
+  "A licence, a volunteer team": "Una licencia, un equipo voluntario",
+  "Prove the pilot": "Demostrar el valor del piloto",
+  "New Zealand: supportive communities and authorised checking, but a volunteer service has limited capacity. Keep the team and its services going. Based on the library’s festival evidence; unreported policy factors retain their defaults.": "Nueva Zelanda: apoyo comunitario y análisis autorizado, pero un servicio voluntario tiene capacidad limitada. Mantén el equipo y sus servicios. Basado en estudios de festivales de la biblioteca; los factores no documentados conservan sus valores predeterminados.",
+  "Australia: build an ACT-style festival checking trial with negotiated police cooperation and short-term funding. Keep people engaged and the project afloat. This is a jurisdiction-specific research setting, not a uniform national policy.": "Australia: desarrolla un piloto de análisis en festivales inspirado en el ACT, con cooperación policial negociada y financiación temporal. Mantén la participación y la viabilidad del proyecto. Es un contexto de investigación de una jurisdicción concreta, no una política nacional uniforme.",
   "At capacity: {n} waiting.": "Aforo completo: {n} personas esperando.",
 
   "{name}: {status}. Show details": "{name}: {status}. Ver detalles",

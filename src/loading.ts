@@ -14,6 +14,9 @@ import { loadCompat } from './compat';
 import { trackUiViewport } from './ui/viewportBounds';
 import skylineSvg from './assets/loading-skyline.svg?raw';
 
+// Assistive technology needs the selected language before the menu or game loads.
+document.documentElement.lang = LANG;
+
 const EN = [
   'Teaching pigeons to read the timetable',
   'Pouring concrete for tomorrow’s puddles',
@@ -88,9 +91,28 @@ const PT = [
   'A ensinar os elétricos a fazer fila',
 ];
 
+const UK = [
+  'Вчимо голубів читати розклад',
+  'Заливаємо бетон під завтрашні калюжі',
+  'Розплутуємо трамвайні дроти',
+  'Рахуємо ліхтарі вдруге, про всяк випадок',
+  'Переконуємо річку текти вниз',
+  'Складаємо ніч у рівні квадрати',
+  'Видаємо місяцю дозвіл на паркування',
+  'Прасуємо пішохідні переходи',
+  'Прогріваємо неон кіоску з кебабом',
+  'Домовляємося з дуже втомленим краном',
+  'Прокладаємо мережу провулків',
+  'Розпитуємо водостоки про побачене',
+  'Надуваємо пагорб',
+  'Поливаємо пластикові рослини',
+  'Підкуповуємо годинникову вежу печивом',
+  'Вчимо трамваї стояти в черзі',
+];
+
 const line = document.querySelector<HTMLElement>('#loading .loading-line');
 if (line) {
-  const phrases = { en: EN, pl: PL, es: ES, pt: PT }[LANG];
+  const phrases = { en: EN, pl: PL, es: ES, pt: PT, uk: UK }[LANG];
   let i = Math.floor(Math.random() * phrases.length);
   const show = () => { line.textContent = `${phrases[i % phrases.length]}…`; i++; };
   show();
@@ -163,6 +185,7 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
  * catalogue, because the catalogue may be what failed. The screen never hangs on its phrases.
  */
 const FAILED = {
+  uk: { title: 'Не вдалося запустити гру.', webgl: 'Цей браузер не підтримує WebGL 2, потрібний грі для відображення міста.', hint: 'Перевір з’єднання та спробуй ще раз. Якщо проблема повторюється, може допомогти оновлення браузера або системи.', retry: 'Спробувати ще раз' },
   en: { title: 'The game could not start.', webgl: 'This browser has no WebGL 2, which the game needs to draw the city.', hint: 'Check the connection and try again. If it keeps happening, updating the browser or the system may help.', retry: 'Try again' },
   pl: { title: 'Nie udało się uruchomić gry.', webgl: 'Ta przeglądarka nie ma WebGL 2, którego gra potrzebuje do rysowania miasta.', hint: 'Sprawdź połączenie i spróbuj ponownie. Jeśli to się powtarza, pomóc może aktualizacja przeglądarki lub systemu.', retry: 'Spróbuj ponownie' },
   es: { title: 'No se pudo iniciar el juego.', webgl: 'Este navegador no tiene WebGL 2, que el juego necesita para dibujar la ciudad.', hint: 'Comprueba la conexión y vuelve a intentarlo. Si sigue pasando, actualizar el navegador o el sistema puede ayudar.', retry: 'Reintentar' },

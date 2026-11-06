@@ -46,4 +46,21 @@ Keep the existing manifest fullscreen-to-standalone fallback. Display modes vary
 baseline already supports dynamic viewport units, `:has()` and `:focus-visible`; see
 [WebKit's Safari 15.4 release notes](https://webkit.org/blog/12445/new-webkit-features-in-safari-15-4/).
 
-`node scripts/bots/releaseCopy.mjs [dev-url]` checks the Latin America title in all four languages, the retained Colombian flag, the existing scenario ID/failure rules and removal of legacy mode copy.
+`node scripts/bots/releaseCopy.mjs [dev-url]` checks the Latin America scenario title in all four languages, the retained Colombian flag, the existing scenario ID/failure rules and removal of legacy mode copy. It also launches New Zealand, Australia and Ukraine and verifies their preset IDs and project-failure rules. Use `?menu=1` on a development server.
+
+### Scenario calibration
+
+`scenarioBalance.mjs` runs the real simulation, crowd and world at the canonical fixed step for five game days. It validates the launched scenario and runtime errors, saves every hourly row plus exact night-boundary helped/deaths/stars/folded/won measurements, and prints a compact summary. Each case starts with a clean seeded browser profile.
+
+```bash
+node scripts/bots/scenarioBalance.mjs --url http://127.0.0.1:5199/ --scenarios australia,ukraine --seeds 777,123,2026 --out /tmp/scenario-project
+node scripts/bots/scenarioBalance.mjs --url http://127.0.0.1:5199/ --scenarios new-zealand,colombia --bots naive,prepared-lean --seeds 777,123,2026 --out /tmp/scenario-volunteer
+```
+
+`prepared-lean` uses the existing prepared strategy plus explicit player actions: close unused sites, rely on volunteers, seek a club contract and preserve cash before optional purchases and recruitment. It receives no extra funds, staff, supplies or policy changes. Ordinary `prepared` and `naive` retain their existing decisions. Bot-only measurements never enter production builds.
+
+Use `--resume` only with the same fixture and configuration; choose a fresh output directory after any change. Transient browser startup/navigation failures retry at most three times. If the machine's `TMPDIR` points to a slow external drive, set it to a dedicated local directory with sufficient free space; the canonical driver still closes Chrome and removes its own profiles.
+
+The 6 November 2026 calibration used an isolated compiled development snapshot, with the real application initialization and 90-second warmup. A fixture-only checkpoint stopped before GPU shader compilation and animation frames; the strategy bot alone advanced the real sim/crowd/world. Its `balanceVisitScore` reference supplied the same care scoring function without a development-source fetch. The normal development page remains supported by the fallback import. See `docs/evidence/scenario-balance-2026-11-06.json` for preserved measurements and `docs/evidence/regional-scenarios.md` for results and limits. Run `node scripts/tests/scenarioFailure.mjs` for the closure regression found during calibration.
+
+`prepared-resourceful` adds the ordinary funding-favour mechanism and handles its later concession request on top of lean play. It was tested separately on difficult seed 991; it does not change any game resources directly. Run it with `--bots prepared-resourceful --seeds 991` and a fresh output directory.

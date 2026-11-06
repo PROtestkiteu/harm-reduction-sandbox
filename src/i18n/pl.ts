@@ -4,6 +4,14 @@
  * uses plural() with its Polish forms inline, so it is not listed here.
  */
 export const PL: Record<string, string> = {
+  "Ukraine (Drugstore outreach)": "Ukraina (outreach Drugstore)",
+  "Beyond the dancefloor": "Poza parkietem",
+  "Ukraine: build trust through nightlife outreach, inspired by Drugstore’s research and service model. Reach people beyond the party and keep support available. Online delivery and wartime disruption are not simulated; undocumented policy factors retain game defaults.": "Ukraina: buduj zaufanie poprzez outreach w klubach, inspirowany badaniami i modelem Drugstore. Docieraj do ludzi także poza imprezą i utrzymaj dostęp do wsparcia. Dostawy internetowe i zakłócenia wojenne nie są symulowane; nieudokumentowane czynniki polityki zachowują ustawienia domyślne gry.",
+  "Running on volunteers": "Siłą wolontariuszy",
+  "A licence, a volunteer team": "Zezwolenie i zespół wolontariuszy",
+  "Prove the pilot": "Sprawdzian pilotażu",
+  "New Zealand: supportive communities and authorised checking, but a volunteer service has limited capacity. Keep the team and its services going. Based on the library’s festival evidence; unreported policy factors retain their defaults.": "Nowa Zelandia: wsparcie społeczności i legalne testowanie, ale ograniczone możliwości wolontariuszy. Utrzymaj zespół i usługi. Scenariusz oparty na badaniach festiwalowych z biblioteki; nieopisane czynniki zachowują ustawienia domyślne.",
+  "Australia: build an ACT-style festival checking trial with negotiated police cooperation and short-term funding. Keep people engaged and the project afloat. This is a jurisdiction-specific research setting, not a uniform national policy.": "Australia: rozwiń festiwalowy pilotaż testowania wzorowany na ACT, z uzgodnioną współpracą policji i krótkoterminowym finansowaniem. Utrzymaj zaangażowanie ludzi i wypłacalność projektu. To model badawczy konkretnej jurysdykcji, a nie jednolita polityka krajowa.",
   "Help accessing housing, work and social services.": "Pomoc w dostępie do mieszkania, pracy i wsparcia społecznego.",
   "Conversation, a quiet space and access to psychological support.": "Rozmowa, spokojna przestrzeń i dostęp do wsparcia psychologicznego.",
   "Physical health support and access to nursing care.": "Wsparcie w potrzebach zdrowotnych i dostęp do opieki pielęgniarskiej.",

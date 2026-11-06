@@ -12,10 +12,11 @@
 //             volunteers and hires as money allows; no rest, no stock bought ahead, no storm prep
 //   prepared  naive, plus what the game teaches: tired or shaken people rest, supplies bought
 //             ahead, and once a storm is announced every preparation, a full shelf and a rested team
+// opts.lean adds a lean, cash-preserving prepared strategy through normal player actions.
 // opts.clockSpeed sets the game clock's speed (1 = default) for speed-dependence checks.
 async (name, days = 3, opts = {}) => {
   const { sim, crowd, world } = window.__sandbox;
-  const { visitScore } = await import('/src/sim/recipientCare.ts');
+  const visitScore = window.__sandbox.balanceVisitScore ?? (await import('/src/sim/recipientCare.ts')).visitScore;
   const careMetrics = { ratings: { none: 0, bronze: 0, silver: 0, gold: 0 }, finished: 0, scoreSum: 0, durationSum: 0, queuePeak: 0, activePeak: 0, urgentUnrated: 0, byStateCount: {}, nights: [] };
   const born = new Map();
   const care = sim.recipientCare;
@@ -43,6 +44,11 @@ async (name, days = 3, opts = {}) => {
   const st = sim.stakes;
   // The bots enable scenario-style project failure while measuring balance.
   st.hardcore = true;
+  // An explicit lean strategy uses player-visible actions, never extra money or policy changes.
+  if (opts.lean) {
+    for (const id of ids.filter(id => !sim.services[id].everRun)) did('close-unused', sim.closeDownPlace(id));
+    while (sim.org.paid > 0) did('let-go', sim.letGo());
+  }
   // `careful`: hire only when the hour's surplus already covers the new wage, and never while a storm is coming.
   const grow = (careful = false) => {
     // Everyone applies for every grant they can afford: it is the main way money comes in.
@@ -50,14 +56,22 @@ async (name, days = 3, opts = {}) => {
     did('drive', sim.startDonationDrive());
     const want = Object.values(sim.services).reduce((n, x) => n + (x.closedReason === null || x.closedReason === 'noStaff' ? x.requested : 0), 0);
     const have = sim.org.paid + sim.org.volunteers;
-    if (have < want && sim.org.budget > 150 && sim.org.recruiting.length === 0) did('volunteers', sim.recruit('volunteerDrive'));
+    const volunteerReserve = careful && opts.lean ? Math.max(250, -sim.org.netPerHour * 6 + 100) : 150;
+    if (have < want && sim.org.budget > volunteerReserve && sim.org.recruiting.length === 0) did('volunteers', sim.recruit('volunteerDrive'));
     const canHire = careful ? sim.org.budget > 1200 && sim.org.netPerHour > 45 && st.storm.phase === 'none' : sim.org.budget > 900 && sim.org.netPerHour > 0;
     if (canHire && sim.org.paid < 3 && sim.org.recruiting.length === 0) did('hire', sim.recruit('hirePaid'));
   };
   const strategy = {
     naive() { grow(); },
     prepared() {
+      if (opts.resourceful) {
+        // Settle the actual city-hall request before seeking another funded favour.
+        if (sim.concessionDue) did('concession', sim.answerConcession('cleanUp', sim.org.budget > 350));
+        if (sim.org.budget < 500) did('favour:funding', sim.askFavour('funding'));
+      }
       grow(true);
+      if (opts.lean && !sim.clubContract) did('club-contract', sim.proposeClubContract());
+      const cashReserve = opts.lean ? Math.max(500, -sim.org.netPerHour * 8 + 300) : 300;
       const storm = st.storm.phase;
       // Rest whoever is worn or shaken, and bring them back once they are fit again; before a
       // storm, rest the most tired half so the night starts fresh.
@@ -76,11 +90,11 @@ async (name, days = 3, opts = {}) => {
         else if (sim.org.budget > 1200) did('invest', sim.invest(sim.busiest.service));
       }
       // Keep the shelf stocked ahead; before a storm, stock what it needs.
-      for (const [id, low] of [['naloxone', 6], ['kits', 15]]) if (st.supplies.stock[id] < low && sim.org.budget > 300) did('order', sim.orderSupply(id));
-      if (st.supplies.stock.leaflets < 50 && sim.org.budget > 120) did('order', sim.orderSupply('leaflets'));
+      for (const [id, low] of [['naloxone', 6], ['kits', 15]]) if (st.supplies.stock[id] < low && sim.org.budget > cashReserve) did('order', sim.orderSupply(id));
+      if (st.supplies.stock.leaflets < 50 && sim.org.budget > (opts.lean ? cashReserve : 120)) did('order', sim.orderSupply('leaflets'));
       if (storm === 'warned') {
         // Prepare in order of value for money, always keeping a reserve to run the night on.
-        const reserve = 250;
+        const reserve = opts.lean ? cashReserve : 250;
         const need = st.storm.kind === 'freeze' ? 'blankets' : 'naloxone';
         if (!st.storm.prepared.has('warn')) did('prep:warn', sim.prepareStorm('warn'));
         if (st.supplies.stock[need] < 30 && sim.org.budget > reserve + 150) did('order', sim.orderSupply(need));
@@ -117,6 +131,7 @@ async (name, days = 3, opts = {}) => {
   const start = sim.org.now;
   let firstRed = null, overAt = null, redHours = 0, nextAct = 0, nextLog = 0, guard = 0, foldedAt = null, quits = 0, wonAt = null;
   const storms = [];
+  const scenarioNights = [];
   // Where morale went: every rise and fall through Team.move, summed by cause (lifts as 'lift').
   const morale = {};
   const T = sim.team.constructor;
@@ -128,6 +143,7 @@ async (name, days = 3, opts = {}) => {
     morale[k] = +((morale[k] ?? 0) + m.morale - before).toFixed(3);
   };
   sim.on((e) => {
+    if (e.type === 'nightReport') scenarioNights.push({ night: e.report.night, helped: sim.totals.helped, deaths: sim.deaths, stars: sim.goals.stars, folded: !!st.runOver, won: sim.goals.won });
     if (e.type === 'nightReport' && e.report.care) careMetrics.nights.push({ night: e.report.night, ...e.report.care, reputation: sim.reputation.score });
     if (e.type === 'storm' && e.what === 'ended') storms.push({ ...e.report, h: Math.round((sim.org.now - start) / 60) });
     if (e.type === 'orgNotice' && / has quit: /.test(e.notice.text)) quits++;
@@ -147,7 +163,7 @@ async (name, days = 3, opts = {}) => {
     }
     if (red()) { redHours += 1 / 60; firstRed ??= Math.round(t / 60); }
     // No game over any more: the first hour all three starting services had closed down for money.
-    if (overAt === null && sim.org.closedDown.size >= 3) overAt = Math.round(t / 60);
+    if (overAt === null && ['dropIn', 'outreach', 'clubHr'].every(id => sim.org.closedDown.has(id))) overAt = Math.round(t / 60);
     if (foldedAt === null && st.runOver) foldedAt = Math.round(t / 60);
     if (wonAt === null && sim.goals.won) wonAt = Math.round(t / 60);
     careMetrics.queuePeak = Math.max(careMetrics.queuePeak, ...ids.map(id => sim.services[id].queue.length));
@@ -169,5 +185,5 @@ async (name, days = 3, opts = {}) => {
     if (guard % 240 === 0) await new Promise((r) => setTimeout(r, 0));
   }
   const totals = Object.fromEntries(Object.entries(sim.totals).filter(([, v]) => typeof v === 'number'));
-  return { careMetrics, name, days, clockSpeed: opts.clockSpeed ?? 1, firstRedHour: firstRed, redHours: Math.round(redHours), gameOverHour: overAt, foldedHour: foldedAt, quits, storms, scenario: sim.goals.scenario?.id ?? null, foldCause: st.runOver?.cause ?? null, closedDown: [...sim.org.closedDown], closedReasons: Object.fromEntries(ids.map((i) => [i, sim.services[i].closedReason])), wonHour: wonAt, stars: sim.goals.stars, nights: sim.totals.nights, morale, alone: sim.health.alone, acts, totals, rows };
+  return { resourceful: !!opts.resourceful, lean: !!opts.lean, scenarioNights, deaths: sim.deaths, careMetrics, name, days, clockSpeed: opts.clockSpeed ?? 1, firstRedHour: firstRed, redHours: Math.round(redHours), gameOverHour: overAt, foldedHour: foldedAt, quits, storms, scenario: sim.goals.scenario?.id ?? null, foldCause: st.runOver?.cause ?? null, closedDown: [...sim.org.closedDown], closedReasons: Object.fromEntries(ids.map((i) => [i, sim.services[i].closedReason])), wonHour: wonAt, stars: sim.goals.stars, nights: sim.totals.nights, morale, alone: sim.health.alone, acts, totals, rows };
 }

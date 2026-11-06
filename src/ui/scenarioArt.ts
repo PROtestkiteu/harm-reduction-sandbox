@@ -1,3 +1,6 @@
+import ukrainianFlag from '../assets/scenario-flags/ua.svg';
+import newZealandFlag from '../assets/scenario-flags/nz.svg';
+import australianFlag from '../assets/scenario-flags/au.svg';
 import dutchFlag from '../assets/scenario-flags/nl.svg';
 import portugueseFlag from '../assets/scenario-flags/pt.svg';
 import polishFlag from '../assets/scenario-flags/pl.svg';
@@ -6,6 +9,8 @@ import americanFlag from '../assets/scenario-flags/us.svg';
 
 /** Local vectors keep the national scenarios crisp without raster downloads or emoji fallback. */
 const FLAGS: Readonly<Record<string, string>> = {
+  ukraine: ukrainianFlag,
+  'new-zealand': newZealandFlag, australia: australianFlag,
   netherlands: dutchFlag, portugal: portugueseFlag, poland: polishFlag, us: americanFlag, colombia: colombianFlag,
 };
 const SYMBOLS: Readonly<Record<string, string>> = {

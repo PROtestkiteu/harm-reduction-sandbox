@@ -5,9 +5,12 @@ import { t } from '../i18n';
  * with a goal to reach. Reaching it wins the scenario; the game then carries
  * on as an open run. Started from the before-game menu; a challenge is
  * use project-failure rules (the project can fold). ILLUSTRATIVE targets, tuned with
- * the strategy bots (scripts/bots, naive and prepared on several seeds) so a
- * prepared player wins and a naive one does not: people helped at about two
- * thirds of what prepared play reaches, and a cap on deaths between the two.
+ * strategy bots (scripts/bots, naive and prepared on several seeds). Prepared
+ * play should win more reliably over the measured five-day window; simpler
+ * play can still win in favourable cities. These are minimum goals, not a deadline.
+ * Regional additions are calibrated against recorded five-day naive and prepared bot runs.
+ * Volunteer-funded runs also use the explicit prepared-lean strategy; see
+ * docs/evidence/regional-scenarios.md for seeds, results and limits.
  */
 export interface Scenario {
   id: string;
@@ -28,7 +31,10 @@ export const SCENARIOS: readonly Scenario[] = [
   { id: 'portugal', model: 'pt', title: t('Decriminalised'), blurb: t('Use is not a crime, but the money is tight. Grow without going broke.'), nights: 5, helped: 160, stars: 7, deaths: 15 },
   { id: 'poland', model: 'pl', title: t('Against the odds'), blurb: t('Possession is a crime and funding is a project at a time. Keep people alive and the doors open.'), nights: 5, helped: 170, stars: 7, deaths: 8 },
   { id: 'us', model: 'us', title: t('Patchwork'), blurb: t('A patchwork of laws and short grants. Every night is a fight for money.'), nights: 5, helped: 170, stars: 7, deaths: 10 },
-  { id: 'colombia', model: 'mx-latam', title: t('Latin America'), blurb: t('Build a community project with a small budget and a volunteer team. This scenario uses the regional Latin America preset, not a country-specific policy model.'), nights: 5, helped: 150, stars: 7, deaths: 10 },
+  { id: 'new-zealand', model: 'nz', title: t('A licence, a volunteer team'), blurb: t('New Zealand: supportive communities and authorised checking, but a volunteer service has limited capacity. Keep the team and its services going. Based on the library’s festival evidence; unreported policy factors retain their defaults.'), nights: 5, helped: 90, stars: 4, deaths: 12 },
+  { id: 'australia', model: 'au', title: t('Prove the pilot'), blurb: t('Australia: build an ACT-style festival checking trial with negotiated police cooperation and short-term funding. Keep people engaged and the project afloat. This is a jurisdiction-specific research setting, not a uniform national policy.'), nights: 5, helped: 170, stars: 6, deaths: 8 },
+  { id: 'ukraine', model: 'ua', title: t('Beyond the dancefloor'), blurb: t('Ukraine: build trust through nightlife outreach, inspired by Drugstore’s research and service model. Reach people beyond the party and keep support available. Online delivery and wartime disruption are not simulated; undocumented policy factors retain game defaults.'), nights: 5, helped: 150, stars: 7, deaths: 8 },
+  { id: 'colombia', model: 'mx-latam', title: t('Running on volunteers'), blurb: t('Build a community project with a small budget and a volunteer team. This scenario uses the regional Latin America preset, not a country-specific policy model.'), nights: 5, helped: 80, stars: 5, deaths: 7 },
 ];
 
 /** Where a scenario stands, in one line: won, lost (too many deaths, or the project folded), or its progress. */

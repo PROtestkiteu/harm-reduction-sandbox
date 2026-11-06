@@ -4,6 +4,14 @@
  * plural() looks up each English form here (one, other).
  */
 export const PT: Record<string, string> = {
+  "Ukraine (Drugstore outreach)": "Ucrânia (intervenção comunitária Drugstore)",
+  "Beyond the dancefloor": "Para além da pista",
+  "Ukraine: build trust through nightlife outreach, inspired by Drugstore’s research and service model. Reach people beyond the party and keep support available. Online delivery and wartime disruption are not simulated; undocumented policy factors retain game defaults.": "Ucrânia: cria confiança através de intervenção na vida noturna, inspirada nos estudos e no modelo da Drugstore. Chega além da festa e mantém o apoio disponível. As entregas online e as perturbações da guerra não são simuladas; os fatores políticos não documentados mantêm os valores predefinidos do jogo.",
+  "Running on volunteers": "À força do voluntariado",
+  "A licence, a volunteer team": "Uma licença, uma equipa voluntária",
+  "Prove the pilot": "Provar o valor do projeto-piloto",
+  "New Zealand: supportive communities and authorised checking, but a volunteer service has limited capacity. Keep the team and its services going. Based on the library’s festival evidence; unreported policy factors retain their defaults.": "Nova Zelândia: apoio comunitário e análise autorizada, mas um serviço voluntário tem capacidade limitada. Mantém a equipa e os serviços. Baseado nos estudos de festivais da biblioteca; os fatores não documentados mantêm os valores predefinidos.",
+  "Australia: build an ACT-style festival checking trial with negotiated police cooperation and short-term funding. Keep people engaged and the project afloat. This is a jurisdiction-specific research setting, not a uniform national policy.": "Austrália: desenvolve um projeto-piloto de análise em festivais inspirado no ACT, com cooperação policial negociada e financiamento temporário. Mantém a participação e a viabilidade do projeto. É um contexto de investigação de uma jurisdição específica, não uma política nacional uniforme.",
   "At capacity: {n} waiting.": "Lotação esgotada: {n} pessoas à espera.",
 
   "{name}: {status}. Show details": "{name}: {status}. Ver detalhes",

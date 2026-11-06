@@ -1,6 +1,6 @@
-// Checks the catalogues (Polish, Spanish, Portuguese) against the source.
+// Checks the catalogues (Polish, Spanish, Portuguese, Ukrainian) against the source.
 //   node scripts/check-i18n.mjs . [file filter substring] [--unused]
-// Reports t() keys missing from each catalogue (and, for Spanish and Portuguese, the English plural()
+// Reports t() keys missing from each catalogue (and, for Spanish, Portuguese and Ukrainian, the English plural()
 // forms they look up), placeholder mismatches, em dashes, and template literals passed to t().
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -16,7 +16,7 @@ const read = (file) => {
   if (existsSync(file)) for (const m of readFileSync(file, 'utf8').matchAll(pairRe)) cat.set(unq(m[1]), unq(m[2]));
   return cat;
 };
-const CATS = { pl: read(join(src, 'i18n/pl.ts')), es: read(join(src, 'i18n/es.ts')), pt: read(join(src, 'i18n/pt.ts')) };
+const CATS = { pl: read(join(src, 'i18n/pl.ts')), es: read(join(src, 'i18n/es.ts')), pt: read(join(src, 'i18n/pt.ts')), uk: read(join(src, 'i18n/uk.ts')) };
 
 // What the source asks for: t() keys, and the English forms of plural() calls.
 const keyRe = new RegExp(`\\bt\\(\\s*(${strLit})`, 'g');
@@ -24,6 +24,7 @@ const pluralRe = new RegExp(`\\bplural\\([^,]+,\\s*\\[\\s*(${strLit})\\s*,\\s*($
 const tplRe = /\bt\(\s*`/g;
 const tKeys = new Map();
 const pluralKeys = new Map();
+const pluralFamilies = new Set();
 let bad = 0;
 for (const f of walk(src)) {
   if (f.includes('/i18n/')) continue;
@@ -32,12 +33,12 @@ for (const f of walk(src)) {
   const text = readFileSync(f, 'utf8');
   for (const m of text.matchAll(tplRe)) { console.log(`TEMPLATE  ${rel}: t(\` at ${m.index}`); bad++; }
   for (const m of text.matchAll(keyRe)) tKeys.set(unq(m[1]), rel);
-  for (const m of text.matchAll(pluralRe)) { pluralKeys.set(unq(m[1]), rel); pluralKeys.set(unq(m[2]), rel); }
+  for (const m of text.matchAll(pluralRe)) { pluralFamilies.add(unq(m[1])); pluralKeys.set(unq(m[1]), rel); pluralKeys.set(unq(m[2]), rel); }
 }
 
 const ph = (s) => [...s.matchAll(/\{(\w+)\}/g)].map((x) => x[1]).sort().join(',');
 for (const [lang, cat] of Object.entries(CATS)) {
-  if (!cat.size && lang !== 'pl') { console.log(`${lang}: no catalogue`); continue; }
+  if (!cat.size) { console.log(`${lang}: no catalogue`); bad++; continue; }
   const wanted = lang === 'pl' ? tKeys : new Map([...tKeys, ...pluralKeys]);
   let missing = 0;
   for (const [k, rel] of wanted) {
@@ -49,6 +50,16 @@ for (const [lang, cat] of Object.entries(CATS)) {
   console.log(`${lang}: catalogue ${cat.size} entries, ${missing} missing, unused ${unused.length}`);
   if (process.argv.includes('--unused')) unused.forEach((k) => console.log(`UNUSED    ${lang} ${k}`));
   bad += missing;
+}
+// Ukrainian has one/few/many/other forms, independently of inline Polish forms.
+const ukSource = readFileSync(join(src, 'i18n/uk.ts'), 'utf8');
+const ukArrayRe = new RegExp(`(${strLit})\\s*:\\s*\\[\\s*(${strLit})\\s*,\\s*(${strLit})\\s*,\\s*(${strLit})\\s*,\\s*(${strLit})\\s*\\]`, 'g');
+const ukForms = new Map([...ukSource.matchAll(ukArrayRe)].map(m => [unq(m[1]), m.slice(2).map(unq)]));
+for (const key of pluralFamilies) {
+  const forms = ukForms.get(key);
+  if (!forms) { console.log(`PLURAL    uk missing family: ${key}`); bad++; continue; }
+  const expected = [...new Set([...key.matchAll(/\{(\w+)\}/g)].map(m => m[1]).concat('n'))].sort().join(',');
+  for (const form of forms) if (ph(form) !== expected) { console.log(`PLURAL    uk placeholders: ${key} => ${form}`); bad++; }
 }
 console.log(`${tKeys.size} t() keys, ${pluralKeys.size} plural forms; ${bad} problems`);
 process.exitCode = bad ? 1 : 0;

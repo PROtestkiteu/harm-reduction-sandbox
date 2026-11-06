@@ -171,6 +171,15 @@ export const NATIONAL_MODELS: readonly NationalModel[] = [
     evidence: [{ref: "Possession law", type: "none", note: "no evidence in library", source: "Chemical Safety/Wiedza (searched)"}, {ref: "Drug checking law", type: "profile", note: "licensed or explicitly legal (permanent national legislation from 2020); grey before", source: "2021_Hutton_Drug Checking at New Zealand Festivals (Final Report).pdf p6, p8 to p9; 2025_Kaskela_From trash to results shortcomings and benefits of paraphernalia-based drug checking in Finland.pdf p2"}, {ref: "Policing", type: "profile", note: "neutral (strong police presence at some events)", source: "2021_Hutton_Drug Checking at New Zealand Festivals (Final Report).pdf p38"}, {ref: "Funding", type: "profile", note: "none or volunteer (2020)", source: "2021_Hutton_Drug Checking at New Zealand Festivals (Final Report).pdf p9, p53, p64"}, {ref: "Council and community", type: "profile", note: "supportive", source: "2021_Hutton_Drug Checking at New Zealand Festivals (Final Report).pdf p6, p31"}, {ref: "Service model", type: "profile", note: "festival or nightlife, fixed site (city clinics)", source: "2021_Hutton_Drug Checking at New Zealand Festivals (Final Report).pdf p59 to p60"}, {ref: "Key outcomes", type: "profile", note: "rapid growth; behaviour change", source: "2021_Hutton_Drug Checking at New Zealand Festivals (Final Report).pdf p5, p25, p53"}],
   },
 
+  {
+    id: 'ua',
+    label: t('Ukraine (Drugstore outreach)'),
+    confidence: 'low',
+    summary: 'Drugstore combines nightlife outreach with online counselling and delivery of harm reduction kits. The mobile nightlife option approximates the field outreach component only; this game does not simulate postal delivery, online surveys or wartime disruption. This is a service case study, not a national policy profile. Possession law, checking law, policing, funding, council, neighbourhood, anonymity and alerts retain game defaults because this source does not establish national settings.',
+    options: { checkingSite: 'mobileNightlife' },
+    evidence: [{ ref: 'Service model', type: 'profile', note: 'Nightlife field outreach combined with digital access and PartyBox delivery; mobile nightlife is an illustrative mapping of field outreach, not a simulation of postal or online services.', source: "Kushakov et al. (2024), Harm Reduction Services for People who Use Psychoactive Substances in Recreational Contexts: Intervention Development and Implementation Guide, pp. 53-57" }],
+  },
+
 ];
 
 /** Resolves a model's option ids into a full selection. */

@@ -2196,7 +2196,7 @@ export class Simulation {
     let rota = this.team.tick((dt * this.minuteRate) / 60, late, { unpaid: this.org.broke && this.org.paid > 0, steadier: this.org.steadierVolunteers, drain: stormOn ? STORM.drain : 1 });
     const outreach = this.services.outreach;
     const stakes = this.stakes.tick(dt * this.minuteRate, {
-      nights: this.totals.nights, clock: this.clockMinutes, season: this.season, shut: this.org.closedDown.size >= ORG.closeDownAfter.length,
+      nights: this.totals.nights, clock: this.clockMinutes, season: this.season, shut: ORG.startServices.every(id => this.org.closedDown.has(id)),
       outreachOnStreet: (outreach.enabled && outreach.staffOnSite > 0) || this.services.footPatrol.staffOnSite > 0 || this.patrol.out,
     });
     rota ||= stakes.rota;

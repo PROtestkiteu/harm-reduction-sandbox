@@ -1,11 +1,12 @@
-/** The interface language: English source text, Polish, Spanish or Portuguese. */
-export type Lang = 'en' | 'pl' | 'es' | 'pt';
+/** The interface language: English source text, Polish, Spanish, Portuguese or Ukrainian. */
+export type Lang = 'en' | 'pl' | 'es' | 'pt' | 'uk';
 
 export const LANGS: readonly { id: Lang; name: string }[] = [
   { id: 'en', name: 'English' },
   { id: 'pl', name: 'Polski' },
   { id: 'es', name: 'Español' },
   { id: 'pt', name: 'Português' },
+  { id: 'uk', name: 'Українська' },
 ];
 
 /** Where a language picked in Settings is remembered. */
@@ -39,16 +40,24 @@ function detect(): Lang {
 export const LANG: Lang = detect();
 
 /** Locale for numbers and dates in the chosen language. */
-export const LOCALE = { en: 'en-GB', pl: 'pl-PL', es: 'es-ES', pt: 'pt-PT' }[LANG];
+export const LOCALE = { en: 'en-GB', pl: 'pl-PL', es: 'es-ES', pt: 'pt-PT', uk: 'uk-UA' }[LANG];
 
 /** The chosen language's catalogue; English needs none. Loaded before the game starts (loading.ts). */
 let CAT: Record<string, string> | null = null;
+let ukPlurals: Record<string, readonly [string, string, string, string]> | null = null;
+let ukRules: Intl.PluralRules | null = null;
 
 /** Fetches the catalogue for LANG (its own small chunk), so each player downloads only their language. */
 export async function loadCatalogue(): Promise<void> {
   if (LANG === 'pl') CAT = (await import('./pl')).PL;
   else if (LANG === 'es') CAT = (await import('./es')).ES;
   else if (LANG === 'pt') CAT = (await import('./pt')).PT;
+  else if (LANG === 'uk') {
+    const catalogue = await import('./uk');
+    CAT = catalogue.UK;
+    ukPlurals = catalogue.UK_PLURALS;
+    ukRules = new Intl.PluralRules('uk');
+  }
 }
 
 const fill = (text: string, vars?: Record<string, string | number>): string =>
@@ -76,7 +85,7 @@ function plForm(n: number): 0 | 1 | 2 {
  * Count-dependent text. Forms may hold `{n}` (filled with the count) and
  * any other `{name}` from `vars`. English: [one, other]; Polish: [1, 2-4, 5+].
  * Spanish and Portuguese count like English: each English form is looked up
- * in their catalogue.
+ * in their catalogue. Ukrainian uses its own one/few/many/other catalogue forms.
  */
 export function plural(
   n: number,
@@ -85,6 +94,10 @@ export function plural(
   vars?: Record<string, string | number>,
 ): string {
   const form = en[n === 1 ? 0 : 1];
-  const text = LANG === 'pl' ? pl[plForm(n)] : CAT?.[form] ?? form;
+  const uk = ukPlurals?.[en[0]];
+  const category = uk && ukRules ? ukRules.select(n) : 'other';
+  const text = LANG === 'uk' && uk
+    ? uk[category === 'one' ? 0 : category === 'few' ? 1 : category === 'many' ? 2 : 3]
+    : LANG === 'pl' ? pl[plForm(n)] : CAT?.[form] ?? form;
   return fill(text, { n, ...vars });
 }

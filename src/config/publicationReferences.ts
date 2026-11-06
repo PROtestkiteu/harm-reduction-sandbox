@@ -5,6 +5,7 @@
 export interface PublicationReference { title: string; url?: string; locator?: string; }
 
 const PUBLICATIONS = {
+  "drugstore2024": { "title": "Harm Reduction Services for People who Use Psychoactive Substances in Recreational Contexts: Intervention Development and Implementation Guide", "url": "https://region.aph.org.ua/wp-content/uploads/2024/03/harmreductioninrecreationalsettingsinterventionguide.pdf" },
   "p1": {
     "title": "An inventory of on-site pill-testing interventions in the EU: Fact files"
   },
@@ -442,6 +443,7 @@ export const SOURCE_REFERENCES: Readonly<Record<string, readonly PublicationRefe
   "2020_McAllister_The effect of public opinion and politics on attitudes towards pill testing...pdf p3; 2022_Olsen_Music festival drug checking Evaluation of an Australian pilot program.pdf p2, p8 to p9; 2024_Barratt_Adulteration and substitution of drugs purchased in Australia from cryptomarkets An analysis of Test4Pay.pdf p2; 2026_Usman_Understanding Consumption of Illicit Drugs and New Psychoactive Substances in Australia...pdf p2; 2024_Barratt_Adulteration and substitution of drugs purchased in Australia from cryptomarkets An analysis of Test4Pay.pdf p1": [{ ...PUBLICATIONS.p19, locator: "PDF p. 3" }, { ...PUBLICATIONS.p27, locator: "PDF p. 2, p8 to p9" }, { ...PUBLICATIONS.p38, locator: "PDF p. 2" }, { ...PUBLICATIONS.p52, locator: "PDF p. 2" }, { ...PUBLICATIONS.p38, locator: "PDF p. 1" }],
   "2020_McAllister_The effect of public opinion and politics on attitudes towards pill testing...pdf p3; 2025_Piatkowski_Psychological and socio-structural determinants of intentions to use drug checking services.pdf p3; 2026_Usman_Understanding Consumption of Illicit Drugs and New Psychoactive Substances in Australia...pdf p2": [{ ...PUBLICATIONS.p19, locator: "PDF p. 3" }, { ...PUBLICATIONS.p85, locator: "PDF p. 3" }, { ...PUBLICATIONS.p52, locator: "PDF p. 2" }],
   "2021_Hirschfeld_Safer Tripping Serotonergic Psychedelics and Drug Checking...pdf p5; 2001_EMCDDA_Pill_Testing_Fact_Files.pdf p34": [{ ...PUBLICATIONS.p21, locator: "PDF p. 5" }, { ...PUBLICATIONS.p1, locator: "PDF p. 34" }],
+  "Kushakov et al. (2024), Harm Reduction Services for People who Use Psychoactive Substances in Recreational Contexts: Intervention Development and Implementation Guide, pp. 53-57": [{ ...PUBLICATIONS.drugstore2024, locator: "pp. 53-57" }],
   "2021_Hutton_Drug Checking at New Zealand Festivals (Final Report).pdf p38": [{ ...PUBLICATIONS.p60, locator: "PDF p. 38" }],
   "2021_Hutton_Drug Checking at New Zealand Festivals (Final Report).pdf p5, p25, p53": [{ ...PUBLICATIONS.p60, locator: "PDF p. 5, p25, p53" }],
   "2021_Hutton_Drug Checking at New Zealand Festivals (Final Report).pdf p59 to p60": [{ ...PUBLICATIONS.p60, locator: "PDF p. 59 to p60" }],
