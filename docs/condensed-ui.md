@@ -33,3 +33,10 @@ See [prompts, master paths and runtime sizes](art/indicator-masters-v1/manifest.
 Current checks use browser emulation. Earlier device inspection in `touchscreen-checks.md` does not validate this revision. Older/newer iOS and Android phones still need browser/PWA checks for cutouts, navigation bars, dynamic browser chrome, keyboard, rotation, resume, theme switching and slow loading. Fullscreen permissions and actual safe-area publication require hardware verification.
 
 More than 5 GB remained free throughout this work; latest check was approximately 7.5 GiB.
+
+
+## Map control contrast (v0.0.502, 6 November 2026)
+
+The gameplay header had inherited scene-only bright gold and light text tokens while its background used the light panel theme. `style.css` now limits those fixed scene colors to world labels. `mapFirst.css` uses the theme's normal ink for map icons and gives Settings a persistent inverted filled tile in both themes, with a gold active state and explicit keyboard focus. Responsive dimensions and existing interactions are unchanged; no production JavaScript or rendering work was added.
+
+The production regression `scripts/bots/mapControlContrast.mjs` passed light/dark themes at 1280x800, 1440x900, 852x393 and 393x852, including selection, keyboard focus and Settings open/close. Normal map icons measured 12.25:1 in light and 14.39:1 in dark; the closed Settings glyph measured 13.66:1 and 15.11:1. Selected controls remained above 9:1. Screenshots were visually checked. Full numerical results are in `docs/map-control-contrast-2026-11-06.json`. Physical headset/mobile hardware was not tested.

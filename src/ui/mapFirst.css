@@ -11,9 +11,9 @@
 @media (min-width: 1000px), (orientation: landscape) {
   .map-first .map-layers-direct.layers-toggle { display: none; }
   .map-layer-rail { display: contents; pointer-events: auto; }
-  .map-layer-rail button { display: inline-flex; align-items: center; justify-content: center; min-width: 0; width: 100%; height: 34px; padding: 0; border: 1px solid transparent; border-radius: 3px; color: var(--reply); background: transparent; cursor: pointer; }
+  .map-layer-rail button { display: inline-flex; align-items: center; justify-content: center; min-width: 0; width: 100%; height: 34px; padding: 0; border: 1px solid transparent; border-radius: 3px; color: var(--text); background: transparent; cursor: pointer; }
   .map-layer-rail svg { width: 22px; height: 22px; }
-  .map-layer-rail button[aria-pressed='true'] { border-color: var(--reply); background: var(--bar); color: var(--bar-text); }
+  .map-layer-rail button[aria-pressed='true'] { border-color: var(--text); background: var(--bar); color: var(--bar-text); }
   .map-layer-rail button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 }
 /* Full Settings and short-screen sheets retain their own direct exit. */
@@ -32,9 +32,12 @@ body:has(.sandbox:not(.sheet) .sandbox-body:not([hidden])) .map-layer-rail { dis
 .map-first .hud-header .sandbox-toggle {
   display: inline-flex; position: relative; align-items: center; justify-content: center;
   flex: none; width: 40px; height: 40px; min-width: 40px; min-height: 40px;
-  margin: 0; padding: 0; border: 1px solid var(--reply); border-radius: 4px;
-  background: var(--grain), rgba(var(--fade), .95); color: var(--reply); box-shadow: none;
+  margin: 0; padding: 0; border: 1px solid var(--text); border-radius: 4px;
+  background: var(--text); color: var(--bg); box-shadow: none;
 }
+/* Settings keeps its own filled tile in both themes, separate from the map icons. */
+.map-first .hud-header .sandbox-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.map-first .hud-header .sandbox-toggle[aria-expanded='true'] { background: var(--bar); color: var(--bar-text); }
 .map-first .hud-header .sandbox-toggle span { display: none; }
 .map-first .hud-header .sandbox-toggle .gear { display: block; width: 18px; height: 18px; margin: 0; }
 .map-first .hud-header .sandbox-toggle::after { content: none; }
@@ -53,9 +56,8 @@ body:has(.sandbox:not(.sheet) .sandbox-body:not([hidden])) .map-layer-rail { dis
   }
   .map-first .hud-header .sandbox-toggle {
     width: 100%; min-width: 0; height: 34px; min-height: 34px;
-    border: 1px solid transparent; border-radius: 3px; background: transparent;
+    border-radius: 3px;
   }
-  .map-first .hud-header .sandbox-toggle[aria-expanded='true'] { border-color: var(--reply); background: var(--bar); color: var(--bar-text); }
 
 }
 

@@ -1,0 +1,256 @@
+{
+  "release": "0.0.502",
+  "method": "Computed rendered colors composited over both black and white scene backgrounds; canonical Chrome driver, production preview; screenshots manually inspected.",
+  "results": [
+    {
+      "theme": "light",
+      "views": [
+        {
+          "width": 1280,
+          "theme": "light",
+          "gearContrast": 13.659588126559616,
+          "gearFilled": true,
+          "gearBackground": "rgb(31, 27, 23)",
+          "headerBackground": "rgba(236, 229, 216, 0.95)",
+          "layerContrast": [
+            12.254525352565214,
+            12.254525352565214,
+            12.254525352565214,
+            12.254525352565214,
+            12.254525352565214,
+            12.254525352565214,
+            12.254525352565214,
+            12.254525352565214,
+            12.254525352565214,
+            12.254525352565214,
+            12.254525352565214
+          ],
+          "selected": 0,
+          "overflow": false,
+          "errors": []
+        },
+        {
+          "width": 1440,
+          "theme": "light",
+          "gearContrast": 13.659588126559616,
+          "gearFilled": true,
+          "gearBackground": "rgb(31, 27, 23)",
+          "headerBackground": "rgba(236, 229, 216, 0.95)",
+          "layerContrast": [
+            12.254525352565214,
+            12.254525352565214,
+            12.254525352565214,
+            12.254525352565214,
+            12.254525352565214,
+            12.254525352565214,
+            12.254525352565214,
+            12.254525352565214,
+            12.254525352565214,
+            12.254525352565214,
+            12.254525352565214
+          ],
+          "selected": 0,
+          "overflow": false,
+          "errors": []
+        },
+        {
+          "width": 852,
+          "theme": "light",
+          "gearContrast": 13.659588126559616,
+          "gearFilled": true,
+          "gearBackground": "rgb(31, 27, 23)",
+          "headerBackground": "rgba(236, 229, 216, 0.95)",
+          "layerContrast": [
+            12.254525352565214,
+            12.254525352565214,
+            12.254525352565214,
+            12.254525352565214,
+            12.254525352565214,
+            12.254525352565214,
+            12.254525352565214,
+            12.254525352565214,
+            12.254525352565214,
+            12.254525352565214,
+            12.254525352565214
+          ],
+          "selected": 0,
+          "overflow": false,
+          "errors": []
+        },
+        {
+          "width": 393,
+          "theme": "light",
+          "gearContrast": 13.659588126559616,
+          "gearFilled": true,
+          "gearBackground": "rgb(31, 27, 23)",
+          "headerBackground": "rgba(0, 0, 0, 0)",
+          "layerContrast": [],
+          "selected": 0,
+          "overflow": false,
+          "errors": []
+        },
+        {
+          "width": 1280,
+          "theme": "light",
+          "gearContrast": 13.659588126559616,
+          "gearFilled": true,
+          "gearBackground": "rgb(31, 27, 23)",
+          "headerBackground": "rgba(236, 229, 216, 0.95)",
+          "layerContrast": [
+            9.333035231837814,
+            12.254525352565214,
+            12.254525352565214,
+            12.254525352565214,
+            12.254525352565214,
+            12.254525352565214,
+            12.254525352565214,
+            12.254525352565214,
+            12.254525352565214,
+            12.254525352565214,
+            12.254525352565214
+          ],
+          "selected": 1,
+          "overflow": false,
+          "errors": []
+        },
+        {
+          "width": 1280,
+          "theme": "light",
+          "gearContrast": 9.333035231837814,
+          "gearFilled": true,
+          "gearBackground": "rgb(237, 179, 0)",
+          "headerBackground": "rgba(236, 229, 216, 0.95)",
+          "layerContrast": [],
+          "selected": 0,
+          "overflow": false,
+          "errors": []
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "views": [
+        {
+          "width": 1280,
+          "theme": "dark",
+          "gearContrast": 15.106117571979642,
+          "gearFilled": true,
+          "gearBackground": "rgb(236, 228, 212)",
+          "headerBackground": "rgba(10, 9, 8, 0.95)",
+          "layerContrast": [
+            14.390907924388573,
+            14.390907924388573,
+            14.390907924388573,
+            14.390907924388573,
+            14.390907924388573,
+            14.390907924388573,
+            14.390907924388573,
+            14.390907924388573,
+            14.390907924388573,
+            14.390907924388573,
+            14.390907924388573
+          ],
+          "selected": 0,
+          "overflow": false,
+          "errors": []
+        },
+        {
+          "width": 1440,
+          "theme": "dark",
+          "gearContrast": 15.106117571979642,
+          "gearFilled": true,
+          "gearBackground": "rgb(236, 228, 212)",
+          "headerBackground": "rgba(10, 9, 8, 0.95)",
+          "layerContrast": [
+            14.390907924388573,
+            14.390907924388573,
+            14.390907924388573,
+            14.390907924388573,
+            14.390907924388573,
+            14.390907924388573,
+            14.390907924388573,
+            14.390907924388573,
+            14.390907924388573,
+            14.390907924388573,
+            14.390907924388573
+          ],
+          "selected": 0,
+          "overflow": false,
+          "errors": []
+        },
+        {
+          "width": 852,
+          "theme": "dark",
+          "gearContrast": 15.106117571979642,
+          "gearFilled": true,
+          "gearBackground": "rgb(236, 228, 212)",
+          "headerBackground": "rgba(10, 9, 8, 0.95)",
+          "layerContrast": [
+            14.390907924388573,
+            14.390907924388573,
+            14.390907924388573,
+            14.390907924388573,
+            14.390907924388573,
+            14.390907924388573,
+            14.390907924388573,
+            14.390907924388573,
+            14.390907924388573,
+            14.390907924388573,
+            14.390907924388573
+          ],
+          "selected": 0,
+          "overflow": false,
+          "errors": []
+        },
+        {
+          "width": 393,
+          "theme": "dark",
+          "gearContrast": 15.106117571979642,
+          "gearFilled": true,
+          "gearBackground": "rgb(236, 228, 212)",
+          "headerBackground": "rgba(0, 0, 0, 0)",
+          "layerContrast": [],
+          "selected": 0,
+          "overflow": false,
+          "errors": []
+        },
+        {
+          "width": 1280,
+          "theme": "dark",
+          "gearContrast": 15.106117571979642,
+          "gearFilled": true,
+          "gearBackground": "rgb(236, 228, 212)",
+          "headerBackground": "rgba(10, 9, 8, 0.95)",
+          "layerContrast": [
+            10.420183181967303,
+            14.390907924388573,
+            14.390907924388573,
+            14.390907924388573,
+            14.390907924388573,
+            14.390907924388573,
+            14.390907924388573,
+            14.390907924388573,
+            14.390907924388573,
+            14.390907924388573,
+            14.390907924388573
+          ],
+          "selected": 1,
+          "overflow": false,
+          "errors": []
+        },
+        {
+          "width": 1280,
+          "theme": "dark",
+          "gearContrast": 10.420183181967303,
+          "gearFilled": true,
+          "gearBackground": "rgb(237, 179, 0)",
+          "headerBackground": "rgba(10, 9, 8, 0.95)",
+          "layerContrast": [],
+          "selected": 0,
+          "overflow": false,
+          "errors": []
+        }
+      ]
+    }
+  ]
+}

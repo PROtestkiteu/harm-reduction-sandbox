@@ -116,8 +116,8 @@
 
 }
 
-/* Text over the 3D scene (title, links, map labels) is always light on dark, whatever the theme. */
-.hud-header, .loc-label {
+/* World labels stay light over the scene; header controls use the panel theme. */
+.loc-label {
   --reply: #edb300;
   --reply-hover: #f5c93a;
   --text: #ece4d4;
@@ -1660,9 +1660,6 @@ body:has(.sandbox-body:not([hidden])) .portrait { display: none; }
 .loading-error code { display: block; margin: 4px 0 14px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 .loading-retry { min-height: 44px; padding: 0 22px; border: 0; border-radius: 2px; background: var(--reply); color: #120f0d; font: inherit; font-weight: 700; cursor: pointer; }
 .loading-retry:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
-
-/* The Configure button sits over the scene: always the bright gold. */
-.sandbox-toggle { --reply: #edb300; --reply-hover: #f5c93a; }
 
 /* Compact screens share the same indicators in both orientations. */
 .top-bar:empty { display: none; }
