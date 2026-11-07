@@ -1,3 +1,4 @@
+import { draggableWindow } from './draggableWindow';
 import { t } from '../i18n';
 import type { Decision } from '../game/decisions';
 import { price } from './money';
@@ -18,6 +19,7 @@ export class ConfirmPopup {
     this.dialog = document.createElement('dialog');
     this.dialog.className = 'welcome event-popup confirm-popup';
     this.dialog.setAttribute('aria-labelledby', 'confirm-title');
+    draggableWindow(this.dialog);
     this.title = document.createElement('h2');
     this.title.id = 'confirm-title';
     this.body = document.createElement('div');

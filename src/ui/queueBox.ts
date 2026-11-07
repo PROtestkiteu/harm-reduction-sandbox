@@ -1,3 +1,4 @@
+import { draggableWindow } from './draggableWindow';
 import { t } from '../i18n';
 
 /**
@@ -17,6 +18,7 @@ export class QueueBox {
     this.dialog = document.createElement('dialog');
     this.dialog.className = 'welcome queue-box';
     this.dialog.setAttribute('aria-labelledby', 'queue-title');
+    draggableWindow(this.dialog);
     this.title = document.createElement('h2');
     this.title.id = 'queue-title';
     this.text = document.createElement('p');

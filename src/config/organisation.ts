@@ -15,7 +15,7 @@ const cite = (ref: string, type: Citation['type'], note: string, source: string)
 
 export const ORG = {
   /**
-   * A new game starts about level: three services, one paid worker and four volunteers on the
+   * A new game equips three core services, one paid worker and four volunteers on the
    * project funding. Money to grow comes from what the player does (the club deal, donations,
    * grants); opening more services or hiring tips it into the red until they bring more in.
    */
@@ -23,8 +23,8 @@ export const ORG = {
   startPaid: 1,
   startVolunteers: 4,
   /**
-   * A new game opens the three original services only, so it starts close to breaking even and
-   * the player grows from there; the rest wait under Services until the money allows them.
+   * The three original services retain their baseline equipment and closure rules. All services
+   * await their first site under Services. This list preserves equipment and legacy closure rules.
    */
   startServices: ['dropIn', 'outreach', 'clubHr'] as readonly ServiceId[],
   /** Wage per paid worker per clock hour on shift. Volunteers are unpaid. */

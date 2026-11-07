@@ -1,3 +1,4 @@
+import { draggableWindow } from './draggableWindow';
 import { GOAL_TEXT } from '../config/goals';
 import { scenarioProgress, type Scenario } from '../config/scenarios';
 import type { NightReport } from '../sim/goals';
@@ -13,13 +14,15 @@ import { playerBadge, type PlayerPicture } from './playerBadge';
  * events; Continue (or Escape) carries on.
  */
 export class NightReportBox {
+  private readonly dragging: ReturnType<typeof draggableWindow>;
   private readonly dialog: HTMLDialogElement;
 
   constructor(parent: HTMLElement, private readonly onChange: (open: boolean) => void, private readonly picture?: PlayerPicture) {
     this.dialog = document.createElement('dialog');
     this.dialog.className = 'welcome event-popup night-report';
     this.dialog.setAttribute('aria-labelledby', 'night-report-title');
-    this.dialog.addEventListener('close', () => this.onChange(false));
+    this.dragging = draggableWindow(this.dialog);
+    this.dialog.addEventListener('close', () => { if (!this.dialog.open) this.onChange(false); });
     parent.append(this.dialog);
   }
 
@@ -99,6 +102,7 @@ export class NightReportBox {
     const go = Object.assign(document.createElement('button'), { type: 'button', className: 'welcome-start', textContent: t('Continue') });
     go.addEventListener('click', () => this.dialog.close());
     this.dialog.replaceChildren(...body, go);
+    this.dragging.refresh();
     this.dialog.showModal();
     this.onChange(true);
     go.focus();

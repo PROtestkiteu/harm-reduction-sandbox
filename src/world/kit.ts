@@ -355,19 +355,38 @@ export function pixelTextTexture(text: string, fg: string, bg: string, padding =
   return tex;
 }
 
+/** Unicode lettering for player-facing localized service signs, rasterized only when built. */
+const letteringTextures = new Map<string, CanvasTexture>();
+function letteredTexture(text: string, fg: string, bg: string): CanvasTexture {
+  const key = JSON.stringify([text, fg, bg]);
+  const cached = letteringTextures.get(key);
+  if (cached) return cached;
+  const canvas = document.createElement('canvas');
+  canvas.width = 640; canvas.height = 128;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, 640, 128);
+  ctx.fillStyle = fg; ctx.font = 'bold 42px sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(text, 320, 64, 612);
+  const texture = new CanvasTexture(canvas);
+  texture.colorSpace = SRGBColorSpace;
+  letteringTextures.set(key, texture);
+  return texture;
+}
+
 /** Glowing sign board: a box whose front face carries pixel text. */
-export function signBoard(text: string, width: number, height: number, fg: string, bg: string, glow: number): { mesh: Mesh; material: MeshLambertMaterial } {
-  const tex = pixelTextTexture(text, fg, bg);
+export function signBoard(text: string, width: number, height: number, fg: string, bg: string, glow: number, lettering: 'pixel' | 'text' = 'pixel', twoSided = false): { mesh: Mesh; material: MeshLambertMaterial } {
+  const tex = lettering === 'text' ? letteredTexture(text, fg, bg) : pixelTextTexture(text, fg, bg);
   const face = new MeshLambertMaterial({ map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: glow });
   const side = mat(PALETTE.frame);
-  const geo = cachedGeometry(`sign${width}|${height}`, () => {
+  const geo = cachedGeometry(`sign${width}|${height}|${twoSided}`, () => {
     const g = new BoxGeometry(width, height, 0.12).translate(0, height / 2, 0);
     // BoxGeometry faces run +x, -x, +y, -y, +z, -z, six indices each. Regroup
     // into sides / front / back so a sign costs three draws, not six.
     g.clearGroups();
     g.addGroup(0, 24, 0);
     g.addGroup(24, 6, 1);
-    g.addGroup(30, 6, 0);
+    g.addGroup(30, 6, twoSided ? 1 : 0);
     return g;
   });
   const mesh = new Mesh(geo, [side, face]);

@@ -1,3 +1,4 @@
+import { draggableWindow } from './draggableWindow';
 import { citationReference } from './citationReference';
 import { EVENT_IDS, EVENTS, KIND_LABELS, type EventId, type EventKind, type Hint } from '../config/randomEvents';
 import type { ActiveEvent } from '../sim/eventEngine';
@@ -237,6 +238,7 @@ class EventDetail {
   constructor(private readonly cb: EventFeedCallbacks) {
     this.dialog = el('dialog', 'welcome event-popup event-detail');
     this.dialog.setAttribute('aria-labelledby', 'event-detail-title');
+    draggableWindow(this.dialog);
     this.kind = el('p', 'intro-step');
     this.title = el('h2');
     this.title.id = 'event-detail-title';
@@ -248,6 +250,7 @@ class EventDetail {
     close.addEventListener('click', () => this.dialog.close());
     this.dialog.append(this.kind, this.title, this.status, this.counts, this.body, close);
     this.dialog.addEventListener('close', () => {
+      if (this.dialog.open) return;
       this.event = null;
       this.cb.onDetail?.(false);
     });

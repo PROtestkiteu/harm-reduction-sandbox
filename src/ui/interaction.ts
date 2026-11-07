@@ -1,3 +1,4 @@
+import { isEditing } from './keyboard';
 import type { StaffingAdvice } from './personSupport';
 import { registerTransient } from './transientSurfaces';
 import { Vector3, type Object3D, type OrthographicCamera } from 'three';
@@ -16,7 +17,10 @@ import type { SelectionMarker } from './selection';
 import { t } from '../i18n';
 
 export interface InteractionDeps {
+  /** Controls can select a service before it has a physical map location. */
+  locationPlaced?(id: LocationId): boolean;
   /** Tutorial and other authored maps reject unavailable targets at every input entry. */
+  resolveTarget?(target: Target): Target;
   allowsTarget?(target: Target): boolean;
   onSelection?(target: Target | null): void;
   canvas: HTMLCanvasElement;
@@ -69,9 +73,11 @@ export class Interaction {
   /** Title of a person who has left, kept so the card can say so. */
   private leftTitle: string | null = null;
   private hover: Target | null = null;
-  private placing: { targets: () => readonly { id: number; root: Object3D }[]; onPick(id: number): void; onEnd(): void } | null = null;
+  private placing: { targets: () => readonly { id: number; root: Object3D }[]; onPick(id: number): void; onEnd(): void; keepOnMiss?: boolean; respectBuildings?: boolean; onHover?(id: number | null): void } | null = null;
   private pointer: { x: number; y: number; coarse: boolean } | null = null;
   private hoverPending = false;
+  private placementPointerX = NaN;
+  private placementPointerY = NaN;
   private tooltipText = '';
   private tooltipPos = '';
   private redraw = false;
@@ -127,7 +133,8 @@ export class Interaction {
   }
 
   private pick(x: number, y: number, camera: OrthographicCamera, frame: RenderFrame, coarse: boolean): Target | null {
-    const target = this.picker.pick(x, y, camera, frame, coarse);
+    const picked = this.picker.pick(x, y, camera, frame, coarse);
+    const target = picked && this.d.resolveTarget ? this.d.resolveTarget(picked) : picked;
     return target && this.d.allowsTarget && !this.d.allowsTarget(target) ? null : target;
   }
 
@@ -143,8 +150,8 @@ export class Interaction {
   }
 
   select(target: Target | null): void {
+    if (target && this.d.resolveTarget) target = this.d.resolveTarget(target);
     if (target && this.d.allowsTarget && !this.d.allowsTarget(target)) return;
-    this.d.onSelection?.(target);
     const { hud, marker, highlight, rig, world, crowd } = this.d;
     this.leftTitle = null;
     if (target?.kind === 'location') target = { kind: 'location', id: target.id };
@@ -172,12 +179,14 @@ export class Interaction {
       hud.showBuilding(card);
       if (wasFocused) rig.release();
     } else if (target.kind === 'location') {
-      marker.show(world.locations[target.id]);
+      const placed = this.d.locationPlaced?.(target.id) ?? true;
+      marker.show(placed ? world.locations[target.id] : null);
       // A red rim around the whole building, like a selected person.
-      highlight.setSelected(world.locations[target.id].root);
+      highlight.setSelected(placed ? world.locations[target.id].root : null);
       hud.showLocation(target.id);
       // Already zoomed in: carry the zoom over to the new location.
-      if (wasFocused) this.focusLocation(target.id);
+      if (wasFocused && placed) this.focusLocation(target.id);
+      else if (wasFocused) rig.release();
     } else {
       marker.show(null);
       highlight.setSelected(crowd.person(target.id)!.root);
@@ -185,6 +194,7 @@ export class Interaction {
       this.updatePersonCard();
     }
     this.redraw = true;
+    this.d.onSelection?.(target);
   }
 
   /** Zoom onto the selection, or back out to the overview. */
@@ -208,6 +218,7 @@ export class Interaction {
   }
 
   private focusLocation(id: LocationId): void {
+    if (this.d.locationPlaced?.(id) === false) return;
     const f = this.d.world.locations[id].footprint;
     const zoom = (this.sceneRadius / Math.max(f.rx, f.rz)) * 0.42;
     this.d.rig.focusOn(this.scratch.set(f.x, 1.2, f.z), Math.max(1.6, zoom));
@@ -281,6 +292,14 @@ export class Interaction {
 
   private updateHover(): void {
     const ptr = this.pointer;
+    if (this.placing) {
+      const id = ptr ? this.picker.pickAmong(ptr.x, ptr.y, this.d.camera, this.d.frame(), this.placing.targets(), this.placing.respectBuildings) : null;
+      if (ptr && (ptr.x !== this.placementPointerX || ptr.y !== this.placementPointerY)) {
+        this.placementPointerX = ptr.x; this.placementPointerY = ptr.y;
+        this.placing.onHover?.(id);
+      }
+      this.setHover(null); return;
+    }
     const target = ptr ? this.pick(ptr.x, ptr.y, this.d.camera, this.d.frame(), ptr.coarse) : null;
     this.setHover(target);
     this.updateTooltip();
@@ -450,7 +469,7 @@ export class Interaction {
         this.drag = null;
         if (panned) {
           this.down = null;
-          this.d.canvas.style.cursor = this.hover ? 'pointer' : 'default';
+          this.d.canvas.style.cursor = this.placing ? 'crosshair' : this.hover ? 'pointer' : 'default';
           if (e.pointerType === 'touch') this.touches.delete(e.pointerId);
           return;
         }
@@ -538,16 +557,18 @@ export class Interaction {
   /** A tap or click: select what is under it; a second one on the same thing zooms in. */
   /**
    * Placement mode: the next click on the map picks one of `targets` (by its
-   * id), or cancels when it lands anywhere else. Escape cancels too.
+   * id). Invalid ground cancels legacy moves; service placement can keep choosing. Escape cancels both.
    */
-  startPlacing(targets: () => readonly { id: number; root: Object3D }[], onPick: (id: number) => void, onEnd: () => void): void {
-    this.placing?.onEnd();
-    this.placing = { targets, onPick, onEnd };
+  startPlacing(targets: () => readonly { id: number; root: Object3D }[], onPick: (id: number) => void, onEnd: () => void, options: { keepOnMiss?: boolean; respectBuildings?: boolean; onHover?(id: number | null): void } = {}): void {
+    this.cancelPlacing();
+    this.placing = { targets, onPick, onEnd, ...options };
+    this.placementPointerX = this.placementPointerY = NaN;
+    this.setHover(null);
     this.d.canvas.style.cursor = 'crosshair';
     this.redraw = true;
   }
 
-  private endPlacing(): void {
+  cancelPlacing(): void {
     const p = this.placing;
     this.placing = null;
     this.d.canvas.style.cursor = 'default';
@@ -555,12 +576,17 @@ export class Interaction {
     p?.onEnd();
   }
 
+  placeAt(id: number): void {
+    const p = this.placing;
+    if (!p || !p.targets().some(target => target.id === id)) return;
+    this.cancelPlacing(); p.onPick(id);
+  }
+
   private activate(x: number, y: number, coarse: boolean): void {
     if (this.placing) {
-      const id = this.picker.pickAmong(x, y, this.d.camera, this.d.frame(), this.placing.targets());
-      const pick = this.placing.onPick;
-      this.endPlacing();
-      if (id !== null) pick(id);
+      const id = this.picker.pickAmong(x, y, this.d.camera, this.d.frame(), this.placing.targets(), this.placing.respectBuildings);
+      if (id !== null) this.placeAt(id);
+      else if (!this.placing.keepOnMiss) this.cancelPlacing();
       return;
     }
     const target = this.pick(x, y, this.d.camera, this.d.frame(), coarse);
@@ -575,8 +601,8 @@ export class Interaction {
       return;
     }
     if (double) return; // Double on a person: the first tap already follows them.
-    // Empty map is a browsing action; only an explicit close clears the chosen panel.
-    if (normal) this.select(sameTarget(normal, this.selection) ? null : normal);
+    // An empty-map tap returns to the coordinator; drags never reach activation.
+    this.select(sameTarget(normal, this.selection) ? null : normal);
   }
 
   private startOrbit(at: { x: number; y: number }, pointer: number | 'touch'): void {
@@ -616,19 +642,19 @@ export class Interaction {
 
   private endOrbit(): void {
     this.orbit = null;
-    this.d.canvas.style.cursor = this.hover ? 'pointer' : 'default';
+    this.d.canvas.style.cursor = this.placing ? 'crosshair' : this.hover ? 'pointer' : 'default';
     this.hoverPending = true;
   }
 
   private bindKeys(): void {
     window.addEventListener('keydown', (e) => {
-      if (e.altKey || e.ctrlKey || e.metaKey) return;
+      if (e.defaultPrevented || e.isComposing || isEditing(e.target) || e.altKey || e.ctrlKey || e.metaKey) return;
       // Form controls (sandbox sliders and selects) keep their own keys.
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement) return;
       const onLabel = e.target instanceof HTMLElement && e.target.classList.contains('loc-label');
       const onOtherControl = e.target instanceof HTMLButtonElement && !onLabel;
       if (e.key === 'Escape') {
-        if (this.placing) { this.endPlacing(); return; }
+        if (this.placing) { e.preventDefault(); this.cancelPlacing(); return; }
         if (this.selection || this.leftTitle !== null) this.select(null);
         else if (this.d.rig.focused) {
           this.d.rig.release();
@@ -638,6 +664,7 @@ export class Interaction {
       if (onOtherControl) return;
       const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
       const PAN = 48;
+      if (e.repeat && ['r', 'f', '[', ']'].includes(k)) return;
       if (k === 'r') this.resetView();
       else if (k === 'f') this.toggleFocus();
       else if (k === 'ArrowUp' || k === 'w') this.keyPan(e, 0, PAN);

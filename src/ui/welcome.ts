@@ -1,3 +1,4 @@
+import { draggableWindow } from './draggableWindow';
 import './welcome.css';
 import { t } from '../i18n';
 import { playerBadge, type PlayerPicture } from './playerBadge';
@@ -77,8 +78,8 @@ const TUTORIAL_PAGES: Page[] = [
  * with Back and Next. Shown at the start of every new game unless the player
  * ticked "Don't show again" (ui/tutorials.ts; the panel's first-steps
  * walk-through starts over with it), and from "How it works" any
- * time, always from the first page. A native modal dialog, so focus, Escape
- * and the backdrop behave as the platform expects; it pauses the city (through
+ * time, always from the first page. A native modal dialog, so focus and Escape
+ * behave as the platform expects; it pauses the city (through
  * `onChange`) while open.
  */
 export class Welcome {
@@ -99,6 +100,7 @@ export class Welcome {
     this.dialog = document.createElement('dialog');
     this.dialog.className = 'welcome intro';
     this.dialog.setAttribute('aria-labelledby', 'welcome-title');
+    draggableWindow(this.dialog);
     this.step = Object.assign(document.createElement('p'), { className: 'intro-step' });
     this.title = Object.assign(document.createElement('h2'), { id: 'welcome-title' });
     this.lead = Object.assign(document.createElement('p'), { className: 'welcome-lead' });
@@ -111,9 +113,9 @@ export class Welcome {
     nav.append(this.back, this.next);
     this.identityBox = identity ? identityBox(identity) : null;
     this.dialog.append(this.step, this.title, ...(this.identityBox ? [this.identityBox] : []), this.lead, this.list, nav, this.optOut);
-    this.dialog.addEventListener('close', () => this.onChange(false));
-    // A click on the backdrop (outside the box) closes it too.
-    this.dialog.addEventListener('click', (e) => { if (e.target === this.dialog) this.dialog.close(); });
+    this.dialog.addEventListener('close', () => { if (!this.dialog.open) this.onChange(false); });
+    // Reading, dragging and backdrop taps keep the welcome open.
+    // Completion and the native Escape action dismiss it deliberately.
     parent.append(this.dialog);
   }
 

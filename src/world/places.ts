@@ -35,6 +35,7 @@ interface Style {
 interface Frame {
   root: Group;
   body: Group;
+  vacantRoot?: Group;
   /** Building size in the local frame: width along the facade, depth into the lot. */
   w: number;
   d: number;
@@ -88,7 +89,9 @@ interface Shell {
 
 /** The shared civic building: everything but the place's signature details. */
 function shell(f: Frame, lot: PlaceLot, s: Style, random: Random): Shell {
-  const { body: g, w, d } = f;
+  const { w, d } = f;
+  const neutral = f.root.name !== 'pharmacy';
+  const g = neutral ? add(f.body, dynamic(new Group())) : f.body;
   const h = lot.height;
   const front = d / 2;
   const doorX = f.along(lot.door);
@@ -122,9 +125,9 @@ function shell(f: Frame, lot: PlaceLot, s: Style, random: Random): Shell {
   doorR.position.x = doorX + 0.42;
   add(g, box(2.0, 0.28, 0.14, frameMat, doorX, 2.8, front + 0.06));
   for (const sx of [-0.94, 0.94]) add(g, box(0.12, 2.4, 0.14, frameMat, doorX + sx, 0.45, front + 0.06));
-  add(g, box(3.4, 0.16, 1.7, mat(s.accent), doorX, 2.98, front + 0.85));
+  add(f.body, box(3.4, 0.16, 1.7, mat(s.accent), doorX, 2.98, front + 0.85));
   const sign = signBoard(s.sign, Math.max(2.4, s.sign.length * 0.3), 0.72, s.signFg, s.signBg, 0.4);
-  add(g, sign.mesh).position.set(doorX, 3.14, front + 1.66);
+  add(f.body, sign.mesh).position.set(doorX, 3.14, front + 1.66);
 
   // Upper floors: a window grid on the facade and both side walls.
   const mats = Array.from({ length: 6 }, (_, i) => glowMat(PALETTE.glassDark, i === 5 ? PALETTE.coolWindow : PALETTE.warmWindow, 0.2));
@@ -153,6 +156,16 @@ function shell(f: Frame, lot: PlaceLot, s: Style, random: Random): Shell {
   add(g, wallClutter(d, h, random), Math.PI / 2).position.set(w / 2, 0, 0);
   add(g, wallClutter(d, h, random), -Math.PI / 2).position.set(-w / 2, 0, 0);
 
+  if (neutral) {
+    mergeStatic(g);
+    const vacant = dynamic(new Group());
+    vacant.name = 'vacant-' + f.root.name;
+    vacant.position.copy(f.body.position);
+    vacant.quaternion.copy(f.body.quaternion);
+    vacant.add(g.clone(true));
+    vacant.visible = false;
+    f.vacantRoot = vacant;
+  }
   return { storefront, lobby, sign: sign.material, windows: new WindowBank(mats, 1.1, 0.06, random), door: new DoorState(), doorL, doorR, doorX };
 }
 
@@ -165,6 +178,7 @@ function visual(id: WalkInServiceId, f: Frame, lot: PlaceLot, sh: Shell, extra: 
   return {
     id,
     root: f.root,
+    vacantRoot: f.vacantRoot,
     labelAnchor: new Vector3((x0 + x1) / 2, lot.height + 1.6, (z0 + z1) / 2),
     footprint: { x: (x0 + x1) / 2, z: (z0 + z1) / 2, rx: (x1 - x0) / 2 + 1, rz: (z1 - z0) / 2 + 1 },
     setServiceLevel: (v) => { target = v; },
@@ -218,7 +232,7 @@ export function buildPharmacyShop(random: Random): { root: Group; building: numb
 }
 
 // The streetworkers' foot patrol: no building, a folding table on the pavement by the squat with
-// kits, naloxone and a sharps bin, a lantern and a small sign; everything packs away off shift.
+// kits, naloxone and a sharps bin, a lantern and a small sign. The base stays visible off shift.
 
 export function buildFootPatrol(): LocationVisual {
   const lot = LOTS.footPatrol;
@@ -226,7 +240,8 @@ export function buildFootPatrol(): LocationVisual {
   root.name = 'footPatrol';
   const kit = add(root, dynamic(new Group()));
   const at = (q: P2, y = 0) => new Vector3(q.x, 0.12 + y, q.z);
-  const turn = PATROL.facing;
+  // The served face towards staff; the table and sign face back towards visitors.
+  const turn = PATROL.facing + Math.PI;
   const table = add(kit, new Group());
   table.position.copy(at(PATROL.table));
   table.rotation.y = turn;
@@ -241,24 +256,24 @@ export function buildFootPatrol(): LocationVisual {
   const lantern = glowMat(0x6a5a3a, 0xffd890, 1.6);
   add(table, box(0.14, 0.24, 0.14, lantern, -0.72, 0.77, -0.2));
   // A small sign on a pole: what the patrol hands out.
-  const sign = signBoard('NEEDLES  NALOXONE', 2.4, 0.42, '#ffffff', '#2e7d6b', 0.5);
+  const sign = signBoard('NEEDLES  NALOXONE', 2.4, 0.42, '#ffffff', '#2e7d6b', 0.5, 'pixel', true);
+  sign.mesh.name = 'footPatrolSign';
+  dynamic(sign.mesh);
   add(table, cylinder(0.03, 2.1, mat(PALETTE.metal), 5, -0.95, 0, -0.3));
   add(table, sign.mesh).position.set(-0.95, 2.1, -0.3);
-  kit.visible = false;
   const { x0, x1, z0, z1 } = lot.rect;
   let level = 0;
   let target = 0;
   return {
     id: 'footPatrol',
     root,
+    roofSign: sign.mesh,
     labelAnchor: at(PATROL.table, 3.2),
     footprint: { x: (x0 + x1) / 2, z: (z0 + z1) / 2, rx: (x1 - x0) / 2 + 1, rz: (z1 - z0) / 2 + 1 },
     setServiceLevel: (v) => { target = v; },
     openDoor: () => {},
     update(dt) {
       level = approach(level, target, 1.6, dt);
-      const out = level > 0.15;
-      if (kit.visible !== out) kit.visible = out;
       lantern.emissiveIntensity = 0.4 + 1.4 * level;
       sign.material.emissiveIntensity = 0.1 + 0.6 * level;
     },

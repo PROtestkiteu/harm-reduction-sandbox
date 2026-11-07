@@ -1,3 +1,5 @@
+import './sheet.css';
+import { draggableWindow } from './draggableWindow';
 import { panelDismiss } from './panelDismiss';
 
 export interface SheetOptions {
@@ -12,12 +14,13 @@ export interface SheetOptions {
 }
 
 /**
- * A panel centered in the full desktop viewport, and a bottom sheet on phones,
+ * A panel centered in the full viewport on desktop and phones,
  * for a section opened from elsewhere, such as the
  * organisation from the money in the top bar. It has no toggle of its own:
  * the caller toggles it; Escape also shuts it.
  */
 export class Sheet {
+  private readonly dragging: ReturnType<typeof draggableWindow>;
   private readonly root: HTMLElement;
   private readonly body: HTMLElement;
   private disclosure: HTMLDetailsElement | null = null;
@@ -34,6 +37,7 @@ export class Sheet {
     this.opts = opts;
     this.root = document.createElement('section');
     this.root.className = 'sandbox sheet';
+    this.dragging = draggableWindow(this.root, '.window-drag-handle');
     this.root.setAttribute('aria-label', opts.label);
     this.body = document.createElement('div');
     this.body.className = 'sandbox-body';
@@ -41,6 +45,10 @@ export class Sheet {
     this.body.tabIndex = -1;
     const dismissal = document.createElement('div');
     dismissal.className = 'panel-dismiss-slot';
+    const handle = document.createElement('span');
+    handle.className = 'window-drag-handle';
+    handle.textContent = opts.label;
+    dismissal.append(handle);
     dismissal.append(panelDismiss(() => this.setOpen(false, true)));
     this.body.append(dismissal, content);
     this.root.addEventListener('keydown', (e) => {
@@ -61,6 +69,7 @@ export class Sheet {
     const disclosure = open ? this.opts.disclosure?.() ?? null : null;
     this.disclosure = disclosure;
     if (open === this.isOpen) return;
+    this.dragging.reset();
     if (open) {
       this.returnTo = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       this.returnRegion = this.returnTo?.closest<HTMLElement>('section') ?? null;

@@ -1,3 +1,6 @@
+import { isEditing } from './keyboard';
+import { ServicesPanel } from './servicesPanel';
+import { observeLayout } from './observeLayout';
 import { RecipientCarePanel, type RecipientCareView } from './recipientCare';
 import { PersonSupportView, type StaffingAdvice } from './personSupport';
 import './clockControls.css';
@@ -105,6 +108,8 @@ export interface PlaceLevers {
 }
 
 export interface LocationSnapshot {
+  /** Unplaced mobile services have controls but no map label yet. */
+  placed?: boolean;
   recipientCare?: RecipientCareView;
   name: string;
   service: string;
@@ -231,7 +236,7 @@ export interface BuildingCard {
   chips?: { icon: ChipIcon; value: string; label: string; state?: ChipState }[];
   /** Things to do here (rent a closed shop, give it back). */
   /** `cost` and `detail` (when it costs money) feed the confirm box. */
-  actions?: { id: string; label: string; short: string; enabled: boolean; helps?: readonly Need[]; cost?: number; detail?: string }[];
+  actions?: { id: string; label: string; short: string; enabled: boolean; feature?: 'dispatch'; helps?: readonly Need[]; cost?: number; detail?: string }[];
   /** False for things with no name of their own to change (a passing police car). */
   renamable?: boolean;
 }
@@ -262,6 +267,7 @@ export class Hud {
   private readonly guideShort: HTMLElement;
   private readonly orgOpt: HTMLElement;
   private readonly speaker: HTMLElement;
+  private readonly renameButton: HTMLButtonElement;
   private readonly said: HTMLElement;
   private readonly aside: HTMLElement;
   private readonly locationView: HTMLElement;
@@ -283,7 +289,6 @@ export class Hud {
   readonly servicesToggle = document.createElement('button');
   private readonly selectionWindow: HTMLElement;
   private folded = false;
-  private tutorialReplyCount = 0;
   private headerBottom = 0;
   /** Building work under way: a slim strip at the foot of the panel (no bar to press; pausing is on the speed toggle). */
   private readonly works: HTMLElement;
@@ -321,7 +326,7 @@ export class Hud {
   private readonly aidShort: HTMLElement;
   private readonly reviewName: HTMLElement;
   private readonly reviewShort: HTMLElement;
-  private readonly backOpt: HTMLElement;
+  private readonly servicesPanel: ServicesPanel;
   private servicesOpen = false;
   private readonly focusOpt: HTMLElement;
   private readonly personCamperOpt: HTMLElement;
@@ -425,7 +430,13 @@ export class Hud {
     this.speaker.dataset.iconHint = t('Fold the panel away');
     this.speaker.addEventListener('click', () => this.setFolded(!this.folded));
     this.said = el('span', 'said');
-    line.append(this.speaker, this.said);
+    this.renameButton = button('rename-pencil selection-rename');
+    this.renameButton.setAttribute('aria-label', t('Rename'));
+    this.renameButton.dataset.iconHint = t('Rename');
+    this.renameButton.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M3 17.25V21h3.75L17.8 9.94l-3.75-3.75L3 17.25zm17.7-10.2a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>';
+    this.renameButton.hidden = true;
+    this.renameButton.addEventListener('click', this.renameAction);
+    line.append(this.speaker, this.renameButton, this.said);
     this.aside = el('p', 'aside');
     this.locationView = el('div', 'location-view');
     this.chips = el('ul', 'chips');
@@ -673,10 +684,6 @@ export class Hud {
     this.aidBtn.addEventListener('click', () => { const k = this.lastSnapshot?.aid?.kind; if (k) cb.onAid(k); });
     this.aidOpt = opt(this.aidBtn);
 
-    const back = button('opt', t('Back.'));
-    back.addEventListener('click', () => this.setServicesOpen(false));
-    this.backOpt = opt(back);
-    this.backOpt.classList.add('zero');
     for (const id of SERVICE_IDS) {
       // In the services list the name picks the place (the camera goes there). On the place's own card,
       // where it is already picked, the name switches the service on or off like the ON/OFF button.
@@ -690,11 +697,10 @@ export class Hud {
       this.ownAct[id] = own;
       b.append(name, own);
       b.addEventListener('click', () => {
-        if (!this.servicesOpen && this.mode?.kind === 'location' && serviceAt(this.mode.id) === id) {
+        if (this.mode?.kind === 'location' && serviceAt(this.mode.id) === id) {
           cb.onService(id, this.switches[id].getAttribute('aria-checked') !== 'true');
           return;
         }
-        this.servicesOpen = false;
         cb.onSelect(id === 'clubHr' ? 'club' : id);
       });
       const toggle = button('svc-toggle');
@@ -760,9 +766,10 @@ export class Hud {
     selection.id = 'selection-details';
     selection.append(this.log, this.options, this.works);
     this.servicesToggle.type = 'button'; this.servicesToggle.className = 'service-module-toggle';
-    this.servicesToggle.textContent = t('Services'); this.servicesToggle.setAttribute('aria-expanded', 'false'); this.servicesToggle.setAttribute('aria-controls', 'selection-details');
-    this.servicesToggle.addEventListener('click', () => { this.setServicesOpen(!this.servicesOpen); if (this.servicesOpen) this.setFolded(false); });
-    this.column.append(top, this.stressRow, this.unmet, this.servicesToggle, outliner, selection);
+    this.servicesToggle.textContent = t('Services'); this.servicesToggle.setAttribute('aria-expanded', 'false'); this.servicesToggle.setAttribute('aria-controls', 'services-management');
+    this.servicesToggle.addEventListener('click', () => { this.setServicesOpen(!this.servicesOpen); });
+    this.servicesPanel = new ServicesPanel(id => cb.onSelect(id), (id, on) => cb.onService(id, on));
+    this.column.append(top, this.stressRow, this.unmet, this.servicesToggle, this.servicesPanel.root, outliner, selection);
     // Phones and wide screens: the clock, money and meters live in a block at the top of the screen
     // (wide screens add the crisis line to it); the column keeps the rest in both phone orientations.
     this.topBar = el('div', 'top-bar');
@@ -780,17 +787,6 @@ export class Hud {
     placeIndicators();
     window.matchMedia(COMPACT).addEventListener('change', placeIndicators);
     window.matchMedia(WINDOWED).addEventListener('change', placeIndicators);
-    // The top block's height, so the windows below it start just under it.
-    new ResizeObserver(() => {
-      const h = `${Math.round(this.topBar.offsetHeight)}px`;
-      if (this.root.style.getPropertyValue('--topbar-h') !== h) this.root.style.setProperty('--topbar-h', h);
-    }).observe(this.topBar);
-    // The sheet's height, for what sits just above it on phones (the portrait): measured as it folds and opens.
-    new ResizeObserver(() => {
-      const h = `${Math.round(this.column.offsetHeight)}px`;
-      if (this.root.style.getPropertyValue('--sheet-h') !== h) this.root.style.setProperty('--sheet-h', h);
-    }).observe(this.column);
-
     const labelLayer = el('div', 'labels');
     for (const id of LOCATION_IDS) {
       const b = button('loc-label');
@@ -829,14 +825,21 @@ export class Hud {
     });
     // On phones the sheet grows and shrinks with what it shows: labels it now
     // covers are hidden straight away, not on the next camera move.
-    new ResizeObserver(() => { if (this.labelPoints) this.placeLabels(this.labelPoints); }).observe(this.column);
+    observeLayout([this.topBar, this.column], () => {
+      const top = `${Math.round(this.topBar.offsetHeight)}px`;
+      const sheet = `${Math.round(this.column.offsetHeight)}px`;
+      if (this.root.style.getPropertyValue('--topbar-h') !== top) this.root.style.setProperty('--topbar-h', top);
+      if (this.root.style.getPropertyValue('--sheet-h') !== sheet) this.root.style.setProperty('--sheet-h', sheet);
+      if (this.labelPoints) this.placeLabels(this.labelPoints);
+    });
     this.render();
     window.addEventListener('keydown', (e) => this.onKey(e));
   }
 
   /** Number keys pick the visible numbered option, as in a conversation. */
   private onKey(e: KeyboardEvent): void {
-    if (e.altKey || e.ctrlKey || e.metaKey || !/^[0-9]$/.test(e.key)) return;
+    if (e.target instanceof Element && e.target.closest('.services-window')) return;
+    if (e.defaultPrevented || e.repeat || e.isComposing || isEditing(e.target) || e.altKey || e.ctrlKey || e.metaKey || !/^[0-9]$/.test(e.key)) return;
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement) return;
     const visible = [...this.options.children].filter((li) => !(li as HTMLElement).hidden && (li as HTMLElement).getClientRects().length > 0);
     // 0 is Back; the numbers count the other replies.
@@ -938,12 +941,14 @@ export class Hud {
   /** Shared domain capabilities govern presentation without fighting render-time hidden flags. */
   private tutorialCapabilities: TutorialCapabilities | null = null;
 
-  setTutorialCapabilities(capabilities: TutorialCapabilities): void {
-    if (this.tutorialCapabilities === capabilities) return;
+  setTutorialCapabilities(capabilities: TutorialCapabilities): boolean {
+    if (this.tutorialCapabilities === capabilities) return false;
     this.tutorialCapabilities = capabilities;
+    this.servicesPanel.setAvailable(capabilities.services);
+    this.syncRenameButton();
     this.root.dataset.tutorialRestricted = String(!capabilities.fullUi);
     if (this.moneyButton.disabled === capabilities.organisation) this.moneyButton.disabled = !capabilities.organisation;
-    for (const feature of ['budget', 'staff', 'maintenance', 'stress', 'organisation', 'fullUi'] as const) {
+    for (const feature of ['dispatch', 'budget', 'staff', 'maintenance', 'stress', 'organisation', 'fullUi'] as const) {
       const value = String(capabilities[feature]);
       const key = `tutorial${feature[0].toUpperCase()}${feature.slice(1)}`;
       if (this.root.dataset[key] !== value) this.root.dataset[key] = value;
@@ -953,6 +958,7 @@ export class Hud {
       this.labels[id].dataset.tutorialLocked = String(!available);
       this.switchOpts[serviceAt(id)].dataset.tutorialLocked = String(!available);
     }
+    return true;
   }
 
   /** Label button for a location, for keyboard focus moves. */
@@ -976,7 +982,6 @@ export class Hud {
   get urgentMessage(): string { return this.guide?.step.urgent ? this.guide.step.said : ''; }
 
   private showGuide(): void {
-    if (this.tutorialReplyCount > 0 && !this.servicesOpen) { setText(this.speaker, t('Actions')); setText(this.said, ''); return; }
     const g = this.guide;
     if (!g) { setText(this.speaker, t('Services')); return; }
     const tut = g.step.tutorial;
@@ -1014,6 +1019,7 @@ export class Hud {
     const renamable = card.renamable !== false;
     if (this.renamable !== renamable) {
       this.renamable = renamable;
+      this.syncRenameButton();
     }
     if (this.mode?.kind !== 'building') {
       this.mode = { kind: 'building' };
@@ -1026,7 +1032,9 @@ export class Hud {
     this.buildingOpts.forEach((o, i) => {
       const a = card.actions?.[i];
       o.id = a?.id ?? '';
-      const hidden = !a || this.servicesOpen;
+      o.button.dataset.buildingAction = o.id;
+      o.li.dataset.tutorialFeature = a?.feature ?? 'organisation';
+      const hidden = !a;
       if (o.li.hidden !== hidden) o.li.hidden = hidden;
       if (!a) return;
       setText(o.long, a.label);
@@ -1148,6 +1156,7 @@ export class Hud {
     for (const id of order) {
       const { x, y, below } = points[id];
       const label = this.labels[id];
+      if (this.lastSnapshot?.locations[id].placed === false) { label.hidden = true; continue; }
       // Widths only change with the text, so measure once instead of every re-aim.
       if (!this.labelWidths[id]) this.labelWidths[id] = label.offsetWidth;
       const half = this.labelWidths[id] / 2;
@@ -1191,6 +1200,10 @@ export class Hud {
     return { title: this.mode ? this.speaker.textContent ?? '' : t('The neighbourhood'), items };
   }
 
+  private syncRenameButton(): void {
+    this.renameButton.hidden = !this.canRename() || this.renameInput !== null;
+  }
+
   private canRename(): boolean {
     return !!this.mode && this.tutorialCapabilities?.fullUi !== false && (this.mode.kind !== 'building' || this.renamable);
   }
@@ -1206,20 +1219,23 @@ export class Hud {
     input.value = this.speaker.textContent ?? '';
     input.setAttribute('aria-label', t('New name (leave empty for the original)'));
     this.renameInput = input;
+    this.syncRenameButton();
     this.speaker.hidden = true;
     this.speaker.after(input);
     let done = false;
-    const finish = (save: boolean) => {
+    const finish = (save: boolean, restoreFocus = false) => {
       if (done) return;
       done = true;
       if (save) cb.onRename(input.value);
       input.remove();
       this.renameInput = null;
+      this.syncRenameButton();
       this.speaker.hidden = false;
+      if (restoreFocus && this.canRename()) this.renameButton.focus({ preventScroll: true });
     };
     input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); finish(true); }
-      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); }
+      if (e.key === 'Enter') { e.preventDefault(); finish(true, true); }
+      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false, true); }
     });
     input.addEventListener('blur', () => finish(true));
     input.focus();
@@ -1238,31 +1254,28 @@ export class Hud {
 
   get isFolded(): boolean { return this.folded; }
 
-  /** Tutorial actions use the same numbering and keyboard handling as ordinary replies. */
-  setTutorialActions(buttons: HTMLButtonElement[]): void {
-    this.tutorialReplyCount = buttons.length;
-    for (const row of this.options.querySelectorAll(':scope > .tutorial-reply')) row.remove();
-    for (const button of buttons) {
-      const row = el('li', 'tutorial-reply');
-      row.append(button);
-      this.options.append(row);
-    }
-    this.render();
+  get isSelectionOpen(): boolean { return this.mode !== null && !this.folded; }
+
+  /** The identity shortcut changes only its subject window. */
+  toggleSelectionDetails(): void {
+    this.setFolded(!this.folded);
+    if (this.isSelectionOpen) this.speaker.focus({ preventScroll: true });
   }
 
   private syncWindowVisibility(): void {
-    this.selectionWindow.hidden = this.mode === null && !this.servicesOpen && this.tutorialReplyCount === 0;
+    this.selectionWindow.hidden = this.mode === null;
+    this.selectionWindow.dataset.subject = String(this.mode !== null);
   }
 
   private cameraInsets: Insets | null = null;
 
   invalidateLayout(): void { this.cameraInsets = null; this.headerBottom = 0; }
 
-  /** Reserve actual visible panels, keeping the largest contiguous map region available. */
+  /** Reserve persistent controls. Transient windows overlay the map without moving it. */
   insets(): Insets {
     if (this.cameraInsets) return this.cameraInsets;
     const viewport = this.root.getBoundingClientRect();
-    const panels = [...this.root.querySelectorAll<HTMLElement>('.hud-header, .top-bar, .column, .tutorial-guide:not([hidden]), .panels-toggle, .map-layers-direct, .map-layer-rail')]
+    const panels = [...this.root.querySelectorAll<HTMLElement>('.hud-header .sandbox-toggle, .top-bar')]
       .filter(panel => panel.getClientRects().length > 0)
       .map(panel => panel.getBoundingClientRect());
     const canvas = document.getElementById('scene')!;
@@ -1331,8 +1344,9 @@ export class Hud {
       if (this.favourCount.dataset.state !== state) this.favourCount.dataset.state = state;
       this.favourCount.disabled = false;
     }
-    const aidHidden = !aid || this.servicesOpen || this.mode !== null;
+    const aidHidden = !aid || this.mode !== null;
     if (this.aidOpt.hidden !== aidHidden) this.aidOpt.hidden = aidHidden;
+    this.servicesPanel.update(s.enabled);
     const on = SERVICE_IDS.filter((id) => s.enabled[id]).length;
     setText(this.servicesToggle, t('Services ({on}/{all}).', { on, all: SERVICE_IDS.length }));
     setText(this.reviewName, t('Services ({on}/{all}).', { on, all: SERVICE_IDS.length }));
@@ -1348,6 +1362,8 @@ export class Hud {
       const loc = s.locations[id];
       if (s.clockMinutes !== undefined) this.trends[id].sample(s.clockMinutes, loc.metrics);
       const label = this.labels[id];
+      const isPlaced = String(loc.placed !== false);
+      if (label.dataset.placed !== isPlaced) { label.dataset.placed = isPlaced; renamed = true; }
       const name = label.querySelector('.loc-name') as HTMLElement;
       if (name.textContent !== loc.name) {
         name.textContent = loc.name;
@@ -1404,7 +1420,7 @@ export class Hud {
     // everything but leaving is locked. Closed for want of staff: only staffing helps.
     const why = a?.closedReason ?? null;
     const locked = !!why && why !== 'noStaff' && why !== 'closedDown';
-    const groupHidden = !a || a.closedDown || this.servicesOpen;
+    const groupHidden = !a || a.closedDown;
     setAttr(this.staffGroupBtn, 'aria-disabled', String(locked));
     if (this.staffGroupBtn.disabled !== locked) this.staffGroupBtn.disabled = locked;
     if (locked && this.staffOpen) this.staffOpen = false;
@@ -1414,7 +1430,7 @@ export class Hud {
     const show = (action: PlaceAction, visible: boolean, text: string, enabled = true, hint = '') => {
       const o = this.actionOpts[action];
       if (o.button.dataset.iconHint !== hint) o.button.dataset.iconHint = hint;
-      const hidden = !visible || this.servicesOpen || (STAFF_ACTIONS.includes(action) && !this.staffOpen);
+      const hidden = !visible || (STAFF_ACTIONS.includes(action) && !this.staffOpen);
       if (o.li.hidden !== hidden) o.li.hidden = hidden;
       setText(o.label, text);
       if (o.button.disabled === enabled) o.button.disabled = !enabled;
@@ -1447,11 +1463,11 @@ export class Hud {
     setAttr(this.actionOpts.camper.button, 'aria-expanded', String(this.camperOpen));
     this.spotOpts.forEach((o, i) => {
       const spot = c?.spots[i];
-      const hidden = !spot || !this.camperOpen || !this.staffOpen || this.servicesOpen;
+      const hidden = !spot || !this.camperOpen || !this.staffOpen;
       if (o.li.hidden !== hidden) o.li.hidden = hidden;
       if (!spot) return;
       const busy = spot.taken || spot.here;
-      setText(o.long, spot.taken || spot.here ? t('{name} (a camper is there).', { name: spot.name }) : `${spot.name}.`);
+      setText(o.long, spot.here ? t('{name} (a camper is there).', { name: spot.name }) : spot.taken ? t('{name} (occupied).', { name: spot.name }) : `${spot.name}.`);
       setText(o.short, spot.name.split(',')[0] + '.');
       if (o.button.disabled !== busy) o.button.disabled = busy;
     });
@@ -1462,7 +1478,7 @@ export class Hud {
     if (!running) this.pathOpen = false;
     setAttr(this.actionOpts.path.button, 'aria-expanded', String(this.pathOpen));
     for (const o of this.pathOpts) {
-      const hidden = !path || !this.pathOpen || this.servicesOpen || a.closedDown;
+      const hidden = !path || !this.pathOpen || a.closedDown;
       if (o.li.hidden !== hidden) o.li.hidden = hidden;
       if (!path) continue;
       const now = path.current === o.id;
@@ -1492,7 +1508,7 @@ export class Hud {
     const shown = wholePercents(a.mix.items.map((m) => (m.lock ? 0 : m.share)));
     this.mixRows.forEach((r, i) => {
       const m = a.mix.items[i];
-      const hidden = !m || !this.mixOpen || this.servicesOpen || a.closedDown;
+      const hidden = !m || !this.mixOpen || a.closedDown;
       if (r.li.hidden !== hidden) r.li.hidden = hidden;
       if (!m) { r.id = null; return; }
       r.id = m.id;
@@ -1546,6 +1562,7 @@ export class Hud {
   }
 
   private render(): void {
+    this.syncRenameButton();
     this.syncWindowVisibility();
     queueMicrotask(() => this.syncDrill());
     const m = this.mode;
@@ -1566,10 +1583,10 @@ export class Hud {
     if (m?.kind !== 'person') this.personSupportView.root.hidden = true;
     if (m?.kind !== 'person') this.profileView.hidden = true;
     else this.profileView.hidden = !this.profileView.dataset.key;
-    const open = this.servicesOpen;
-    this.focusOpt.hidden = m === null || open || m.kind !== 'person' || !this.personPlace;
-    this.personCamperOpt.hidden = m?.kind !== 'person' || open || !this.personCamper;
-    this.personTeamOpt.hidden = m?.kind !== 'person' || open || !this.personSupportView.canCompare;
+
+    this.focusOpt.hidden = m === null || m.kind !== 'person' || !this.personPlace;
+    this.personCamperOpt.hidden = m?.kind !== 'person' || !this.personCamper;
+    this.personTeamOpt.hidden = m?.kind !== 'person' || !this.personSupportView.canCompare;
     if (m?.kind !== 'building') for (const o of this.buildingOpts) o.li.hidden = true;
     if (m?.kind !== 'location') {
       for (const action of ACTIONS) this.actionOpts[action].li.hidden = true;
@@ -1580,23 +1597,20 @@ export class Hud {
     }
     else this.renderActions(this.lastSnapshot?.locations[m.id].actions);
     // Back to the overview: also a click elsewhere or Escape.
-    this.leaveOpt.hidden = open || m === null;
+    this.leaveOpt.hidden = m === null;
     // The services review is for when nothing is selected. The guide's reply stands in for the
     // standing one it would repeat (My organisation, Services).
     const act = this.guide?.step.act?.kind;
     this.reviewOpt.hidden = true;
-    this.orgOpt.hidden = open || m !== null || act === 'org';
-    this.guideOpt.hidden = open || m !== null || !this.guide?.step.act;
-    this.aidOpt.hidden = open || m !== null || !this.lastSnapshot?.aid;
-    this.backOpt.hidden = !open;
-    if (m === null && this.tutorialReplyCount > 0 && !open) {
-      this.idle.hidden = true; this.reviewOpt.hidden = true; this.orgOpt.hidden = true; this.guideOpt.hidden = true; this.aidOpt.hidden = true;
-    }
+    this.orgOpt.hidden = m !== null || act === 'org';
+    this.guideOpt.hidden = m !== null || !this.guide?.step.act;
+    this.aidOpt.hidden = m !== null || !this.lastSnapshot?.aid;
+
     const own = m?.kind === 'location' ? serviceAt(m.id) : null;
     for (const id of SERVICE_IDS) {
-      this.switchOpts[id].hidden = !(open || id === own);
+      this.switchOpts[id].hidden = id !== own;
       // On its own card the row is the one action; in the services list, the name and the switch.
-      const single = String(!open && id === own);
+      const single = String(id === own);
       if (this.switchOpts[id].dataset.own !== single) this.switchOpts[id].dataset.own = single;
     }
   }
@@ -1606,10 +1620,10 @@ export class Hud {
     if (this.servicesOpen === open) return;
     this.servicesOpen = open;
     setAttr(this.servicesToggle, 'aria-expanded', String(open));
-    this.render();
-    const first = SERVICE_IDS.find((id) => this.switchOpts[id].dataset.tutorialLocked !== 'true') ?? SERVICE_IDS[0];
-    const target = open ? this.switches[first] : this.servicesToggle;
-    target?.focus({ preventScroll: true });
+    this.servicesPanel.root.hidden = !open;
+    this.invalidateLayout();
+    if (open) this.servicesPanel.focus();
+    else this.servicesToggle.focus({ preventScroll: true });
   }
 
   private renderLocation(loc: LocationSnapshot, trend: MetricTrend): void {

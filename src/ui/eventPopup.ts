@@ -1,3 +1,4 @@
+import { draggableWindow } from './draggableWindow';
 import { needsFor } from './needIcons';
 import type { Choice, MajorEvent } from '../game/majorEvents';
 import { price } from './money';
@@ -21,6 +22,7 @@ export class EventPopup {
     this.dialog = document.createElement('dialog');
     this.dialog.className = 'welcome event-popup';
     this.dialog.setAttribute('aria-labelledby', 'event-title');
+    draggableWindow(this.dialog);
     this.title = document.createElement('h2');
     this.title.id = 'event-title';
     this.body = document.createElement('div');
@@ -29,6 +31,7 @@ export class EventPopup {
     this.dialog.append(this.title, this.body, this.choices, this.guideOptOut);
     // A decision is needed: Escape does not dismiss it.
     this.dialog.addEventListener('cancel', (e) => e.preventDefault());
+    this.dialog.addEventListener('close', () => { if (!this.dialog.open) this.onChange(false); });
     parent.append(this.dialog);
   }
 
@@ -63,7 +66,6 @@ export class EventPopup {
     // A choice with nothing to report (a guide's replies) just closes the box.
     if (!text) {
       this.dialog.close();
-      this.onChange(false);
       return;
     }
     const outcome = Object.assign(document.createElement('p'), { className: 'welcome-lead', textContent: text });
@@ -75,7 +77,6 @@ export class EventPopup {
     go.textContent = t('Continue');
     go.addEventListener('click', () => {
       this.dialog.close();
-      this.onChange(false);
     });
     this.choices.replaceChildren(go);
     go.focus();

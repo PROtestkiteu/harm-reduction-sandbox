@@ -76,7 +76,11 @@ export class TutorialProgress {
     for (const id of services) if (!this.state.nightServices.includes(id)) this.state.nightServices.push(id);
   }
   get nightServices(): readonly ServiceId[] { return this.state.nightServices; }
-  night(operational: boolean): void { if (this.stage === 'night' && operational) this.state.stage = 'complete'; }
+  night(operational: boolean): void {
+    if (this.stage !== 'night') return;
+    if (operational) this.state.stage = 'complete';
+    else this.state.nightServices = [];
+  }
   /** A stage's reward is claimed once, including across reloads. */
   claimReward(): boolean {
     if (this.state.rewards.includes(this.stage)) return false;
@@ -89,7 +93,7 @@ export class TutorialProgress {
     return true;
   }
   private check(): void {
-    if (this.stage === 'meet' && this.state.inspectedCamp && this.state.openedPatrol) this.state.stage = 'patrol';
+    if (this.stage === 'meet' && this.state.inspectedCamp) this.state.stage = 'patrol';
     else if (this.stage === 'patrol' && this.state.patrolContacts >= 3 && this.state.patrolReturned) this.state.stage = 'outreach';
     else if (this.stage === 'outreach' && this.reviewedSkills && (this.state.visits.outreach ?? 0) >= 5) this.state.stage = 'dropIn';
     else if (this.stage === 'dropIn' && (this.state.visits.dropIn ?? 0) >= 5) this.state.stage = 'nightlife';
@@ -111,6 +115,8 @@ export class TutorialProgress {
       recoveryAt: count(r.recoveryAt),
       nightServices: Array.isArray(r.nightServices) ? SERVICE_IDS.filter((id) => (r.nightServices as unknown[]).includes(id)) : [],
     };
+    // Recover saves waiting behind the retired stand-selection gate.
+    if (progress.stage === 'meet') progress.check();
     return progress;
   }
 }

@@ -1,3 +1,5 @@
+import { curbReserved } from './serviceSites';
+import type { ServiceSites } from './serviceSites';
 import { RecipientCare, careUrgency, patience, type CareEnvironment } from './recipientCare';
 import { TutorialProgress, FULL_TUTORIAL_CAPABILITIES, type TutorialCapabilities } from '../game/tutorial';
 import { Exposure, EXPOSURE, exposureNow, type ExposureHarm } from './exposure';
@@ -340,6 +342,7 @@ export class Simulation {
   private policy: PolicyInfo = { council: 1, policeAgreement: false, criminalPossession: true, funding: 'project', neighbourhood: 1, anonymous: true };
   readonly neighbourhood: Neighbourhood;
   /** Shop units that close and go to let, and the space the organisation rents. */
+  readonly serviceSites: ServiceSites = {};
   readonly property: Property;
   /** What each place spends its visits on (checking, kits, naloxone, counselling, basics). */
   readonly mix = new ServiceMix();
@@ -351,6 +354,7 @@ export class Simulation {
   favours = 1;
   readonly reputation = new Reputation();
   readonly recipientCare = new RecipientCare();
+  private readonly tutorialServiceArrivals = new Map<number, ServiceId>();
   private readonly restoredCareVisitors = new Set<number>();
   private favourViewRevision = -1;
   private favourViewTutorial = false;
@@ -561,7 +565,12 @@ export class Simulation {
       shelter: new ServiceModel('shelter', p.shelter),
       clinic: new ServiceModel('clinic', p.clinic),
     };
-    for (const id of SERVICE_IDS) this.services[id].switchedOn = this.services[id].everRun = ORG.startServices.includes(id);
+    // Equipment is available, but every new service waits for the player's first site choice.
+    for (const id of SERVICE_IDS) {
+      const service = this.services[id];
+      service.switchedOn = service.everRun = service.enabled = false;
+      service.closedReason = 'switchedOff';
+    }
     this.club = {
       name: ILLUSTRATIVE.club.name,
       inside: ILLUSTRATIVE.club.initialInside,
@@ -605,7 +614,7 @@ export class Simulation {
     this.club.inside = 0;
     for (const id of SERVICE_IDS) {
       const service = this.services[id];
-      service.switchedOn = service.everRun = id === 'footPatrol';
+      service.switchedOn = service.everRun = false;
       service.params.staff = id === 'footPatrol' ? 2 : 1;
     }
     this.applyTutorialReward();
@@ -654,7 +663,8 @@ export class Simulation {
       tutorial.night((['outreach', 'dropIn', 'clubHr'] as const).every((id) => {
         const service = this.services[id];
         // The club closes naturally at 06:00; remember its staffed evening at the 08:00 report.
-        return tutorial.nightServices.includes(id) && service.switchedOn && !this.org.closedDown.has(id);
+        return tutorial.nightServices.includes(id) && service.switchedOn && !this.org.closedDown.has(id)
+          && (id === 'clubHr' ? this.serviceAvailability(id) === 'hours' : service.status === 'open' && service.staffOnSite > 0 && service.assigned > 0);
       }));
       this.applyTutorialReward();
       this.emit({ type: 'nightReport', report });
@@ -680,7 +690,13 @@ export class Simulation {
       this.reallocate();
     }
     const rota = this.team.tick(minutes / 60, false, { unpaid: false, steadier: true, drain: 1 });
-    if (rota || this.openingChanged()) this.reallocate();
+    const hoursChanged = this.openingChanged();
+    // A closed club has an infinite arrival timer. Re-arm it for the next evening,
+    // including learners who take more than one night to finish placement and visits.
+    if (hoursChanged && !Number.isFinite(this.timers.club) && this.rate('club') > 0) {
+      this.timers.club = nextArrival(this.random, this.rate('club'));
+    }
+    if (rota || hoursChanged) this.reallocate();
     else this.updateSkill();
     const paced = dt * this.timeScale;
     this.tickArrivals(paced);
@@ -696,7 +712,6 @@ export class Simulation {
   }
 
   private emit(e: SimEvent): void {
-    if (e.type === 'served' && this.tutorial?.active) { this.tutorial.served(e.service); this.applyTutorialReward(); }
     this.cityStress.note(e);
     for (const l of this.listeners) l(e);
   }
@@ -998,6 +1013,7 @@ export class Simulation {
 
   /** Opens a harm reduction point in an ordinary building (level 0); checking only where the law allows it. */
   openPoint(building: number, service: SatelliteService): boolean {
+    if (Object.values(this.serviceSites).some(site => site.kind === 'building' && site.id === building)) return false;
     if (this.tutorial?.active) return false;
     // A point adds places to a service; while that service is switched off they would stand empty.
     if (!this.services[service].switchedOn) return false;
@@ -1060,7 +1076,7 @@ export class Simulation {
   /** Whether the foot patrol can be sent out now: open, staffed, at its table. */
   get patrolReady(): boolean {
     const s = this.services.footPatrol;
-    return !this.patrol.out && s.enabled && s.assigned > 0;
+    return !this.patrol.out && !this.patrol.returning && s.enabled && s.assigned > 0 && s.staffOnSite >= s.assigned;
   }
 
   /** Sends the foot patrol from its table to `spot` for a few hours. */
@@ -1071,6 +1087,8 @@ export class Simulation {
       return false;
     }
     for (const m of this.team.members) if (m.workingAt === 'footPatrol') m.energy = Math.max(0, m.energy - PATROL.walk);
+    // Departure clears the stand; only physical return callbacks can fill it again.
+    this.services.footPatrol.staffOnSite = 0;
     this.patrol.send(spot, this.org.now, at);
     this.org.notice(this.clockMinutes, t('The foot patrol is out at {spot} for {hours} hours.', { spot: PATROL.spots[spot].label, hours: PATROL.hours }));
     // Reaching the person in crisis: two streetworkers walk up and talk.
@@ -1099,9 +1117,9 @@ export class Simulation {
     }
     const eases = PATROL.spots[spot].eases as Partial<Record<'police' | 'medics' | 'sobering', number>>;
     for (const meter of ['police', 'medics', 'sobering'] as const) this.cityStress.relieve(meter, (eases[meter] ?? 0) * (dtMinutes / 60));
-    if (spot === 'camp' && this.tutorial?.active) { this.tutorial.patrol(contacts, back); this.applyTutorialReward(); }
+    if (spot === 'camp' && this.tutorial?.active) { this.tutorial.patrol(contacts, false); this.applyTutorialReward(); }
     if (back) {
-      this.org.notice(this.clockMinutes, plural(this.patrol.reached, ['The foot patrol is back at its table: it reached {n} person out there.', 'The foot patrol is back at its table: it reached {n} people out there.'], ['Patrol pieszy wrócił do stolika: dotarł do {n} osoby.', 'Patrol pieszy wrócił do stolika: dotarł do {n} osób.', 'Patrol pieszy wrócił do stolika: dotarł do {n} osób.']));
+      this.org.notice(this.clockMinutes, t('Waiting for patrol to return.'));
       this.reallocate();
     }
   }
@@ -1133,7 +1151,7 @@ export class Simulation {
   /** Sends another outreach camper out to spot `spot` (an index the world defines). */
   sendCamper(spot: number): boolean {
     if (this.tutorial?.active) return false;
-    if (this.property.extraCampers >= PROPERTY.maxExtraCampers || this.property.campers.includes(spot)) return false;
+    if (this.property.extraCampers >= PROPERTY.maxExtraCampers || this.property.campers.includes(spot) || curbReserved(this.serviceSites, spot, 'outreach')) return false;
     if (!this.services.outreach.switchedOn) return false;
     if (!this.unlocked('extraCamper')) return false;
     if (!this.org.spend(PROPERTY.camperCost, false)) {
@@ -1609,7 +1627,7 @@ export class Simulation {
   }
 
   /**
-   * Running costs per clock hour. Every place not closed down pays its base (rent, heating,
+   * Running costs per clock hour. Every established place not closed down pays its base (rent, heating,
    * insurance), staffed or not; an open place also wears faster while the street is busier than
    * usual (more cleaning, supplies, repairs), the cost side of the fuller donation box.
    */
@@ -1625,7 +1643,7 @@ export class Simulation {
     const surplus = Math.max(0, this.footfallNow - 1);
     let total = 0;
     for (const id of SERVICE_IDS) {
-      if (!this.tutorialAllowsService(id) || this.org.closedDown.has(id)) continue;
+      if (!this.tutorialAllowsService(id) || !this.hasServiceSite(id) || this.org.closedDown.has(id)) continue;
       total += ORG.runningPerPlace * (1 + (this.services[id].status === 'open' ? ORG.footfallStrain * surplus : 0));
     }
     return total;
@@ -1634,7 +1652,7 @@ export class Simulation {
   /** The starting services the player has switched off (not closed down for lack of money): funders notice. */
   get servicesClosedByPlayer(): number {
     let n = 0;
-    for (const id of ORG.startServices) if (!this.services[id].switchedOn && !this.org.closedDown.has(id)) n++;
+    for (const id of ORG.startServices) if (this.services[id].everRun && !this.services[id].switchedOn && !this.org.closedDown.has(id)) n++;
     return n;
   }
 
@@ -1827,6 +1845,7 @@ export class Simulation {
   forget(visitor: VisitorId): void {
     this.recipientCare.finish(visitor);
     this.restoredCareVisitors.delete(visitor);
+    this.tutorialServiceArrivals.delete(visitor);
     for (const id of SERVICE_IDS) {
       this.services[id].inService.delete(visitor);
       const queue = this.services[id].queue;
@@ -1875,6 +1894,12 @@ export class Simulation {
     if (helped) { event.helped++; this.health.helped++; } else { event.alone++; this.health.alone++; }
     return { event: event.id, helpedBy: helped ? responder : null };
   }
+
+  /** A committed site or a previously operated camper survives closing and saved-game restores. */
+  get outreachPlaced(): boolean { return this.hasServiceSite('outreach'); }
+
+  /** Confirmed placements and established legacy homes share one authoritative history. */
+  hasServiceSite(id: ServiceId): boolean { return !!this.serviceSites[id] || this.services[id].everRun; }
 
   /** The HUD switch. The service opens only if hours and permissions allow it too. */
   setEnabled(id: ServiceId, on: boolean): void {
@@ -1942,6 +1967,15 @@ export class Simulation {
   staffArrived(id: ServiceId): void {
     if (!this.tutorialAllowsService(id)) return;
     this.services[id].staffOnSite++;
+    const service = this.services[id];
+    if (id === 'footPatrol' && this.patrol.returning && service.assigned > 0 && service.staffOnSite >= service.assigned) {
+      this.patrol.returning = false;
+      this.org.notice(this.clockMinutes, plural(this.patrol.reached, ['The foot patrol is back at its table: it reached {n} person out there.', 'The foot patrol is back at its table: it reached {n} people out there.'], ['Patrol pieszy wrócił do stolika: dotarł do {n} osoby.', 'Patrol pieszy wrócił do stolika: dotarł do {n} osób.', 'Patrol pieszy wrócił do stolika: dotarł do {n} osób.']));
+      if (this.tutorial?.stage === 'patrol') {
+        this.tutorial.patrol(0, true);
+        this.applyTutorialReward();
+      }
+    }
   }
 
   staffLeft(id: ServiceId): void {
@@ -2301,8 +2335,15 @@ export class Simulation {
     }
   }
 
+  /** The crowd acknowledges reaching the counter or room, not merely joining its queue. */
+  serviceReached(id: ServiceId, visitor: VisitorId): void {
+    const visit = this.recipientCare.visits.get(visitor);
+    if (this.tutorial?.active && visit?.site === id && visit.phase === 'active') this.tutorialServiceArrivals.set(visitor, id);
+  }
+
   careEnvironment(): CareEnvironment {
     return {
+      ready: visitor => !this.tutorial?.active || this.tutorialServiceArrivals.get(visitor) === this.recipientCare.visits.get(visitor)?.site,
       workers: this.team.members, open: id => this.services[id].status === 'open',
       equipment: this.org.equipment || this.mix.isSetUp('drugChecking', 'checking'),
       machine: this.org.equipment || (this.upgrades.drugChecking.level >= 2 && this.mix.isSetUp('drugChecking', 'checking')), checking: this.context.checkingAllowed,
@@ -2311,6 +2352,8 @@ export class Simulation {
       canPerform: action => !(action === 'kit' && this.mods.kitsOut) && ((action !== 'tlc' && action !== 'machine') || this.org.budget >= (this.context.turnaround === 'lab' ? ORG.costs.labCheck : ORG.costs.onsiteCheck)),
       commit: (visitor, action) => (action !== 'tlc' && action !== 'machine') || this.recordCheck(this.recipientCare.visits.get(visitor)!.site, visitor),
       completed: (visitor, action) => {
+        const visit = this.recipientCare.visits.get(visitor);
+        if (this.tutorial?.active && visit) visit.tutorialSupported = true;
         if (action === 'strip') this.selfTest(visitor);
         if (action === 'kit') { if (this.profiles.get(visitor)?.injects) this.health.sterileKits++; this.neighbourhood.note('kits'); }
       },
@@ -2334,6 +2377,7 @@ export class Simulation {
   restoreRecipientCare(raw: unknown): void {
     this.recipientCare.restore(raw);
     this.restoredCareVisitors.clear();
+    this.tutorialServiceArrivals.clear();
     for (const id of SERVICE_IDS) { this.services[id].queue.splice(0); this.services[id].inService.clear(); }
     for (const v of this.recipientCare.visits.values()) {
       this.restoredCareVisitors.add(v.visitor);
@@ -2345,7 +2389,7 @@ export class Simulation {
 
   private tickService(s: ServiceModel, dt: number): void {
     for (const v of this.recipientCare.visits.values()) {
-      if (v.site !== s.id || v.phase !== 'transfer' || !this.restoredCareVisitors.has(v.visitor)) continue;
+      if (this.tutorial?.active || v.site !== s.id || v.phase !== 'transfer' || !this.restoredCareVisitors.has(v.visitor)) continue;
       v.waited += dt * (this.cycle ? this.clockRate / this.timeScale : 0);
       if (v.waited >= 60 && v.destination) this.arrive(v.destination, v.visitor);
     }
@@ -2353,6 +2397,11 @@ export class Simulation {
     for (const visitor of this.recipientCare.tick(s.id, dt * (this.cycle ? this.clockRate / this.timeScale : 0), env)) {
       s.inService.delete(visitor);
       const visit = this.recipientCare.visits.get(visitor);
+      if (this.tutorial?.active && visit?.tutorialSupported) {
+        this.tutorial.served(s.id);
+        this.applyTutorialReward();
+      }
+      this.tutorialServiceArrivals.delete(visitor);
       if (visit?.phase !== 'transfer') {
         if (this.profiles.get(visitor)?.injects && !visit?.states.some(s => s.completed.kit)) this.unsafeInjecting();
         this.recipientCare.finish(visitor);
@@ -2466,6 +2515,7 @@ export class Simulation {
     // Someone who needs a particular skill is quicker with the right worker, much slower without.
     const match = this.stakes.admitted(s.id, this.crisis, this.supportOf(visitor));
     this.recipientCare.ensure(visitor, s.id).timeFactor = match;
+    this.tutorialServiceArrivals.delete(visitor);
     this.recipientCare.activate(visitor);
     s.inService.set(visitor, 0);
     if (notify) this.emit({ type: 'admitted', service: s.id, visitor });

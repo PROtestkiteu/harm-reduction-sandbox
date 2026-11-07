@@ -1,3 +1,4 @@
+import { readServiceSites, type ServiceSites } from '../sim/serviceSites';
 import type { CareSave } from '../sim/recipientCare';
 import { Reputation } from '../sim/reputation';
 import type { ReputationSave } from '../config/reputation';
@@ -37,6 +38,7 @@ export interface SaveData {
   v: 1;
   /** City geometry seed, resolved before importing world modules on continuation. */
   worldSeed?: number;
+  serviceSites?: ServiceSites;
   /** Authored tutorial progress; absent in older, unrestricted games. */
   tutorial?: TutorialSave;
   /** Organisation name, for the leaderboard. */
@@ -481,6 +483,7 @@ export function captureSave(sim: Simulation, name: string, run?: SaveData['run']
     v: 1,
     worldSeed: LAUNCH_SEED,
     tutorial: sim.tutorial?.snapshot(),
+    serviceSites: readServiceSites(sim.serviceSites),
     name,
     clock: sim.clockMinutes,
     day: sim.calendar.dayOfYear,
@@ -519,6 +522,7 @@ export function parseSave(raw: unknown): SaveData | null {
     v: 1,
     worldSeed: typeof r.worldSeed === 'number' && Number.isInteger(r.worldSeed) && r.worldSeed >= 0 && r.worldSeed <= 0xffffffff ? r.worldSeed : undefined,
     tutorial: TutorialProgress.restore(r.tutorial)?.snapshot(),
+    serviceSites: readServiceSites(r.serviceSites),
     name: text(r.name, 40, ''),
     clock: num(r.clock, 18 * 60, 42 * 60 - 1, 19 * 60),
     day: int(r.day, 0, 364, 257),
@@ -531,6 +535,7 @@ export function parseSave(raw: unknown): SaveData | null {
       closedDown: (Array.isArray(org.closedDown) ? org.closedDown : []).filter(isService),
     },
     on: Array.isArray(r.on) ? SERVICE_IDS.filter((id) => (r.on as unknown[]).includes(id)) : [...SERVICE_IDS],
+    ran: Array.isArray(r.ran) ? SERVICE_IDS.filter((id) => (r.ran as unknown[]).includes(id)) : undefined,
     team: team.map((t) => {
       const m = (t ?? {}) as Record<string, unknown>;
       const traits = (Array.isArray(m.traits) ? m.traits : []).filter((x): x is TraitId => typeof x === 'string' && x in TRAITS).slice(0, 3);
@@ -579,6 +584,8 @@ export function parseSave(raw: unknown): SaveData | null {
 
 /** Puts a checked save into a freshly started simulation. */
 export function applySave(sim: Simulation, s: SaveData): void {
+  for (const id of SERVICE_IDS) delete sim.serviceSites[id];
+  Object.assign(sim.serviceSites, readServiceSites(s.serviceSites));
   sim.tutorial = TutorialProgress.restore(s.tutorial);
   sim.clockMinutes = s.clock;
   sim.calendar.dayOfYear = s.day;
@@ -597,8 +604,10 @@ export function applySave(sim: Simulation, s: SaveData): void {
   for (const id of SERVICE_IDS) {
     const svc = sim.services[id];
     svc.switchedOn = (s.on ?? SERVICE_IDS).includes(id);
-    svc.everRun = svc.switchedOn || (s.ran ?? []).includes(id);
+    svc.everRun = svc.switchedOn || (s.ran ?? []).includes(id) || (s.ran === undefined && !s.tutorial && ORG.startServices.includes(id));
   }
+  // Legacy ordinary saves predate first placement and could park a camper while switched off.
+  if (s.ran === undefined && (!s.tutorial || (s.tutorial.visits?.outreach ?? 0) > 0) && !sim.serviceSites.outreach) sim.serviceSites.outreach = { kind: 'original' };
   // The team: rebuilt from the save, then trimmed or grown to the head counts.
   const members = sim.team.members;
   members.length = 0;

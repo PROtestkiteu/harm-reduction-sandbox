@@ -36,7 +36,7 @@ function thud(ctx: AudioContext, out: AudioNode, t: number, from: number, to: nu
 }
 
 /** How loud each recorded cue plays. */
-const CUE_LEVEL: Record<UiCue, number> = { tap: 0.5, confirm: 0.55, warn: 0.45 };
+const CUE_LEVEL: Record<UiCue, number> = { tap: 0.25, confirm: 0.55, warn: 0.45 };
 
 /** Plays `cue` now, recorded if loaded, else generated. Nodes are made per cue and dropped by the browser when they finish. */
 export function playCue(ctx: AudioContext, out: AudioNode, white: AudioBuffer, cue: UiCue, random: () => number, recorded?: AudioBuffer): void {
@@ -55,8 +55,8 @@ export function playCue(ctx: AudioContext, out: AudioNode, white: AudioBuffer, c
   const offset = random() * (white.duration - 0.1);
   switch (cue) {
     case 'tap':
-      tick(ctx, out, white, t, 1900, 0.35, offset);
-      thud(ctx, out, t, 300, 170, 0.1, 0.012);
+      tick(ctx, out, white, t, 1900, 0.175, offset);
+      thud(ctx, out, t, 300, 170, 0.05, 0.012);
       break;
     case 'confirm':
       // Two lower ticks close together over a soft knock: a latch rather than a click.

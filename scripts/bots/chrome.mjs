@@ -154,7 +154,13 @@ export async function drive(url, steps, { out = '.', size = '1280x800', dpr = 1,
     for (const s of steps) {
       // Device input and display-mode emulation for the UI regression checks.
       if (s.cdp) {
-        const r = await send(s.cdp, s.params ?? {});
+        let params = s.params ?? {};
+        if (s.paramsEval) {
+          const value = await send('Runtime.evaluate', { expression: s.paramsEval, returnByValue: true });
+          if (value.result?.exceptionDetails) throw new Error(value.result.exceptionDetails.text);
+          params = value.result?.result?.value;
+        }
+        const r = await send(s.cdp, params);
         if (r.error) throw new Error(`${s.cdp}: ${r.error.message}`);
       }
       if (s.wait) await sleep(s.wait);

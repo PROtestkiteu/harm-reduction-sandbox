@@ -237,6 +237,7 @@ const CRIME_CALL: Record<string, string> = {
 
 export class Crowd {
   readonly group = new Group();
+  private readonly restoredVisitors: VisitorId[] = [];
   private readonly agents = new Map<number, Agent>();
   private readonly byVisitor = new Map<VisitorId, Agent>();
   private readonly cars: Car[] = [];
@@ -425,6 +426,7 @@ export class Crowd {
     else {
       // A camper counter: served standing at it.
       a.mode = 'served';
+      this.serviceReached(a);
       a.faceHeading = headingTo(a.pos, { x: sat.door.x - 1, z: sat.door.z });
     }
   }
@@ -615,6 +617,25 @@ export class Crowd {
     else this.crowdOutside(a, 'dropIn');
   }
 
+  /** Rebuild saved tutorial visits as real routes without replaying admissions or charges. */
+  restoreTutorialVisitors(): void {
+    this.restoredVisitors.length = 0;
+    if (!this.sim.tutorial?.active) return;
+    for (const a of [...this.agents.values()]) if (a.visitor !== undefined) this.remove(a);
+    this.restoredVisitors.push(...[...this.sim.recipientCare.visits.keys()].reverse());
+    this.restoreNextVisitors();
+  }
+
+  /** Saved visits wait for a free avatar slot instead of being discarded by the new-arrival cap. */
+  private restoreNextVisitors(): void {
+    while (this.restoredVisitors.length && this.agents.size < MAX_PEOPLE) {
+      const visitor = this.restoredVisitors.pop()!;
+      const visit = this.sim.recipientCare.visits.get(visitor);
+      const site = visit?.phase === 'transfer' ? visit.destination : visit?.site;
+      if (site) this.spawnVisitor(visitor, site === 'clubHr' ? 'club' : site, site === 'clubHr', false);
+    }
+  }
+
   private enterDropIn(a: Agent): void {
     a.mode = 'walking';
     a.service = 'dropIn';
@@ -640,6 +661,7 @@ export class Crowd {
     a.staffPost = slot;
     this.walk(a, [SPOTS.camperCounters[slot]], () => {
       a.mode = 'served';
+      this.serviceReached(a);
       a.pose = 'talk';
       a.faceHeading = -Math.PI / 2 + VENUE_ROT.outreach;
     });
@@ -655,7 +677,7 @@ export class Crowd {
       // Stand packed away: a brief look, then on to the club.
       a.mode = 'pausing';
       a.pauseLeft = 1.0;
-      a.faceHeading = Math.PI + VENUE_ROT.club;
+      a.faceHeading = Math.PI + VENUE_ROT.clubHr;
       a.onArrive = () => this.goToClubQueue(a);
     }
   }
@@ -667,8 +689,9 @@ export class Crowd {
     a.staffPost = slot;
     this.walk(a, [SPOTS.standCounter[slot]], () => {
       a.mode = 'served';
+      this.serviceReached(a);
       a.pose = 'talk';
-      a.faceHeading = Math.PI + VENUE_ROT.club;
+      a.faceHeading = Math.PI + VENUE_ROT.clubHr;
     });
   }
 
@@ -747,6 +770,7 @@ export class Crowd {
       a.staffPost = slot;
       this.walk(a, [PATROL.served[slot]], () => {
         a.mode = 'served';
+        this.serviceReached(a);
         a.pose = 'talk';
         a.faceHeading = PATROL.facing;
       });
@@ -841,7 +865,7 @@ export class Crowd {
   // Staff
 
   private spawnStaff(service: ServiceId, post: number, member: Member): void {
-    if (member.workingAt !== service || !this.sim.team.members.includes(member) || !this.sim.services[service].enabled) return;
+    if (member.workingAt !== service || !this.sim.team.members.includes(member) || !this.staffServiceActive(service)) return;
     if ([...this.agents.values()].some((agent) => agent.staffMember === member && agent.service === service && agent.mode !== 'leaving')) return;
     const sources: Record<ServiceId, NodeId[]> = {
       dropIn: ['eN2', 'xN2'],
@@ -866,7 +890,7 @@ export class Crowd {
     };
     if (service === 'footPatrol') {
       // On foot to the squat, then behind the table, facing the pavement.
-      this.walk(a, [...this.routeTo(from, SERVICE_NODES.footPatrol, a.offset), PATROL.staff[Math.min(post, PATROL.staff.length - 1)]], () => { a.faceHeading = PATROL.facing + Math.PI; arrive(); });
+      this.walk(a, [...this.routeTo(from, SERVICE_NODES.footPatrol, a.offset), PATROL.staff[Math.min(post, PATROL.staff.length - 1)]], () => { a.faceHeading = PATROL.facing + Math.PI; if (this.sim.patrol.out && this.sim.patrol.at) this.walkBeat(a, this.sim.patrol.at, 0); else arrive(); });
     } else if (isWalkIn(service)) {
       const lot = LOTS[service];
       this.walk(a, [...this.routeTo(from, SERVICE_NODES[service], a.offset), lot.door, lot.inside], () => { this.hide(a); arrive(); });
@@ -887,14 +911,14 @@ export class Crowd {
         this.walk(a, [...this.routeTo(from, SERVICE_NODES.outreach, a.offset), outside[Math.min(post - 1, outside.length - 1)]], () => { a.faceHeading = VENUE_ROT.outreach; arrive(); });
       }
     } else {
-      this.walk(a, [...this.routeTo(from, SERVICE_NODES.clubHr, a.offset), SPOTS.standStaff[post]], () => { a.faceHeading = VENUE_ROT.club; arrive(); });
+      this.walk(a, [...this.routeTo(from, SERVICE_NODES.clubHr, a.offset), SPOTS.standStaff[post]], () => { a.faceHeading = VENUE_ROT.clubHr; arrive(); });
     }
   }
 
   /** Staff at `fromPost` and above leave; 0 releases everyone (service closing). */
   private releaseStaff(service: ServiceId, fromPost: number): void {
     this.staffQueue.splice(0, this.staffQueue.length, ...this.staffQueue.filter((queued) => queued.service !== service ||
-      (service === 'footPatrol' && this.sim.patrol.out ? queued.post < fromPost : this.sim.team.members.includes(queued.member) && queued.member.workingAt === service)));
+      (this.sim.team.members.includes(queued.member) && queued.member.workingAt === service)));
     // The table shuts because its people are going out on foot: they stay, and walk the beat (syncStreetworkers).
     if (service === 'footPatrol' && this.sim.patrol.out && this.sim.patrol.at) {
       for (const a of this.agents.values()) {
@@ -941,16 +965,21 @@ export class Crowd {
     }
   }
 
+  /** An away patrol still needs its named crew, even though its table is closed. */
+  private staffServiceActive(service: ServiceId): boolean {
+    return this.sim.services[service].enabled || (service === 'footPatrol' && this.sim.patrol.out);
+  }
+
   /** Reconcile only after the named rota changes, never on ordinary animation frames. */
   private reconcileStaff(): void {
     const active = [...this.agents.values()].filter((agent) => agent.role === 'staff' && agent.mode !== 'leaving');
     for (const agent of active) if (!agent.staffMember || !this.sim.team.members.includes(agent.staffMember) || agent.staffMember.workingAt !== agent.service) this.releaseStaffMember(agent);
     for (let i = this.staffQueue.length - 1; i >= 0; i--) {
       const queued = this.staffQueue[i];
-      if (!this.sim.team.members.includes(queued.member) || queued.member.workingAt !== queued.service || !this.sim.services[queued.service].enabled) this.staffQueue.splice(i, 1);
+      if (!this.sim.team.members.includes(queued.member) || queued.member.workingAt !== queued.service || !this.staffServiceActive(queued.service)) this.staffQueue.splice(i, 1);
     }
     for (const service of SERVICE_IDS) {
-      if (!this.sim.services[service].enabled) continue;
+      if (!this.staffServiceActive(service)) continue;
       const current = active.filter((agent) => agent.service === service && agent.mode !== 'leaving');
       const present = new Set(current.map((agent) => agent.staffMember));
       const occupied = new Set(current.map((agent) => agent.staffPost ?? 0));
@@ -1277,7 +1306,12 @@ export class Crowd {
     return { at: queueSlot(lot.queueHead, lot.queueDir, 0.8, slots), along: lot.queueDir, door: lot.door };
   }
 
+  private serviceReached(a: Agent): void {
+    if (a.visitor !== undefined && a.service) this.sim.serviceReached(a.service, a.visitor);
+  }
+
   private hide(a: Agent): void {
+    this.serviceReached(a);
     a.mode = a.rig.look.staff ? a.mode : 'inside';
     a.visible = false;
     a.rig.root.visible = false;
@@ -1297,6 +1331,7 @@ export class Crowd {
     if (a.visitor !== undefined) this.byVisitor.delete(a.visitor);
     this.group.remove(a.rig.root);
     a.rig.dispose();
+    this.restoreNextVisitors();
   }
 
   // Context people: police and residents with placards
@@ -1891,7 +1926,7 @@ export class Crowd {
         const i = standOrder.indexOf(a.visitor);
         if (i < 0) continue;
         spot = queueSlot(SPOTS.standQueueHead, STAND_QUEUE_DIR, 0.75, i);
-        face = -Math.PI / 2 + VENUE_ROT.club;
+        face = -Math.PI / 2 + VENUE_ROT.clubHr;
       } else if (a.mode === 'waiting' && isWalkIn(a.service)) {
         const lot = LOTS[a.service];
         const i = this.sim.services[a.service].queueOrder().indexOf(a.visitor);

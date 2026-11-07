@@ -126,6 +126,7 @@ export class ScenePipeline {
         worldPerPixel: { value: 0.05 },
         groundSlope: { value: 0.05 },
         wetness: { value: 2.4 },
+        reflectionLight: { value: 1 },
         invViewProj: { value: new Matrix4() },
         exposure: { value: 1.25 },
         skyTop: { value: srgb(PALETTE.skyTop) },
@@ -150,6 +151,7 @@ export class ScenePipeline {
         uniform float worldPerPixel;
         uniform float groundSlope;
         uniform float wetness;
+        uniform float reflectionLight;
         uniform float exposure;
         uniform vec3 skyTop;
         uniform vec3 skyMid;
@@ -240,7 +242,7 @@ export class ScenePipeline {
           // pass the slope test, so keep surfaces near street level only.
           vec4 world = invViewProj * vec4(uv * 2.0 - 1.0, raw * 2.0 - 1.0, 1.0);
           ground *= 1.0 - smoothstep(0.2, 0.45, world.y / world.w);
-          if (ground > 0.0 && wetness > 0.0) {
+          if (ground > 0.0 && wetness > 0.0 && reflectionLight > 0.0) {
             vec3 refl = vec3(0.0);
             for (int k = REFL_STRIDE; k <= 6; k += REFL_STRIDE) {
               float fk = float(k);
@@ -252,7 +254,7 @@ export class ScenePipeline {
               refl += s * (max(lum - 0.7, 0.0) / max(lum, 1e-3)) * (1.0 - fk / 7.0);
             }
             float puddle = 0.55 + 0.45 * hash(floor(p / (9.0 * dpr)));
-            c += refl * (0.16 * REFL_GAIN) * wetness * ground * puddle;
+            c += refl * (0.16 * REFL_GAIN) * wetness * reflectionLight * ground * puddle;
           }
 
           // Glow: bright lamps, neon and lit windows bleed softly into the damp
@@ -390,6 +392,9 @@ export class ScenePipeline {
     (u.skyHorizon.value as Vector3).lerpVectors(SKY.horizon, SKY.horizonDay, day).lerp(SKY.horizonNight, night);
     // A little more exposure after dark, so night stays readable on dim screens and headsets.
     u.exposure.value = 1.25 - 0.1 * day + 0.25 * night;
+    // Screen-space light trails suit dusk/night. Sunlit paint and sign faces
+    // also exceed the brightness threshold, but must not drip onto dry streets.
+    u.reflectionLight.value = 1 - Math.min(1, Math.max(0, day));
   }
 
   /** Slides the distant skyline with the camera's orbit (azimuth in degrees). */

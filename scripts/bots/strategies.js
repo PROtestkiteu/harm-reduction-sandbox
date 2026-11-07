@@ -41,6 +41,15 @@ async (name, days = 3, opts = {}) => {
   const acts = {};
   const did = (k, ok) => { if (ok !== false) acts[k] = (acts[k] ?? 0) + 1; };
   const grant = (above) => { for (const g of grants) if (sim.org.applications[g].status === 'idle' && sim.org.budget > above) did('grant', sim.applyFor(g)); };
+  // Active strategies now explicitly choose their baseline sites; an idle project remains unplaced.
+  if (name !== 'idle' && name !== 'hoarder') {
+    const {camperSpot}=await import('/src/world/layout.ts');
+    for(const id of ['dropIn','outreach','clubHr']) if(!sim.services[id].everRun) {
+      sim.serviceSites[id]=id==='outreach'?{kind:'curb',id:camperSpot()}:{kind:'original'};
+      sim.setEnabled(id,true);did('setup:'+id,true);
+    }
+    window.__sandbox.syncEvents();
+  }
   const st = sim.stakes;
   // The bots enable scenario-style project failure while measuring balance.
   st.hardcore = true;

@@ -1,4 +1,4 @@
-import { Group, type Object3D } from 'three';
+import { Group, type Matrix4, type Object3D } from 'three';
 import { PALETTE } from '../config/palette';
 import type { ServiceId } from '../sim/types';
 import { add, bench, box, cylinder, signBoard } from './kit';
@@ -141,6 +141,10 @@ export class StageProps {
       group.scale.set(1, 0.001, 1);
       this.pieces.push({ group, t: 0, want: false });
     });
+  }
+
+  transform(matrix: Matrix4): void {
+    for (const p of this.pieces) p.group.applyMatrix4(matrix);
   }
 
   /** Shows the pieces up to `stage` (1 = none). With `instant`, no animation. */

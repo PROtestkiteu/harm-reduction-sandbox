@@ -1,0 +1,27 @@
+.draggable-window { translate: var(--window-drag-x, 0px) var(--window-drag-y, 0px); }
+.draggable-window:not(.tutorial-guide) > h2, .window-drag-handle,
+.tutorial-guide[data-collapsed='false'] .tutorial-step,
+.tutorial-guide[data-collapsed='false'] .tutorial-toggle { cursor: grab; touch-action: none; user-select: none; }
+.draggable-window[data-dragging='true'], .draggable-window[data-dragging='true'] * { cursor: grabbing; user-select: none; }
+.window-drag-handle { display: flex; flex: 1; min-height: 44px; align-items: center; font: inherit; color: var(--muted); }
+.sheet.draggable-window .panel-dismiss-slot { display: flex; align-items: center; gap: 8px; height: auto; min-height: 44px; background: var(--grain), rgba(var(--fade), .98); }
+.sheet.draggable-window .panel-dismiss-slot > .panel-dismiss { position: relative; top: auto; right: auto; }
+
+.draggable-window > h2, .tutorial-guide[data-collapsed='false'] .tutorial-toggle { min-height: 44px; }
+
+/* Edge hit areas sit inside existing padding and never cover the window content. */
+.draggable-window { cursor: grab; }
+.draggable-window p:not(.tutorial-step), .draggable-window li { cursor: text; }
+.window-drag-margin { position: absolute; z-index: 4; display: block; touch-action: none; cursor: grab; }
+.window-drag-margin[data-edge='top'], .window-drag-margin[data-edge='bottom'] { left: 0; right: 0; height: var(--window-margin-y, 10px); }
+.window-drag-margin[data-edge='top'] { top: 0; }
+.window-drag-margin[data-edge='bottom'] { bottom: 0; }
+.window-drag-margin[data-edge='left'], .window-drag-margin[data-edge='right'] { top: var(--window-margin-y, 10px); bottom: var(--window-margin-y, 10px); width: var(--window-margin-x, 10px); }
+.window-drag-margin[data-edge='left'] { left: 0; }
+.window-drag-margin[data-edge='right'] { right: 0; }
+.sheet .window-drag-margin[data-edge='right'] { right: 16px; }
+.tutorial-guide[data-collapsed='true'] > .window-drag-margin { display: none; }
+.tutorial-guide[data-collapsed='true'] { cursor: auto; }
+
+.tutorial-guide[data-collapsed='false'], .welcome.draggable-window { --window-margin-x: 24px; --window-margin-y: 20px; }
+.site-picker.draggable-window { --window-margin-x: 14px; --window-margin-y: 14px; }

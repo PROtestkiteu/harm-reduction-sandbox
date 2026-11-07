@@ -11,6 +11,7 @@ import { cityBuilding, doorApproach, type BuildingUse } from '../world/cityBuild
 import { DISTRICT, SQUAT_SPOT, camperSpot } from '../world/layout';
 import { VENUE_KINDS, VITALITY, type VenueKind } from '../sim/vitality';
 import { RESIDENTS } from '../config/residents';
+import { PATROL } from '../config/patrol';
 import { formatClock } from '../sim/clock';
 import { HAPPENINGS } from '../config/happenings';
 import { formatDate } from '../sim/calendar';
@@ -238,6 +239,7 @@ export class CityCards {
           ? t('An open shelter and outreach shrink it.')
           : t('Grows in winter too. An open shelter and outreach shrink it.')}`,
         facts: [[t('Police under pressure'), pct(sim.cityStress.police)]],
+        actions: [{ id: 'patrolCamp', label: t('Send patrol to the camp') + ` (${price(PATROL.cost)})`, short: t('Send patrol to the camp'), enabled: sim.patrolReady && sim.patrolSpots().includes('camp') && sim.org.budget >= PATROL.cost, feature: 'dispatch' }],
         renamable: true,
       };
     }
@@ -381,6 +383,7 @@ export class CityCards {
     const { sim } = this;
     const b = cityBuilding(id);
     if (!b || Math.abs((b.x0 + b.x1) / 2) > DISTRICT || Math.abs((b.z0 + b.z1) / 2) > DISTRICT) return {};
+    if (Object.values(sim.serviceSites).some(site => site.kind === 'building' && site.id === id)) return {};
     const p = PROPERTY.point;
     const q = sim.property.pointAt(id);
     if (q) {

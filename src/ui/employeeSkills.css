@@ -46,10 +46,11 @@
 .member-disclosure[aria-expanded='true']::after { transform: rotate(90deg); }
 .member-disclosure:focus-visible { outline: 2px solid var(--focus); }
 .compact-member .team-assign { grid-column: 2; width: 100%; min-width: 0; min-height: 32px; padding: 3px 4px; font-size: 13px; }
-.compact-member .trait-strip { grid-column: 1; }
-.compact-member .team-strength { grid-column: 2; font-size: 12px; margin: 0; text-align: right; }
-.compact-member .skill-strip { grid-column: 1; }
-.compact-member .condition-strip { grid-column: 2; justify-content: flex-end; gap: 5px; }
+.compact-member .member-metrics { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; min-width: 0; }
+.compact-member .member-metrics .trait-strip { gap: 4px; }
+.compact-member .team-strength { font-size: 12px; margin: 0 0 0 auto; text-align: right; }
+.compact-member .skill-strip { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.compact-member .condition-strip { justify-content: flex-end; gap: 5px; margin-inline-start: auto; }
 .compact-member .member-details { grid-column: 1 / -1; padding: 12px 0; font: 400 14px/1.4 var(--body); }
 .member-details[hidden] { display: none; }
 .member-details h4 { margin: 8px 0; font-size: 14px; }

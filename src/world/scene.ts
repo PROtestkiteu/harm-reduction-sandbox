@@ -98,6 +98,7 @@ export interface World {
   setStaffing(id: LocationId, extra: number, short: number, open: boolean): void;
   /** Each service's stage (SERVICE_STAGES): its pieces spring up beside the place; `instant` for a load. */
   setStage(id: ServiceId, stage: number, instant: boolean): void;
+  transformStage(id: ServiceId, matrix: Matrix4): void;
   /** Building ids of the shop units the property model tracks, nearest the services first. */
   readonly shopUnits: readonly number[];
   /** What shop unit `i` shows: trading, TO LET, or a rented service's sign. */
@@ -525,7 +526,10 @@ export function buildWorld(random: Random): World {
   // Every static thing in the district merges into one mesh per material: a
   // few hundred draw calls fewer, which phones and VR headsets need. Places
   // stay separate so they can be picked and highlighted.
-  for (const loc of Object.values(locations)) dynamic(loc.root);
+  for (const loc of Object.values(locations)) {
+    dynamic(loc.root);
+    if (loc.vacantRoot) scene.add(loc.vacantRoot);
+  }
   mergeStatic(scene);
   // Each service's building shows its staffing: a crane and cabins, boards, or a new sign.
   const expansions = Object.fromEntries(
@@ -838,6 +842,7 @@ export function buildWorld(random: Random): World {
     setStaffing(id, extra, short, open) {
       expansions[id].set(extra, short, open);
     },
+    transformStage(id, matrix) { stageProps[id].transform(matrix); },
     setStage(id, stage, instant) {
       stageProps[id].set(stage, instant || still);
     },
@@ -1006,6 +1011,7 @@ export function buildWorld(random: Random): World {
       for (const l of lettings) l.update(dt, still);
       for (const l of shopSigns) l.update(dt, still);
       opening.update(dt);
+      fitOuts.update(dt, still);
       // New campers drive in from up the street and pull up at their spot.
       for (const [spot, c] of campers) {
         if (c.arrive >= 1) continue;

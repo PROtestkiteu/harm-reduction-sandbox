@@ -15,6 +15,10 @@ import { mouldedVehicle, type Profile } from './vehicles';
 export interface LocationVisual {
   readonly id: LocationId;
   readonly root: Group;
+  /** Ordinary home shell shown while a movable service is unplaced or hosted elsewhere. */
+  readonly vacantRoot?: Group;
+  /** Service equipment within an independently operating venue, such as the nightclub. */
+  readonly setupRoot?: Object3D;
   /** World point the HTML label hangs from (above it, or below with `labelBelow`). */
   readonly labelAnchor: Vector3;
   readonly labelBelow?: boolean;
@@ -42,6 +46,7 @@ function placed<T extends LocationVisual>(v: T, f: Frame): T {
   v.root.position.set(origin.x, v.root.position.y, origin.z);
   v.root.rotation.y = f.rot;
   root.add(v.root);
+  if (v.vacantRoot) { v.vacantRoot.position.set(origin.x, 0, origin.z); v.vacantRoot.rotation.y = f.rot; }
   const label = toWorld(f, { x: v.labelAnchor.x, z: v.labelAnchor.z });
   const ring = toWorld(f, v.footprint);
   const quarter = Math.abs(Math.sin(f.rot)) > 0.5;
@@ -63,36 +68,38 @@ export function buildDropIn(random: Random): LocationVisual {
 function designDropIn(random: Random): LocationVisual {
   const root = new Group();
   root.name = 'dropIn';
+  const shell = dynamic(new Group());
+  root.add(shell);
   const { x0, x1, z0, z1 } = CENTER;
   const cx = (x0 + x1) / 2;
   const cz = (z0 + z1) / 2;
   const w = x1 - x0;
   const d = z1 - z0;
 
-  add(root, box(w + 0.12, 0.45, d + 0.12, mat(PALETTE.plasterShade), cx, 0, cz));
-  add(root, box(w, 6.8, d, mat(PALETTE.plaster), cx, 0, cz));
-  add(root, box(w + 0.2, 0.28, d + 0.2, mat(PALETTE.centerAccent), cx, 3.45, cz));
-  add(root, box(w + 0.24, 0.42, d + 0.24, mat(PALETTE.roofTrim), cx, 6.8, cz));
-  add(root, box(2.2, 1.0, 1.6, mat(PALETTE.concrete), x1 - 2.2, 7.22, z0 + 1.6));
-  add(root, box(0.9, 0.6, 0.9, mat(PALETTE.metal), x1 - 4.2, 7.22, z0 + 1.2));
+  add(shell, box(w + 0.12, 0.45, d + 0.12, mat(PALETTE.plasterShade), cx, 0, cz));
+  add(shell, box(w, 6.8, d, mat(PALETTE.plaster), cx, 0, cz));
+  add(shell, box(w + 0.2, 0.28, d + 0.2, mat(PALETTE.centerAccent), cx, 3.45, cz));
+  add(shell, box(w + 0.24, 0.42, d + 0.24, mat(PALETTE.roofTrim), cx, 6.8, cz));
+  add(shell, box(2.2, 1.0, 1.6, mat(PALETTE.concrete), x1 - 2.2, 7.22, z0 + 1.6));
+  add(shell, box(0.9, 0.6, 0.9, mat(PALETTE.metal), x1 - 4.2, 7.22, z0 + 1.2));
 
   // Ground-floor storefront glazing shares one warm material driven by service level.
   const storefront = glowMat(PALETTE.glassDark, PALETTE.warmWindow, 0.2);
   const lobby = glowMat(PALETTE.warmWindowDim, PALETTE.warmWindow, 0.3);
   const frame = mat(PALETTE.frame);
-  add(root, box(1.5, 2.1, 0.08, storefront, 3.95, 0.8, z1 + 0.02));
-  add(root, box(5.9, 2.2, 0.08, storefront, 9.85, 0.75, z1 + 0.02));
-  for (const x of [6.9, 8.85, 10.85, 12.8]) add(root, box(0.1, 2.3, 0.12, frame, x, 0.7, z1 + 0.04));
-  add(root, box(5.9, 0.1, 0.14, frame, 9.85, 2.95, z1 + 0.04));
+  add(shell, box(1.5, 2.1, 0.08, storefront, 3.95, 0.8, z1 + 0.02));
+  add(shell, box(5.9, 2.2, 0.08, storefront, 9.85, 0.75, z1 + 0.02));
+  for (const x of [6.9, 8.85, 10.85, 12.8]) add(shell, box(0.1, 2.3, 0.12, frame, x, 0.7, z1 + 0.04));
+  add(shell, box(5.9, 0.1, 0.14, frame, 9.85, 2.95, z1 + 0.04));
 
   // Entrance: lobby glow behind sliding glass doors.
-  add(root, box(1.7, 2.45, 0.05, lobby, SPOTS.centerDoor.x, 0.45, z1 + 0.01));
+  add(shell, box(1.7, 2.45, 0.05, lobby, SPOTS.centerDoor.x, 0.45, z1 + 0.01));
   const doorGlass = mat(PALETTE.glassDark);
-  const doorL = add(root, dynamic(box(0.84, 2.35, 0.06, doorGlass, SPOTS.centerDoor.x - 0.42, 0.45, z1 + 0.07)));
-  const doorR = add(root, dynamic(box(0.84, 2.35, 0.06, doorGlass, SPOTS.centerDoor.x + 0.42, 0.45, z1 + 0.07)));
-  add(root, box(2.0, 0.28, 0.14, frame, SPOTS.centerDoor.x, 2.8, z1 + 0.06));
-  add(root, box(0.12, 2.4, 0.14, frame, SPOTS.centerDoor.x - 0.94, 0.45, z1 + 0.06));
-  add(root, box(0.12, 2.4, 0.14, frame, SPOTS.centerDoor.x + 0.94, 0.45, z1 + 0.06));
+  const doorL = add(shell, dynamic(box(0.84, 2.35, 0.06, doorGlass, SPOTS.centerDoor.x - 0.42, 0.45, z1 + 0.07)));
+  const doorR = add(shell, dynamic(box(0.84, 2.35, 0.06, doorGlass, SPOTS.centerDoor.x + 0.42, 0.45, z1 + 0.07)));
+  add(shell, box(2.0, 0.28, 0.14, frame, SPOTS.centerDoor.x, 2.8, z1 + 0.06));
+  add(shell, box(0.12, 2.4, 0.14, frame, SPOTS.centerDoor.x - 0.94, 0.45, z1 + 0.06));
+  add(shell, box(0.12, 2.4, 0.14, frame, SPOTS.centerDoor.x + 0.94, 0.45, z1 + 0.06));
 
   // Canopy, light strip and pixel sign over the door.
   add(root, box(3.4, 0.16, 1.7, mat(PALETTE.centerAccent), SPOTS.centerDoor.x, 2.98, z1 + 0.85));
@@ -104,27 +111,27 @@ function designDropIn(random: Random): LocationVisual {
   // Upper floor windows switch independently.
   const upperMats = [0, 1, 2, 3].map(() => glowMat(PALETTE.glassDark, PALETTE.warmWindow, 0.2));
   [3.9, 5.9, 7.9, 9.9, 11.9].forEach((x, i) => {
-    add(root, box(1.2, 1.45, 0.08, upperMats[i % 4], x, 4.25, z1 + 0.02));
-    add(root, box(1.4, 0.1, 0.2, mat(PALETTE.concrete), x, 4.15, z1 + 0.08));
+    add(shell, box(1.2, 1.45, 0.08, upperMats[i % 4], x, 4.25, z1 + 0.02));
+    add(shell, box(1.4, 0.1, 0.2, mat(PALETTE.concrete), x, 4.15, z1 + 0.08));
   });
   [-9.3, -11.4, -13.5].forEach((z, i) => {
-    add(root, box(0.08, 1.45, 1.2, upperMats[(i + 2) % 4], x1 + 0.02, 4.25, z));
-    add(root, box(0.08, 1.9, 1.5, storefront, x1 + 0.02, 0.9, z));
-    add(root, box(0.2, 0.1, 1.4, mat(PALETTE.concrete), x1 + 0.08, 4.15, z));
+    add(shell, box(0.08, 1.45, 1.2, upperMats[(i + 2) % 4], x1 + 0.02, 4.25, z));
+    add(shell, box(0.08, 1.9, 1.5, storefront, x1 + 0.02, 0.9, z));
+    add(shell, box(0.2, 0.1, 1.4, mat(PALETTE.concrete), x1 + 0.08, 4.15, z));
   });
   // Street-facing west wall and the rear wall, revealed when the camera orbits.
   [-9.0, -11.0, -13.0].forEach((z, i) => {
-    add(root, box(0.08, 1.45, 1.2, upperMats[(i + 1) % 4], x0 - 0.02, 4.25, z));
-    add(root, windowTrim(1.2, 1.45), -Math.PI / 2).position.set(x0 - 0.02, 4.25, z);
-    add(root, box(0.08, 1.6, 1.4, storefront, x0 - 0.02, 0.9, z));
-    add(root, windowTrim(1.4, 1.6), -Math.PI / 2).position.set(x0 - 0.02, 0.9, z);
+    add(shell, box(0.08, 1.45, 1.2, upperMats[(i + 1) % 4], x0 - 0.02, 4.25, z));
+    add(shell, windowTrim(1.2, 1.45), -Math.PI / 2).position.set(x0 - 0.02, 4.25, z);
+    add(shell, box(0.08, 1.6, 1.4, storefront, x0 - 0.02, 0.9, z));
+    add(shell, windowTrim(1.4, 1.6), -Math.PI / 2).position.set(x0 - 0.02, 0.9, z);
   });
   [4.6, 7.6, 10.6].forEach((x, i) => {
-    add(root, box(1.2, 1.45, 0.08, upperMats[(i + 3) % 4], x, 4.25, z0 - 0.02));
-    add(root, windowTrim(1.2, 1.45), Math.PI).position.set(x, 4.25, z0 - 0.02);
+    add(shell, box(1.2, 1.45, 0.08, upperMats[(i + 3) % 4], x, 4.25, z0 - 0.02));
+    add(shell, windowTrim(1.2, 1.45), Math.PI).position.set(x, 4.25, z0 - 0.02);
   });
-  add(root, box(1.1, 2.2, 0.08, mat(PALETTE.frame), 12.2, 0.45, z0 - 0.03));
-  add(root, drainpipe(6.9), Math.PI).position.set(x0 + 0.2, 0, z0 - 0.08);
+  add(shell, box(1.1, 2.2, 0.08, mat(PALETTE.frame), 12.2, 0.45, z0 - 0.03));
+  add(shell, drainpipe(6.9), Math.PI).position.set(x0 + 0.2, 0, z0 - 0.08);
   const upper = new WindowBank(upperMats, 1.25, 0.08, random);
 
   // Waiting area: shallow wall awning (keeps seated people visible), benches, planter.
@@ -140,37 +147,41 @@ function designDropIn(random: Random): LocationVisual {
     add(root, box(0.26, 0.3, 0.02, mat(c), x, y, -7.36)));
 
   // Facade detail: window trim, drainpipes, wall-mounted units, entrance pots.
-  [3.9, 5.9, 7.9, 9.9, 11.9].forEach((x) => add(root, windowTrim(1.2, 1.45)).position.set(x, 4.25, z1 + 0.02));
-  [-9.3, -11.4, -13.5].forEach((z) => add(root, windowTrim(1.2, 1.45), Math.PI / 2).position.set(x1 + 0.02, 4.25, z));
-  add(root, drainpipe(6.9)).position.set(x0 + 0.15, 0, z1 + 0.08);
-  add(root, drainpipe(6.9)).position.set(x1 - 0.12, 0, z1 + 0.08);
-  add(root, drainpipe(6.9), Math.PI / 2).position.set(x1 + 0.08, 0, z0 + 0.4);
-  add(root, acUnit(), Math.PI / 2).position.set(x1 + 0.3, 2.35, -12.45);
-  add(root, box(0.06, 0.12, 0.3, mat(PALETTE.metal), x1 + 0.06, 2.3, -12.45));
-  add(root, flowerPot(0xf0d070)).position.set(4.45, 0.12, -7.2);
-  add(root, flowerPot(0xe0a0b8)).position.set(6.75, 0.12, -7.2);
-  add(root, box(1.5, 0.02, 0.8, mat(PALETTE.centerAccent), SPOTS.centerDoor.x, 0.12, z1 + 0.45));
-  add(root, box(0.42, 0.5, 0.04, mat(PALETTE.canvasCream), 7.15, 1.45, z1 + 0.04));
-  for (const [x, z] of [[3.5, -8.2], [12.2, -8.6]] as const) add(root, flowerPot(0xe8e0f0, 0.9)).position.set(x, 7.22, z);
+  [3.9, 5.9, 7.9, 9.9, 11.9].forEach((x) => add(shell, windowTrim(1.2, 1.45)).position.set(x, 4.25, z1 + 0.02));
+  [-9.3, -11.4, -13.5].forEach((z) => add(shell, windowTrim(1.2, 1.45), Math.PI / 2).position.set(x1 + 0.02, 4.25, z));
+  add(shell, drainpipe(6.9)).position.set(x0 + 0.15, 0, z1 + 0.08);
+  add(shell, drainpipe(6.9)).position.set(x1 - 0.12, 0, z1 + 0.08);
+  add(shell, drainpipe(6.9), Math.PI / 2).position.set(x1 + 0.08, 0, z0 + 0.4);
+  add(shell, acUnit(), Math.PI / 2).position.set(x1 + 0.3, 2.35, -12.45);
+  add(shell, box(0.06, 0.12, 0.3, mat(PALETTE.metal), x1 + 0.06, 2.3, -12.45));
+  add(shell, flowerPot(0xf0d070)).position.set(4.45, 0.12, -7.2);
+  add(shell, flowerPot(0xe0a0b8)).position.set(6.75, 0.12, -7.2);
+  add(shell, box(1.5, 0.02, 0.8, mat(PALETTE.centerAccent), SPOTS.centerDoor.x, 0.12, z1 + 0.45));
+  add(shell, box(0.42, 0.5, 0.04, mat(PALETTE.canvasCream), 7.15, 1.45, z1 + 0.04));
+  for (const [x, z] of [[3.5, -8.2], [12.2, -8.6]] as const) add(shell, flowerPot(0xe8e0f0, 0.9)).position.set(x, 7.22, z);
 
   // Roof: parapet rail, solar array, plant equipment, dish.
-  add(root, railing(w - 0.4, 0.75)).position.set(cx, 7.22, z1 - 0.15);
-  add(root, railing(d - 0.4, 0.75), Math.PI / 2).position.set(x1 - 0.15, 7.22, cz);
-  for (let i = 0; i < 4; i++) for (let j = 0; j < 2; j++) add(root, solarPanel()).position.set(4.0 + i * 1.15, 7.22, -13.6 + j * 1.75);
-  add(root, acUnit()).position.set(9.6, 7.22, -11.4);
-  add(root, acUnit()).position.set(10.6, 7.22, -11.4);
-  add(root, roofVent()).position.set(7.6, 7.22, -9.0);
-  add(root, roofVent()).position.set(12.6, 7.22, -14.0);
-  add(root, satelliteDish(), Math.PI / 4).position.set(12.4, 7.22, -10.2);
-  add(root, box(0.4, 0.15, 3.0, mat(PALETTE.metal), 8.0, 7.4, -12.7));
+  add(shell, railing(w - 0.4, 0.75)).position.set(cx, 7.22, z1 - 0.15);
+  add(shell, railing(d - 0.4, 0.75), Math.PI / 2).position.set(x1 - 0.15, 7.22, cz);
+  for (let i = 0; i < 4; i++) for (let j = 0; j < 2; j++) add(shell, solarPanel()).position.set(4.0 + i * 1.15, 7.22, -13.6 + j * 1.75);
+  add(shell, acUnit()).position.set(9.6, 7.22, -11.4);
+  add(shell, acUnit()).position.set(10.6, 7.22, -11.4);
+  add(shell, roofVent()).position.set(7.6, 7.22, -9.0);
+  add(shell, roofVent()).position.set(12.6, 7.22, -14.0);
+  add(shell, satelliteDish(), Math.PI / 4).position.set(12.4, 7.22, -10.2);
+  add(shell, box(0.4, 0.15, 3.0, mat(PALETTE.metal), 8.0, 7.4, -12.7));
 
   const light = new PointLight(PALETTE.warmWindow, 0, 9, 1.4);
   light.position.set(SPOTS.centerDoor.x + 1.5, 2.4, z1 + 1.4);
   root.add(light);
 
   // Roof and wall clutter, like the rest of the city.
-  roofClutter(root, (CENTER.x0 + CENTER.x1) / 2, (CENTER.z0 + CENTER.z1) / 2, CENTER.x1 - CENTER.x0 - 3, CENTER.z1 - CENTER.z0 - 3, 7.22, random);
-  add(root, wallClutter(CENTER.z1 - CENTER.z0, 6.8, random), Math.PI / 2).position.set(CENTER.x1, 0.12, (CENTER.z0 + CENTER.z1) / 2);
+  roofClutter(shell, (CENTER.x0 + CENTER.x1) / 2, (CENTER.z0 + CENTER.z1) / 2, CENTER.x1 - CENTER.x0 - 3, CENTER.z1 - CENTER.z0 - 3, 7.22, random);
+  add(shell, wallClutter(CENTER.z1 - CENTER.z0, 6.8, random), Math.PI / 2).position.set(CENTER.x1, 0.12, (CENTER.z0 + CENTER.z1) / 2);
+  mergeStatic(shell);
+  const vacantRoot = dynamic(shell.clone(true));
+  vacantRoot.name = 'vacantDropInHome';
+  vacantRoot.visible = false;
   mergeStatic(root);
   const door = new DoorState();
   let level = 0;
@@ -179,7 +190,7 @@ function designDropIn(random: Random): LocationVisual {
 
   return {
     id: 'dropIn',
-    root,
+    root, vacantRoot,
     labelAnchor: new Vector3(cx, 7.8, cz),
     footprint: { x: cx, z: cz + 1.6, rx: w / 2 + 1, rz: d / 2 + 2.4 },
     setServiceLevel: (v) => { target = v; },
@@ -332,7 +343,7 @@ function designClub(random: Random): LocationVisual & { setVenueBeat(level: numb
 
   return {
     id: 'club',
-    root,
+    root, setupRoot: stand,
     labelAnchor: new Vector3(cx, height + 1.2, cz),
     footprint: { x: cx + 1, z: cz + 2, rx: w / 2 + 1.6, rz: d / 2 + 2.8 },
     setServiceLevel: (v) => { target = v; },
@@ -374,6 +385,8 @@ const CAMPER_BODY: Profile = {
 export type CamperVisual = LocationVisual & {
   template: Group;
   drive: Group;
+  /** Dedicated visual assembly transform; never used as a relocation origin. */
+  placementRoot: Group;
   /** Moves the van, its label and its ring to where CAMPER_FRAME now says. */
   relocate(): void;
 };
@@ -390,7 +403,9 @@ export function buildCamper(): CamperVisual {
   const root = new Group();
   root.name = 'outreach';
   const drive = add(root, new Group());
-  drive.add(template);
+  const placementRoot = add(drive, new Group());
+  placementRoot.name = 'camperPlacement';
+  placementRoot.add(template);
   template.position.set(template.position.x - CAMPER_FRAME.home.x, template.position.y, -CAMPER_FRAME.home.z);
   const homeLabel = v.labelAnchor.clone();
   const homeRing = { ...v.footprint };
@@ -406,7 +421,7 @@ export function buildCamper(): CamperVisual {
     Object.assign(footprint, { x: ring.x, z: ring.z, rx: quarter ? homeRing.rz : homeRing.rx, rz: quarter ? homeRing.rx : homeRing.rz });
   };
   relocate();
-  return { ...v, root, template, drive, labelAnchor, footprint, relocate };
+  return { ...v, root, template, drive, placementRoot, labelAnchor, footprint, relocate };
 }
 
 function designCamper(): LocationVisual {

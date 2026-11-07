@@ -1,5 +1,5 @@
 import { Box3, Group, type Mesh, type MeshLambertMaterial, type Object3D } from 'three';
-import { add, box } from './kit';
+import { add, box, signBoard } from './kit';
 import { glowMat, mat } from './materials';
 
 /** Which way a building's front faces, in world axes. */
@@ -136,14 +136,14 @@ export class Expansion {
     if (kind === 'sign') {
       this.cable = box(0.01, 0.01, 0.01, steel);
       if (roofSign) {
-        // The van's own sign is the one that drops in.
+        // Animate the place's authored sign in its own parent and frame.
         this.sign = roofSign;
         this.signBaseY = roofSign.position.y;
         this.ownSign = false;
         // It starts in place: closing lifts it off, opening drops it back.
         this.signOpen = true;
       } else {
-        this.buildSign(root, cx, cz, accent, w >= d);
+        this.signFace = this.buildSign(root, cx, cz, accent, front);
       }
       this.buildSandwichBoard(root, cx + fx * (halfFront + 1.2) + sx * 1.6, cz + fz * (halfFront + 1.2) + sz * 1.6, fx, fz);
       return;
@@ -440,18 +440,19 @@ export class Expansion {
 
   // ---------------------------------------------------------------- sign
 
-  private buildSign(root: Object3D, cx: number, cz: number, accent: number, alongX: boolean): void {
+  private buildSign(root: Object3D, cx: number, cz: number, accent: number, front: Facing): MeshLambertMaterial {
     const s = add(root, this.sign);
     this.signBaseY = this.roofY;
     s.position.set(cx, this.roofY, cz);
-    if (!alongX) s.rotation.y = Math.PI / 2;
+    // The frontage determines reading direction, independently of the roof aspect ratio.
+    s.rotation.y = front === '+x' ? Math.PI / 2 : front === '-x' ? -Math.PI / 2 : front === '-z' ? Math.PI : 0;
     add(s, box(0.06, 0.5, 0.06, craneDark, -0.9, 0, 0));
     add(s, box(0.06, 0.5, 0.06, craneDark, 0.9, 0, 0));
-    add(s, box(2.4, 0.7, 0.12, mat(accent), 0, 0.5, 0));
-    // Both faces light, so it reads from either side of the street.
-    add(s, box(2.2, 0.5, 0.02, this.signFace, 0, 0.6, 0.07));
-    add(s, box(2.2, 0.5, 0.02, this.signFace, 0, 0.6, -0.07));
+    // A readable board on both sides, rather than two featureless emissive panels.
+    const board = signBoard('INFO', 2.4, 0.7, '#fff4dc', '#' + accent.toString(16).padStart(6, '0'), 0, 'pixel', true);
+    add(s, board.mesh).position.y = 0.5;
     s.visible = false;
+    return board.material;
   }
 
   private buildSandwichBoard(root: Object3D, x: number, z: number, fx: number, fz: number): void {

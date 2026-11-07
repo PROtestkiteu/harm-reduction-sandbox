@@ -120,9 +120,9 @@ export class OrgPanel {
   private readonly teamSummary: HTMLElement;
   private readonly teamDetails: HTMLDetailsElement;
   private allowedServices: readonly ServiceId[] = SERVICE_IDS;
+  private allowAssignments = true;
   private staffingContext: { support: PersonSupport; service: ServiceId } | null = null;
   private readonly staffingNote: HTMLElement;
-  private readonly reviewNote = el('p', 'employee-context tutorial-review-status');
   private readonly memberRows = new Map<number, MemberRow>();
   private readonly cb: OrgPanelCallbacks;
   private readonly meters = {} as Record<Need, { root: HTMLElement; fill: HTMLElement }>;
@@ -305,12 +305,9 @@ export class OrgPanel {
     this.teamDetails = team;
     this.staffingNote = el('p', 'employee-context');
     this.staffingNote.hidden = true;
-    this.reviewNote.hidden = true;
-    this.reviewNote.setAttribute('role', 'status');
-    this.reviewNote.textContent = t('Team reviewed. Next: open outreach controls, switch the service on and complete five visits. Assignments are optional.');
     this.teamSummary = el('summary', undefined, t('Your team'));
     team.classList.add('sandbox-sub');
-    team.append(this.teamSummary, this.reviewNote, this.staffingNote, el('p', 'factor-summary', t('Pin someone to a service or send them to rest. Automatic places people where they fit best, paid staff first; tired people go home until rested.')));
+    team.append(this.teamSummary, this.staffingNote, el('p', 'factor-summary', t('Pin someone to a service or send them to rest. Automatic places people where they fit best, paid staff first; tired people go home until rested.')));
     team.append(el('p', 'factor-summary', t('Skills grow through practice. Automatic placement uses each person’s strengths; individual assignments are optional.')));
     const skillHelp = el('details', 'employee-skill-help');
     skillHelp.append(el('summary', undefined, t('How skills help')), el('p', 'factor-summary', t('Skills are rated out of 20. They improve service capacity and patrol reach, but do not replace professional qualifications.')));
@@ -343,12 +340,11 @@ export class OrgPanel {
   }
 
   /** The tutorial can expose people without exposing funding or locked services. */
-  setTeamAccess(services: readonly ServiceId[], teamOnly: boolean): void {
+  setTeamAccess(services: readonly ServiceId[], teamOnly: boolean, allowAssignments = true): void {
     this.allowedServices = services;
+    this.allowAssignments = allowAssignments;
     this.section.classList.toggle('org-team-mode', teamOnly);
   }
-
-  setReviewComplete(reviewed: boolean): void { this.reviewNote.hidden = !reviewed; }
 
   get teamDisclosure(): HTMLDetailsElement { return this.teamDetails; }
 
@@ -499,10 +495,13 @@ export class OrgPanel {
           current.details.hidden = !open; current.head.setAttribute('aria-expanded', String(open));
           if (open) this.renderMemberDetails(current);
         });
-        root.append(head, assignment, traits.root, strength, skills.root, conditions.root, details);
+        const metrics = el('div', 'member-metrics');
+        metrics.append(traits.root, skills.root, strength, conditions.root);
+        root.append(head, assignment, metrics, details);
         this.teamList.append(root); this.memberRows.set(member.id, row);
       }
       row.member = member;
+      if (row.select.disabled === this.allowAssignments) row.select.disabled = !this.allowAssignments;
       setText(row.name, member.name);
       const assignmentLabel = t('Where {name} works', {name:member.name});
       if (row.select.getAttribute('aria-label') !== assignmentLabel) row.select.setAttribute('aria-label', assignmentLabel);

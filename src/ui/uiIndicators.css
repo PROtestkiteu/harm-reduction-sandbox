@@ -65,7 +65,7 @@ details > summary::after { left: 0; right: auto; }
 .map-legend .legend-heading::after, .map-legend .legend-go::after { color: var(--ui-mark-color, #edb300); }
 .opt.group:disabled::after, .sandbox-reply:disabled::after { color: var(--muted); }
 
-/* One heading affordance; secondary actions live in the existing context menu. */
+/* Keep folding and renaming as separate keyboard and touch targets. */
 .window .line { position: relative; }
 .window .selection-heading {
   position: relative; display: block; width: 100%; min-height: 32px;
@@ -88,3 +88,9 @@ details > summary::after { left: 0; right: auto; }
 .cite-reference { display: block; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
 .cite-reference + .cite-reference { margin-top: 4px; }
 .cite-reference a { color: var(--reply); text-decoration: underline; text-underline-offset: 3px; }
+
+.window .line:has(.selection-rename:not([hidden])) .selection-heading { width: calc(100% - 44px); min-height: 44px; }
+.window .selection-rename {
+  position: absolute; top: 0; right: 0; width: 44px; height: 44px;
+  margin: 0; padding: 0;
+}

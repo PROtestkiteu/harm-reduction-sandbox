@@ -320,6 +320,8 @@ const CAMPER_SITES: readonly { name: string; x: number; z: number; rot: number }
   { name: t('North street, by the north lot'), x: 14, z: -17.9, rot: -Math.PI / 2 },
   { name: t('South street, by the park'), x: 12, z: 20.1, rot: -Math.PI / 2 },
   { name: t('East street, towards the river'), x: 28.1, z: -6, rot: 0 },
+  // A second accessible curb for the opening lesson, clear of the ring-road junction.
+  ...(TUTORIAL_LAYOUT ? [{ name: t('Main street, by the park'), x: HOME_CAMPER.x, z: 58.4, rot: 0 }] : []),
 ];
 const kerbRandom = launchRandom(LAUNCH_STREAM.kerbs);
 const CAMPER_AT = TUTORIAL_LAYOUT ? 2 : Math.floor(kerbRandom() * CAMPER_SITES.length);
@@ -348,7 +350,7 @@ export const PATROL = {
   served: [patrol(p(0.45, PZ - 0.5)), patrol(p(0.45, PZ + 0.5)), patrol(p(0.45, PZ + 1.4))],
   /** Which way the served face (towards the table and the staff). */
   facing: SQUAT_FRAME.rot + Math.PI / 2,
-} as const;
+};
 
 function patrolLot(): PlaceLot {
   const c = [p(0.2, PZ - 1.2), p(2.4, PZ + 2)].map(patrol);
@@ -371,7 +373,7 @@ export const camperSpot = (): number => camperAt;
 /** Where the outreach camper parks now; moving it changes this in place. */
 export const CAMPER_FRAME: Frame = { ...CAMPER_SPOTS[CAMPER_AT], home: p(HOME_CAMPER.x, (HOME_CAMPER.z0 + HOME_CAMPER.z1) / 2) };
 /** How far each moved venue is turned, for people who face something there. */
-export const VENUE_ROT = { club: VENUE_FRAME.club.rot, dropIn: VENUE_FRAME.dropIn.rot, outreach: CAMPER_FRAME.rot };
+export const VENUE_ROT = { clubHr: VENUE_FRAME.club.rot, club: VENUE_FRAME.club.rot, dropIn: VENUE_FRAME.dropIn.rot, outreach: CAMPER_FRAME.rot };
 
 /** Spots as designed, in the designs' own coordinates. */
 export const HOME_SPOTS = {

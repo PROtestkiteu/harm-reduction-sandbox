@@ -1,3 +1,4 @@
+[data-tutorial-dispatch="false"] [data-tutorial-feature="dispatch"],
 [data-tutorial-locked="true"],
 [data-tutorial-budget="false"] [data-tutorial-feature="budget"],
 [data-tutorial-staff="false"] [data-tutorial-feature="staff"],
@@ -16,15 +17,20 @@
 .tutorial-guide h2 { font-size: 1.05rem; margin: 4px 0 8px; }
 .tutorial-guide p { font-size: .9rem; line-height: 1.45; margin: 6px 0; }
 .tutorial-guide .tutorial-step { font-size: .72rem; text-transform: uppercase; letter-spacing: .09em; color: var(--reply, #c7a663); }
-.tutorial-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.tutorial-actions[hidden] { display: none; }
+.tutorial-actions { flex-shrink: 0; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .tutorial-actions button { min-height: 44px; padding: 8px 12px; border: 1px solid var(--line, #776a53); background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.tutorial-actions button:disabled { color: var(--muted); cursor: not-allowed; }
 .tutorial-actions button:focus-visible { outline: 2px solid var(--focus, #e6be62); outline-offset: 3px; }
 .tutorial-counter { font-variant-numeric: tabular-nums; color: var(--reply, #c7a663); }
 .tutorial-toggle { position: relative; display: block; width: 100%; padding-right: 28px; text-align: left; color: inherit; font: inherit; min-height: 32px; }
 .tutorial-toggle::after { content: ''; position: absolute; right: 0; top: calc(50% - 10px); width: 20px; height: 20px; background: var(--reply); mask: var(--ui-minus) center / 16px no-repeat; -webkit-mask: var(--ui-minus) center / 16px no-repeat; }
 .tutorial-toggle[aria-expanded='false']::after { mask-image: var(--ui-plus); -webkit-mask-image: var(--ui-plus); }
 .tutorial-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.tutorial-guide[data-collapsed='true'] > p { display: none; }
+.tutorial-guide[data-collapsed='true'] > .tutorial-step,
+.tutorial-guide[data-collapsed='true'] > .tutorial-actions { display: none; }
+.tutorial-guide .tutorial-feedback { color: var(--text); font-size: .8rem; font-weight: 600; border-left: 3px solid #419d68; padding-left: 7px; }
+.tutorial-guide .tutorial-feedback[hidden] { display: none; }
 .tutorial-guide[data-collapsed='true'] h2 { margin: 0; }
 @media (max-width: 760px), (max-height: 520px) {
   .tutorial-guide { top: calc(max(12px, var(--safe-top, 12px)) + max(76px, var(--topbar-h, 44px)) + 10px); left: max(10px, var(--safe-left, 0px)); width: min(340px, calc(100% - max(10px, var(--safe-left, 0px)) - max(10px, var(--safe-right, 0px)))); padding: 8px 10px; max-height: calc(var(--ui-height, 100vh) * .25); display: flex; flex-direction: column; overflow: hidden; }
@@ -37,3 +43,79 @@
 
 [data-tutorial-restricted="true"] .column[data-mode="idle"] .line { display: block; }
 .tutorial-guide[data-collapsed='true'] > .tutorial-counter:not([hidden]) { display: block; margin: 2px 0 0; font-size: 12px; line-height: 1.3; }
+
+/* Expanded objectives take priority; folding returns the same card to the side modules. */
+.tutorial-guide[data-collapsed='false'] {
+  position: absolute; inset: 50% auto auto 50%; transform: translate(-50%, -50%);
+  z-index: 40; width: min(520px, calc(100% - 32px));
+  max-height: calc(var(--ui-height, 100dvh) - var(--safe-top, 0px) - var(--safe-bottom, 0px) - 32px);
+  display: block; overflow-y: auto; overscroll-behavior: contain;
+  padding: 20px 24px; box-shadow: 0 12px 48px #0008;
+}
+.tutorial-guide[data-collapsed='false'] > p { overflow: visible; }
+
+.tutorial-ui-target { outline: 3px solid var(--focus, #e6be62); outline-offset: 3px; }
+.tutorial-pointer {
+  position: absolute; z-index: 45; pointer-events: none;
+  width: 0; height: 0; border-left: 9px solid transparent; border-right: 9px solid transparent;
+  border-top: 12px solid var(--focus, #e6be62); transform: translateX(-50%);
+  filter: drop-shadow(0 1px 2px #0009);
+}
+.tutorial-pointer[hidden] { display: none; }
+.tutorial-pointer[data-below='true'] { transform: translateX(-50%) rotate(180deg); }
+
+/* The mission has its own persistent host, outside selection and placement visibility. */
+.tutorial-dock { position: absolute; top: calc(var(--hud-controls-bottom, 90px) + 10px); right: 16px; width: min(var(--hud-topbar-width, 420px), calc(100% - 32px)); pointer-events: none; }
+.tutorial-dock > .tutorial-guide { position: static; transform: none; width: 100%; margin: 0; max-height: min(35vh, 300px); padding: 10px 12px; }
+.tutorial-guide[data-collapsed='false'][data-displaced='true'],
+.tutorial-guide[data-collapsed='false'][data-companion='true'] { left: 16px; top: calc(var(--hud-controls-bottom, 90px) + 10px); transform: none; width: min(340px, calc(100% - 32px)); padding: 12px 16px; }
+@media (min-width: 761px) {
+  #hud[data-tutorial-docked='true'] .column { top: calc(var(--tutorial-dock-bottom, 220px) + 8px); }
+}
+@media (max-width: 760px) and (orientation: portrait) {
+  #hud.map-first[data-tutorial-docked='true'] .column #selection-details[data-subject='true'] {
+    max-height: max(80px, calc(var(--ui-height, 100dvh) - max(var(--hud-controls-bottom, 90px), var(--tutorial-dock-bottom, 90px)) - max(148px, calc(var(--sheet-h, 0px) + 28px)) - 32px));
+  }
+}
+@media (max-height: 520px) and (orientation: landscape) {
+  .tutorial-dock { right: 10px; width: min(300px, 40%); }
+  #hud[data-tutorial-docked='true'] .column { top: calc(var(--tutorial-dock-bottom, 150px) + 8px); }
+}
+@media (max-width: 1100px) {
+  #hud[data-tutorial-companion='true'] .sandbox.sheet.draggable-window { top: calc(var(--tutorial-window-bottom, 240px) + 12px); transform: translateX(-50%); }
+  #hud[data-tutorial-companion='true'] .sandbox.sheet.draggable-window > .sandbox-body { max-height: calc(var(--ui-height, 100dvh) - var(--tutorial-window-bottom, 240px) - 36px); }
+}
+#hud[data-tutorial-companion='true'] .sandbox:not(.sheet) { width: min(380px, calc(100% - 32px)); top: calc(var(--tutorial-window-bottom, 240px) + 12px); }
+#hud[data-tutorial-companion='true'] .sandbox:not(.sheet) .sandbox-body { position: relative; inset: auto; width: 100%; box-sizing: border-box; max-height: calc(var(--ui-height, 100dvh) - var(--tutorial-window-bottom, 240px) - 36px); }
+
+/* Move only the pointer toward its control; the outline and hit target stay fixed. */
+.tutorial-pointer { --tutorial-bob: 4px; animation: tutorial-cue-bob 1.1s ease-in-out infinite; }
+.tutorial-pointer[data-below='true'] { --tutorial-bob: -4px; }
+@keyframes tutorial-cue-bob {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 var(--tutorial-bob); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tutorial-pointer { animation: none; translate: none; }
+}
+
+/* Context belongs to the reading window; the dock keeps just the current action and progress. */
+.tutorial-guide[data-collapsed='true'] > .tutorial-context { display: none; }
+/* Expanded chapters explain once; the compact dock retains the live action hint. */
+.tutorial-guide[data-collapsed='false']:is([data-chapter='placement'], [data-chapter='patrol-return'], [data-chapter='operating']) > .tutorial-instruction { display: none; }
+
+/* Minus preserves an unread briefing; X acknowledges it and starts its control clues. */
+.tutorial-guide[data-collapsed='false'] h2 { padding-right: 80px; }
+.tutorial-guide[data-collapsed='false'] .tutorial-toggle::after { display: none; }
+.tutorial-guide .tutorial-minimize, .tutorial-guide .tutorial-close { position: absolute; top: 12px; width: 44px; height: 44px; min-height: 44px; color: var(--reply); }
+.tutorial-guide .tutorial-minimize { right: 58px; border: 0; background: none; font: inherit; font-size: 24px; cursor: pointer; }
+.tutorial-guide .tutorial-close { right: 14px; }
+.tutorial-guide .tutorial-minimize:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.tutorial-guide .tutorial-minimize[hidden], .tutorial-guide .tutorial-close[hidden] { display: none; }
+.tutorial-guide[hidden] { display: none !important; }
+
+/* The X already has a 44 px target; do not extend it into the minimize control. */
+.tutorial-guide .tutorial-close::before { inset: 0; }
+
+/* Header controls retain their full touch area above the draggable padding. */
+.tutorial-guide .tutorial-minimize, .tutorial-guide .tutorial-close { z-index: 5; }

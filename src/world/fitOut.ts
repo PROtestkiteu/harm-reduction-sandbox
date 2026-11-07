@@ -1,5 +1,7 @@
 import { Group, type MeshLambertMaterial, type Object3D } from 'three';
-import type { SatelliteService } from '../sim/property';
+import { SERVICE_NAMES } from '../sim/organisation';
+import type { ServiceId } from '../sim/types';
+type SatelliteService = ServiceId;
 import { createRandom } from '../sim/random';
 import { claimRoof, flatRoofTop, frontFrame, roofClaimed, type CityBuilding } from './cityBuildings';
 import { add, bench, box, cylinder, planter, signBoard } from './kit';
@@ -25,12 +27,14 @@ import { dynamic, mergeStatic } from './mergeStatic';
  */
 export interface FitOutLook { service: SatelliteService; level: number }
 
-const COLOUR: Record<SatelliteService, number> = { dropIn: 0x2e7d6b, drugChecking: 0x245c58, footPatrol: 0x2f7a48 };
-const ACCENT: Record<SatelliteService, number> = { dropIn: 0xe8a33a, drugChecking: 0x6ad8e8, footPatrol: 0xf2d040 };
+const COLOUR: Record<SatelliteService, number> = { dropIn: 0x2e7d6b, drugChecking: 0x245c58, footPatrol: 0x2f7a48, outreach: 0x487a66, clubHr: 0x764b86, shelter: 0x8c6849, clinic: 0x477b98 };
+const ACCENT: Record<SatelliteService, number> = { dropIn: 0xe8a33a, drugChecking: 0x6ad8e8, footPatrol: 0xf2d040, outreach: 0xe8a33a, clubHr: 0xdba4f2, shelter: 0xe4bd85, clinic: 0x9bd8ec };
 
 interface Shown { key: string; looks: Map<string, Group> }
+interface Transition { group: Group; from: number; to: number; elapsed: number }
 
 export class FitOuts {
+  private readonly transitions = new Map<Group, Transition>();
   private readonly root = dynamic(new Group());
   private readonly byBuilding = new Map<number, Shown>();
   private readonly glow = new Map<number, MeshLambertMaterial>();
@@ -56,9 +60,32 @@ export class FitOuts {
     if (!shown) { shown = { key: '', looks: new Map() }; this.byBuilding.set(b.id, shown); }
     const key = look ? `${look.service}:${look.level}` : '';
     if (key === shown.key) return;
+    const replacing = !!shown.key && !!key;
+    const firstAppearance = !shown.key && !!key;
     shown.key = key;
     if (look && !shown.looks.has(key)) shown.looks.set(key, this.build(b, look));
-    for (const [k, g] of shown.looks) g.visible = k === key;
+    for (const [k, g] of shown.looks) {
+      if (k !== key && !g.visible) continue;
+      // A committed location must be identifiable even while a reading window pauses the world.
+      if (k === key && firstAppearance) {
+        g.position.y = 0; g.visible = true; this.transitions.delete(g); continue;
+      }
+      const belowGround = -(b.height + 4);
+      const to = k === key ? 0 : belowGround;
+      if (k === key && !g.visible) { g.position.y = belowGround; g.visible = true; }
+      this.transitions.set(g, { group: g, from: g.position.y, to, elapsed: k === key && replacing ? -1 : 0 });
+    }
+  }
+
+  /** No allocations or traversal while idle; rapid changes continue from the current pose. */
+  update(dt: number, still: boolean): void {
+    for (const [g, move] of this.transitions) {
+      move.elapsed = still ? 1 : Math.min(1, move.elapsed + Math.max(0, dt) / 1.2);
+      if (move.elapsed < 0) continue;
+      const t = move.elapsed * move.elapsed * (3 - 2 * move.elapsed);
+      g.position.y = move.from + (move.to - move.from) * t;
+      if (move.elapsed >= 1) { g.visible = move.to === 0; this.transitions.delete(g); }
+    }
   }
 
   private build(b: CityBuilding, look: FitOutLook): Group {
@@ -88,6 +115,7 @@ export class FitOuts {
       add(onRoof, box(rw, 0.4, 0.4, mat(0x4a7a3a), 0, 0, rd / 2 + 0.4));
     }
     mergeStatic(g);
+    g.visible = false;
     return g;
   }
 
@@ -100,6 +128,7 @@ export class FitOuts {
     // Level 0: lit inside, notices in the windows.
     add(g, box(ground - 0.4, 1.9, 0.05, this.warm, 0, 0.4, 0.05));
     for (let k = 0; k < 3; k++) add(g, box(0.42, 0.6, 0.02, k === 1 ? mat(0xf0ead8) : colour, -ground / 2 + 0.8 + k * 0.55, 1.1, 0.09));
+    add(g, signBoard(SERVICE_NAMES[look.service], Math.min(ground, 5), .5, '#ffffff', '#' + COLOUR[look.service].toString(16).padStart(6, '0'), .5, 'text').mesh).position.set(0, 2.5, .15);
     if (look.level < 1) return;
     // Level 1: a painted fascia and door frame, a board on the pavement, a bench by the wall.
     add(g, box(ground, 0.6, 0.12, colour, 0, 2.45, 0.08));
@@ -131,7 +160,7 @@ export class FitOuts {
       for (let k = 0; k < 3; k++) add(g, cylinder(0.28, 0.05, accent, 12, -ground / 2 + 2.2 + k * 0.75, 0.9, 0.08)).rotation.x = Math.PI / 2;
       const sign = signBoard('SHOWERS + LAUNDRY', 2.6, 0.4, '#ffffff', '#1e4a40', 0.6);
       add(g, sign.mesh).position.set(-ground / 2 + 2.9, 1.75, 0.1);
-    } else {
+    } else if (look.service === 'drugChecking') {
       // A lit board of results in the window.
       const sign = signBoard('RESULTS', 1.4, 0.36, '#0a2a2a', '#9af0f8', 0.8);
       add(g, sign.mesh).position.set(ex, 1.75, 0.1);

@@ -1,10 +1,25 @@
+import { bindPauseShortcut } from './ui/keyboard';
+import { PlacementAssembly } from './world/placementAssembly';
+import { selectionPortrait } from './ui/selectionPortrait';
+import { PauseState } from './game/pauseState';
+import { SiteMarkers, type SiteFootprint } from './world/siteMarkers';
+import { curbReserved } from './sim/serviceSites';
+import { servicePlaced } from './game/servicePlacement';
+import { ServiceHosting } from './world/serviceHosting';
+import { SitePicker, type SiteChoice } from './ui/sitePicker';
+import { TUTORIAL_AREAS } from './config/tutorialMap';
 import { installIconHints } from './ui/iconHints';
 import { supportFit, type PersonSupport } from './sim/personSupport';
 import type { StaffingAdvice } from './ui/personSupport';
 import './ui/panelControls.css';
+import './ui/selectionDock.css';
 import { TutorialArea } from './world/tutorialArea';
 import { TutorialGuide } from './ui/tutorialGuide';
+import { TutorialCue } from './ui/tutorialCue';
+import { tutorialBriefing, tutorialNavigation } from './ui/tutorialNavigation';
 import { PATROL, type PatrolSpot } from './config/patrol';
+import { patrolMapTarget } from './game/patrolMapTarget';
+import { observeLayout } from './ui/observeLayout';
 import type { MenuItem } from './ui/actionMenu';
 import { clientToNdc } from './render/camera';
 import { Team, TIRED } from './sim/team';
@@ -19,14 +34,14 @@ import { MapOverlays } from './world/mapOverlays';
 import { MapLayers, type OverlayKind } from './ui/mapLayers';
 import { OTHER_COLOUR, ROLE_COLOUR, overlayView } from './game/overlayData';
 import { DAEMON, type DaemonAnswer } from './sim/chaosDaemon';
-import { cityBuilding } from './world/cityBuildings';
+import { allBuildings, lookClaimed, cityBuilding } from './world/cityBuildings';
 import { LANG, LANG_KEY, t } from './i18n';
 import { ILLUSTRATIVE } from './config/illustrative';
 import { combineEffects, decodeContext, defaultContext, encodeContext, type ContextSelection } from './config/contextFactors';
 import { NATIONAL_MODELS, selectionFor } from './config/nationalModels';
 import { GRANTS, RECRUIT } from './config/organisation';
 import { type FavourId } from './config/favours';
-import { CAMPER_SPOTS, camperSpot } from './world/layout';
+import { CAMPER_SPOTS, camperSpot, PATROL as PATROL_LAYOUT, toWorld } from './world/layout';
 import { exposureNow } from './sim/exposure';
 import { PARAM_BY_ID, decodeSettings, defaultSettings, encodeSettings, type ParamId, type SandboxSettings } from './config/sandboxParams';
 import { Crowd, type PersonState } from './agents/crowd';
@@ -138,10 +153,13 @@ portraitBox.className = 'portrait';
 portraitBox.hidden = true;
 const portraitView = document.createElement('canvas');
 portraitView.className = 'portrait-view';
+portraitView.hidden = true;
 portraitView.width = PORTRAIT_W;
 portraitView.height = PORTRAIT_H;
 const portraitCaption = document.createElement('figcaption');
-portraitBox.append(portraitView, portraitCaption);
+const objectPortrait = selectionPortrait();
+objectPortrait.show('person');
+portraitBox.append(portraitView, objectPortrait.root, portraitCaption);
 // The portrait is a button. A tap or click opens the main thing: on your own, My organisation; on someone
 // else's, the panel about them, with them in view. A right-click or long press opens a menu: their actions,
 // or, on your own, editing your name and look.
@@ -150,7 +168,11 @@ portraitBox.setAttribute('role', 'button');
 portraitBox.setAttribute('aria-haspopup', 'menu');
 hudRoot.append(portraitBox);
 hudRoot.addEventListener('selectionfold', (event) => {
-  if (portraitBox.dataset.who === 'person') portraitBox.setAttribute('aria-expanded', String(!(event as CustomEvent<boolean>).detail));
+  if (portraitBox.dataset.who !== 'player') portraitBox.setAttribute('aria-expanded', String(hud.isSelectionOpen));
+  if (tutorialGuide) { syncTutorial(); syncTutorialHint(); }
+  if ((event as CustomEvent<boolean>).detail && document.activeElement?.closest('#selection-details[data-subject="true"]')) {
+    portraitBox.focus({ preventScroll: true });
+  }
 });
 
 // Version counter in the corner: small, quiet, never in the way of input.
@@ -178,6 +200,7 @@ const quality = new QualityController(startTier(renderer.getContext() as WebGL2R
 });
 pipeline.setTier(quality.tier);
 const world = buildWorld(createRandom(ILLUSTRATIVE.seed));
+const placementAssembly = new PlacementAssembly(world.scene);
 const camera = createIsoCamera();
 /**
  * Lite lighting (render/liteMode.ts): no point lights, sun shadows or surface bend. Decided here before
@@ -209,6 +232,16 @@ const hazePoint = new Vector3();
 const rig = new CameraRig(world.frame.full.getCenter(new Vector3()), DISTRICT - 4);
 let tutorialArea: TutorialArea | null = null;
 let tutorialGuide: TutorialGuide | null = null;
+const tutorialCue = new TutorialCue(hudRoot, target => {
+  if (target.matches('.panel-dismiss')) return;
+  const progress = sim.tutorial, stage = progress?.stage, reviewed = progress?.reviewedSkills;
+  const revision = tutorialGuide?.revision;
+  // Let the real control handle its click before moving the prompt; keep new objectives open.
+  queueMicrotask(() => {
+    if (sim.tutorial === progress && progress?.stage === stage && progress?.reviewedSkills === reviewed) tutorialGuide?.acknowledge(revision);
+  });
+});
+let tutorialMapCue = false;
 let closeUtilityPanels: () => void = () => {};
 let teamPanelOnly = false;
 // Phones (narrow, or short in landscape) see less at once: zoomed out no further than about the
@@ -354,18 +387,20 @@ const groundHit = new Vector3();
  * foot patrol to that point on the ground. Near the person in crisis it goes
  * to them. Greyed out, with the reason, while the patrol cannot go.
  */
-function patrolHereItem(x: number, y: number): MenuItem {
+function patrolHereItem(x: number, y: number): MenuItem | null {
   groundRay.setFromCamera(clientToNdc(x, y, pipeline.frame), camera);
   const hit = groundRay.ray.intersectPlane(groundPlane, groundHit);
   const at = hit ? { x: hit.x, z: hit.z } : null;
-  const s = sim.services.footPatrol;
-  const why = !s.switchedOn ? t('not running') : sim.patrol.out ? t('already out') : !sim.patrolReady ? t('nobody on shift') : sim.org.budget < PATROL.cost ? t('not enough money') : '';
   const nearDaemon = !!at && daemonFigure.shown && Math.hypot(at.x - daemonFigure.x, at.z - daemonFigure.z) < PATROL.daemonReach;
-  const label = nearDaemon ? t('Send the foot patrol to the person in crisis ({price})', { price: price(PATROL.cost) }) : t('Send the foot patrol here ({price})', { price: price(PATROL.cost) });
+  const target = patrolMapTarget(!!sim.tutorial?.active, at, nearDaemon ? { x: daemonFigure.x, z: daemonFigure.z } : null, patrolPoint('camp'), interaction.selected?.kind === 'building' && interaction.selected.id === world.camps.park);
+  if (!target) return null;
+  const s = sim.services.footPatrol;
+  const why = !sim.tutorialCapabilities.dispatch ? t('not yet open to you') : !s.switchedOn ? t('not running') : sim.patrol.out ? t('already out') : !sim.patrolReady ? t('nobody on shift') : sim.org.budget < PATROL.cost ? t('not enough money') : '';
+  const label = target?.spot === 'camp' ? t('Send the foot patrol to {spot}', { spot: PATROL.spots.camp.label }) + ` (${price(PATROL.cost)})` : nearDaemon ? t('Send the foot patrol to the person in crisis ({price})', { price: price(PATROL.cost) }) : t('Send the foot patrol here ({price})', { price: price(PATROL.cost) });
   return {
     label: why ? t('{action}: {why}', { action: label, why }) : label,
-    disabled: !!why || !at,
-    run: () => { if (at) queueOrg(() => { sim.sendPatrol(nearDaemon ? 'daemon' : 'street', nearDaemon ? { x: daemonFigure.x, z: daemonFigure.z } : at); refreshHud(); refreshOrg(); }); },
+    disabled: !!why || !target,
+    run: () => { if (target) queueOrg(() => { sim.sendPatrol(target.spot, target.at); refreshHud(); refreshOrg(); }); },
   };
 }
 
@@ -458,6 +493,7 @@ function syncContextProps(): void {
 }
 
 let paused = false;
+const pauseState = new PauseState(value => { paused = value; hud.setPaused(value); });
 let speed = 1;
 let dirty = true;
 
@@ -471,8 +507,7 @@ const hud = new Hud(hudRoot, {
     if (s > 1) markTried('speed');
   },
   onService: (id, on) => {
-    sim.setEnabled(id, on);
-    refreshHud();
+    requestService(id, on);
   },
   onSelect: (id) => interaction.selectLocation(id),
   onResetView: () => interaction.resetView(),
@@ -617,7 +652,6 @@ function updateFlavour(dt: number): void {
 }
 const actionMenu = new ActionMenu(hudRoot);
 // The welcome box pauses the city while it is open, and leaves a pause the player chose alone.
-let pausedBeforeWelcome = false;
 /** Coordinator art shared by the portrait, reports and guides. */
 const playerPicture = () => ({ url: playerPortraitUrl(), org: orgName() });
 /**
@@ -631,8 +665,7 @@ const continuingGame = ((): boolean => {
   return (launchConfiguration?.kind === 'resume' && !!launchConfiguration.save) || resumed || (gid !== null && LiveGame.owns(gid)) || location.hash.startsWith('#g=');
 })();
 const welcome = new Welcome(document.body, (open) => {
-  if (open) { pausedBeforeWelcome = paused; setPaused(true); }
-  else if (!pausedBeforeWelcome) setPaused(false);
+  pauseState.setWindow('welcome', open);
 }, playerPicture, {
   name: () => orgName(),
   rename: (name) => { rename('org', 'name', name); org.refreshName(); portraitKey = ''; },
@@ -647,10 +680,21 @@ const welcome = new Welcome(document.body, (open) => {
   picture: () => playerPortraitUrl(),
 }, new URLSearchParams(location.search).get('scenario') === 'tutorial');
 const interaction = new Interaction({
+  locationPlaced: id => servicePlaced(sim, serviceAt(id)),
+  resolveTarget: target => {
+    if (target.kind !== 'building') return target;
+    const service = SERVICE_IDS.find(id => { const site = sim.serviceSites[id]; return site?.kind === 'building' && site.id === target.id; });
+    return service ? { kind: 'location', id: service === 'clubHr' ? 'club' : service } : target;
+  },
   allowsTarget: (target) => tutorialArea?.allowsTarget(target, crowd) ?? true,
   onSelection: (target) => {
+    const hint = currentTutorialNavigation();
+    const camp = target?.kind === 'building' && target.id === world.camps.park;
+    const hinted = hint?.kind === 'camp' && camp || hint?.kind === 'dispatch' && !hint.open && camp || hint?.kind === 'service' && !hint.open && target?.kind === 'location' && serviceAt(target.id) === hint.service;
+    if (hinted) tutorialGuide?.acknowledge();
     if (target?.kind === 'building' && target.id === world.camps.park) sim.tutorialInspectCamp();
     if (target?.kind === 'location' && target.id === 'footPatrol') sim.tutorialOpenPatrol();
+    if (tutorialGuide && sim.tutorial?.active) { syncPortrait(); refreshHud(); }
   },
   canvas,
   overlay: hudRoot,
@@ -672,17 +716,18 @@ const interaction = new Interaction({
     // Let the column catch up with the new selection first, so the menu lists its actions.
     refreshHud();
     const { title, items } = hud.menuEntries();
-    actionMenu.show(x, y, title, [...items, patrolHereItem(x, y)]);
+    const patrol = patrolHereItem(x, y);
+    actionMenu.show(x, y, title, patrol ? [...items, patrol] : items);
   },
 });
 
-/** A tap or click on the portrait: My organisation for you; the panel about them, in view, for anyone else. */
+/** The coordinator opens crew review; other portraits toggle their selection details. */
 function portraitOpen(): void {
-  if (portraitBox.dataset.who === 'player') { openOrg(); return; }
+  if (portraitBox.dataset.who === 'player') { openOrg(true); return; }
   const sel = interaction.selected;
   const p = sel?.kind === 'person' ? crowd.person(sel.id) : undefined;
-  hud.setFolded(!hud.isFolded);
-  if (p && !hud.isFolded) rig.lookAt(p.root.position);
+  hud.toggleSelectionDetails();
+  if (p && hud.isSelectionOpen) rig.lookAt(p.root.position);
 }
 
 // A posted officer's card says until when they stand there and why, and what would move them.
@@ -716,6 +761,7 @@ setPoliceLine(() => {
 function portraitMenu(x: number, y: number): void {
   if (portraitBox.dataset.who === 'player') {
     actionMenu.show(x, y, t('You'), [
+      { label: t('Your team'), disabled: false, run: () => openOrg(true) },
       { label: t('Edit your name and look'), disabled: false, run: () => welcome.show() },
     ]);
     return;
@@ -744,9 +790,9 @@ function portraitMenu(x: number, y: number): void {
     portraitOpen();
   });
   portraitBox.addEventListener('keydown', (e) => {
-    // Enter or Space does what a click does; the menu key or Shift+F10 opens the menu.
+    // Enter opens details; the menu key or Shift+F10 opens the menu.
     const menu = e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10');
-    if (!menu && e.key !== 'Enter' && e.key !== ' ') return;
+    if (e.repeat || (!menu && e.key !== 'Enter')) return;
     e.preventDefault();
     if (!menu) { portraitOpen(); return; }
     const r = portraitBox.getBoundingClientRect();
@@ -757,6 +803,107 @@ function portraitMenu(x: number, y: number): void {
 // Ordinary buildings' and emergency vehicles' cards, and what the city shows of the property.
 const cards = new CityCards(sim, world);
 const property = new PropertyView(sim, world, crowd);
+const serviceHosting = new ServiceHosting(world.locations, (id, matrix) => world.transformStage(id, matrix));
+const sitePicker = new SitePicker(hudRoot, open => {
+  pauseState.setWindow('placement', open);
+});
+/** Includes modern saved sites and legacy campers whose original home is still occupied. */
+function curbAvailable(id: ServiceId, index: number): boolean {
+  const spot = CAMPER_SPOTS[index];
+  if (!spot || sim.property.campers.includes(index)) return false;
+  if (id !== 'outreach' && servicePlaced(sim, 'outreach') && index === camperSpot()) return false;
+  if (curbReserved(sim.serviceSites, index, id)) return false;
+  if (id !== 'footPatrol' && servicePlaced(sim, 'footPatrol') && Math.hypot(spot.x - PATROL_LAYOUT.frame.x, spot.z - PATROL_LAYOUT.frame.z) < .01) return false;
+  if (id === 'outreach' && sim.outreachPlaced && index === camperSpot()) return false;
+  return id !== 'footPatrol' || !servicePlaced(sim, id) || Math.hypot(spot.x - PATROL_LAYOUT.frame.x, spot.z - PATROL_LAYOUT.frame.z) > .01;
+}
+function siteChoices(id: ServiceId): SiteChoice[] {
+  const bounds = TUTORIAL_AREAS[sim.tutorialCapabilities.district];
+  const within = (x: number, z: number) => x >= bounds.x0 && x <= bounds.x1 && z >= bounds.z0 && z <= bounds.z1;
+  const original: SiteChoice = { site: { kind: 'original' }, name: servicePlaced(sim, id) ? t('Current location') : t('Available building'), detail: SERVICE_NAMES[id] };
+  if (id === 'outreach' || id === 'footPatrol') return [...(!servicePlaced(sim, id) ? [] : [original]), ...CAMPER_SPOTS.flatMap((spot, i) => curbAvailable(id, i) && within(spot.x, spot.z)
+    ? [{ site: { kind: 'curb' as const, id: i }, name: spot.name, detail: t('Curb') }] : [])];
+  const occupied = new Set(Object.values(sim.serviceSites).flatMap(site => site.kind === 'building' ? [site.id] : []));
+  return [original, ...allBuildings().filter(b => !lookClaimed(b.id) && !world.shopUnits.includes(b.id) && !world.nightlife.includes(b.id) &&
+    !sim.property.pointAt(b.id) && !occupied.has(b.id) && b.x1 - b.x0 >= 5 && b.z1 - b.z0 >= 4 &&
+    within(b.x0, b.z0) && within(b.x1, b.z1)).map(b => ({ site: { kind: 'building' as const, id: b.id },
+      name: displayName('building', b.id, t('Building {number}', { number: b.id + 1 })),
+      detail: t('{width} × {depth} m · {x}, {z}', { width: Math.round(b.x1 - b.x0), depth: Math.round(b.z1 - b.z0), x: Math.round((b.x0 + b.x1) / 2), z: Math.round((b.z0 + b.z1) / 2) }) }))];
+}
+function siteFootprint(id: ServiceId, choice: SiteChoice): SiteFootprint {
+  const site = choice.site;
+  if (site.kind === 'building') {
+    const b = cityBuilding(site.id)!;
+    return { x: (b.x0 + b.x1) / 2, z: (b.z0 + b.z1) / 2, width: b.x1 - b.x0, depth: b.z1 - b.z0, height: b.height + .15, rotation: 0 };
+  }
+  if (site.kind === 'curb') {
+    const spot = CAMPER_SPOTS[site.id];
+    const at = id === 'footPatrol' ? toWorld({ x: spot.x, z: spot.z, rot: spot.rot - PATROL_LAYOUT.frame.rot, home: PATROL_LAYOUT.frame }, PATROL_LAYOUT.table) : spot;
+    return { ...at, width: 2.6, depth: id === 'footPatrol' ? 4 : 6.8, height: .12, rotation: spot.rot };
+  }
+  const loc = world.locations[locationOf(id)];
+  return { x: loc.footprint.x, z: loc.footprint.z, width: loc.footprint.rx * 2, depth: loc.footprint.rz * 2, height: Math.max(.12, loc.labelAnchor.y - 1.2), rotation: 0 };
+}
+function chooseSiteOnMap(id: ServiceId, choose: (site: SiteChoice['site']) => void): void {
+  interaction.cancelPlacing();
+  const choices = siteChoices(id);
+  const footprints = choices.map(choice => siteFootprint(id, choice));
+  const previousSelection = interaction.selected;
+  const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const wasFolded = hud.isFolded;
+  interaction.select(null);
+  const markers = new SiteMarkers(world.scene, footprints);
+  let selected: number | null = null;
+  const select = (index: number, focus: boolean) => {
+    if (index === selected && !focus) return;
+    selected = index; markers.select(index); sitePicker.setChoice(choices[index]);
+    if (focus) { const at = footprints[index]; rig.lookAt(new Vector3(at.x, 0, at.z), 1.6); }
+    syncTutorial(); syncTutorialHint();
+    dirty = true;
+  };
+  hudRoot.dataset.placing = 'true';
+  sitePicker.show(SERVICE_NAMES[id], by => select(((selected ?? (by > 0 ? -1 : 0)) + by + choices.length) % choices.length, true),
+    () => { if (selected !== null) interaction.placeAt(selected); }, () => interaction.cancelPlacing(), previousFocus);
+  interaction.startPlacing(() => markers.targets, index => choose(choices[index].site), () => {
+    markers.dispose(); delete hudRoot.dataset.placing;
+    interaction.select(previousSelection); hud.setFolded(wasFolded); sitePicker.hide();
+    hud.invalidateLayout(); rig.invalidate(); dirty = true;
+  }, { keepOnMiss: true, respectBuildings: true, onHover: index => { if (index !== null) select(index, false); } });
+  const centre = footprints.reduce((sum, p) => sum.add(new Vector3(p.x, 0, p.z)), new Vector3()).divideScalar(footprints.length);
+  rig.lookAt(centre, 1); hud.invalidateLayout(); rig.invalidate(); dirty = true;
+}
+/** First opening chooses the site; later switches preserve established visitor routes. */
+function requestService(id: ServiceId, on: boolean): void {
+  interaction.cancelPlacing();
+  if (!sim.tutorialAllowsService(id)) return;
+  if (!on || sim.services[id].everRun || sim.serviceSites[id]) {
+    queueOrg(() => { sim.setEnabled(id, on); refreshHud(); });
+    return;
+  }
+  chooseSiteOnMap(id, site => queueOrg(() => {
+    if (!sim.tutorialAllowsService(id) || sim.services[id].everRun) return;
+    if (!siteChoices(id).some(c => c.site.kind === site.kind && (c.site.kind === 'original' || (site.kind !== 'original' && c.site.id === site.id)))) return;
+    sim.serviceSites[id] = site;
+    if (site.kind === 'curb' && id === 'outreach') world.moveCamper(site.id);
+    else serviceHosting.set(id, site, site.kind === 'building' ? cityBuilding(site.id) : undefined);
+    sim.setEnabled(id, true);
+    if (id === 'outreach') placementAssembly.start(world.camper.placementRoot, reducedMotion.matches);
+    interaction.selectLocation(locationOf(id));
+    rig.lookAt(world.locations[locationOf(id)].labelAnchor);
+    syncServiceVisuals(); refreshHud();
+  }));
+}
+function restoreServiceSites(): void {
+  for (const id of SERVICE_IDS) {
+    const old = serviceHosting.building(id);
+    if (old !== undefined) world.setFitOut(old, null);
+    const site = sim.serviceSites[id] ?? { kind: 'original' as const };
+    const b = site.kind === 'building' ? cityBuilding(site.id) : undefined;
+    const valid = site.kind === 'building' ? !!b && !b.ground && !lookClaimed(b.id) && !world.shopUnits.includes(b.id) && !world.nightlife.includes(b.id) && !sim.property.pointAt(b.id) : site.kind !== 'curb' || !!CAMPER_SPOTS[site.id];
+    serviceHosting.set(id, valid ? site : { kind: 'original' }, valid ? b : undefined);
+    if (!valid) delete sim.serviceSites[id];
+  }
+}
 function syncProperty(): void {
   property.sync();
 }
@@ -768,8 +915,9 @@ function syncShops(): void {
 
 /** The first camper drives to another free kerb spot; outreach closes while it moves. */
 function moveCamperTo(spot: number): void {
-  if (spot === camperSpot() || sim.property.campers.includes(spot) || sim.outreachMoving) return;
+  if (!servicePlaced(sim, 'outreach') || spot === camperSpot() || !curbAvailable('outreach', spot) || sim.outreachMoving) return;
   sim.moveOutreach();
+  sim.serviceSites.outreach = { kind: 'curb', id: spot };
   world.moveCamper(spot);
   sim.org.notice(sim.clockMinutes, t('The outreach camper is on its way to a new spot: {spot}.', { spot: CAMPER_SPOTS[spot].name.toLowerCase() }));
   property.sync();
@@ -785,7 +933,7 @@ function camperSpotNear(x: number, z: number): number | null {
   let best: number | null = null;
   let d = Infinity;
   CAMPER_SPOTS.forEach((s, i) => {
-    if (i === camperSpot() || sim.property.campers.includes(i)) return;
+    if (!curbAvailable('outreach', i)) return;
     const e = Math.hypot(s.x - x, s.z - z);
     if (e < d) { d = e; best = i; }
   });
@@ -910,6 +1058,14 @@ function queueBuildingAction(action: string): void {
   if (sel?.kind !== 'building') return;
   const building = sel.id;
   queueOrg(() => {
+    if (action === 'patrolCamp') {
+      if (building === world.camps.park || building === world.camps.station) {
+        const b = cityBuilding(building)!;
+        sim.sendPatrol('camp', building === world.camps.park ? patrolPoint('camp') : { x: (b.x0 + b.x1) / 2, z: (b.z0 + b.z1) / 2 });
+        refreshHud(); refreshOrg();
+      }
+      return;
+    }
     const unit = cards.unitOf(building);
     if (action.startsWith('point:')) sim.openPoint(building, action.slice(6) as SatelliteService);
     else if (action === 'pointUp') sim.upgradePoint(building);
@@ -927,8 +1083,8 @@ function queueBuildingAction(action: string): void {
 }
 
 function setPaused(p: boolean): void {
-  paused = p;
-  hud.setPaused(p);
+  pauseState.setManual(p);
+  syncTutorial(); syncTutorialHint();
 }
 
 // Service state drives each location's visuals: staffed = lit and unfolded.
@@ -937,6 +1093,12 @@ let stagesShown = false;
 function syncServiceVisuals(): void {
   for (const id of LOCATION_IDS) {
     const s = sim.services[serviceAt(id)];
+    const loc = world.locations[id];
+    const placed = servicePlaced(sim, s.id);
+    const home = placed && serviceHosting.building(s.id) === undefined;
+    if (loc.setupRoot) loc.setupRoot.visible = home;
+    else loc.root.visible = home;
+    if (loc.vacantRoot) loc.vacantRoot.visible = !home;
     world.locations[id].setServiceLevel(LEVEL[s.status]);
     // Closed for good, not just for the night: the building goes fully dark.
     world.locations[id].setShut?.(s.closedReason === 'switchedOff' || s.closedReason === 'closedDown' || s.closedReason === 'notPermitted');
@@ -945,9 +1107,78 @@ function syncServiceVisuals(): void {
     const onSite = s.status === 'closed' ? 0 : s.staffOnSite;
     world.setStaffing(id, onSite - usual, usual - onSite, s.status === 'open');
     // Stages show as pieces beside the place; the first sync (and a load) places them without animation.
-    world.setStage(s.id, sim.upgrades[s.id].level, !stagesShown);
+    const host = serviceHosting.building(s.id);
+    world.setStage(s.id, host === undefined && servicePlaced(sim, s.id) ? sim.upgrades[s.id].level : 1, !stagesShown);
+    if (host !== undefined) world.setFitOut(host, s.switchedOn && !sim.org.closedDown.has(s.id) ? { service: s.id, level: Math.min(3, Math.max(0, sim.upgrades[s.id].level - 1)) } : null);
   }
   stagesShown = true;
+}
+
+/** Point at existing controls without selecting objects, moving focus or executing actions. */
+function syncTutorialSurfaces(): void {
+  if (!tutorialGuide) return;
+  const companion = orgSheet.isOpen || sandbox.isOpen;
+  tutorialGuide.setCompanion(companion);
+  hudRoot.dataset.tutorialCompanion = String(companion && !tutorialGuide.root.hidden && tutorialGuide.root.dataset.collapsed === 'false');
+  hudRoot.dataset.tutorialDocked = String(!tutorialGuide.root.hidden && tutorialGuide.root.dataset.collapsed === 'true');
+}
+
+function syncTutorialHint(): void {
+  syncTutorialSurfaces();
+  const progress = sim.tutorial;
+  let selector = '';
+  if (tutorialGuide && progress?.active) {
+    if (sandbox.isOpen) selector = '.sandbox:not(.sheet) .panel-dismiss';
+    else if (hudRoot.querySelector('.sheet[data-open="true"]')) selector = '.sheet[data-open="true"] .panel-dismiss';
+    else {
+      const destination = currentTutorialNavigation();
+      if (destination?.kind === 'dispatch' && destination.open) selector = hud.isFolded ? '.portrait:not([data-who="player"])' : '[data-building-action="patrolCamp"]';
+      else if (destination?.kind === 'team') selector = interaction.selected ? (hud.isFolded ? '.portrait:not([data-who="player"])' : '[aria-label="' + t('Close details (Escape)') + '"]') : '.portrait[data-who="player"]';
+      else if (destination?.kind === 'clock') selector = destination.resume ? '.time-pause' : '.speed-toggle';
+      else if (destination?.kind === 'placement') selector = '[data-placement-action="' + (destination.confirm ? 'open' : 'next') + '"]';
+      else if (destination?.kind === 'service') selector = destination.open ? (hud.isFolded ? '.portrait:not([data-who="player"])' : '.opt.switch[data-service="' + destination.service + '"]') : hudRoot.querySelector('#services-management:not([hidden])') ? '.svc-row[data-tutorial-service="' + destination.service + '"] .opt' : '.service-module-toggle';
+    }
+  }
+  const destination = currentTutorialNavigation();
+  const map = !!tutorialGuide?.cluesAllowed && !!progress?.active && (destination?.kind === 'camp' || destination?.kind === 'dispatch' && !destination.open);
+  if (map && !tutorialMapCue) {
+    const b = cityBuilding(world.camps.park)!;
+    marker.show({ footprint: { x: CAMP_AT.x, z: CAMP_AT.z, rx: (b.x1 - b.x0) / 2 + .4, rz: (b.z1 - b.z0) / 2 + .4 } });
+    rig.lookAt(new Vector3(CAMP_AT.x, 0, CAMP_AT.z), 2);
+    rig.invalidate(); dirty = true;
+  }
+  tutorialMapCue = map;
+  const next = selector ? hudRoot.querySelector<HTMLElement>(selector) : null;
+  tutorialCue.set(next, !!tutorialGuide?.cluesAllowed);
+  if (next && tutorialGuide?.cluesAllowed && !tutorialGuide.root.hidden && tutorialGuide.root.dataset.collapsed === 'false') {
+    const target = next.getBoundingClientRect(), prompt = tutorialGuide.root.getBoundingClientRect();
+    const x = (target.left + target.right) / 2, y = (target.top + target.bottom) / 2;
+    if (x >= prompt.left && x <= prompt.right && y >= prompt.top && y <= prompt.bottom) tutorialGuide.root.dataset.displaced = 'true';
+  }
+}
+
+function currentTutorialNavigation() {
+  return sim.tutorial ? tutorialNavigation(sim.tutorial, {
+    patrolAway: sim.patrol.out || sim.patrol.returning,
+    patrolReady: sim.patrolReady,
+    canAffordPatrol: sim.org.budget >= PATROL.cost,
+    placing: hudRoot.dataset.placing === 'true',
+    placementReady: !!hudRoot.querySelector('.site-picker:not([hidden]) [data-placement-action="open"]:enabled'),
+    manuallyPaused: pauseState.manuallyPaused,
+    selectedCamp: interaction.selected?.kind === 'building' && interaction.selected.id === world.camps.park,
+    selectedService: interaction.selected?.kind === 'location' ? serviceAt(interaction.selected.id) : null,
+    servicesOpen: !!hudRoot.querySelector('#services-management:not([hidden])'),
+    needsStaff: service => sim.services[service].closedReason === 'noStaff' && sim.services[service].assigned === 0,
+    running: service => sim.services[service].switchedOn,
+  }) : null;
+}
+
+function tutorialInstruction(): string {
+  const step = currentTutorialNavigation();
+  if (orgSheet.isOpen || sandbox.isOpen) return t('Close') + ' → ' + (step?.kind === 'team' ? t('Your portrait') : t('Services'));
+  if (interaction.selected && hud.isFolded && (step?.kind === 'team' || step?.kind === 'dispatch' || step?.kind === 'service' && step.open)) return t('Open the panel') + ' → ' + (step.kind === 'team' ? t('Close details (Escape)') : step.kind === 'dispatch' ? t('Send patrol to the camp') : t('Open up.'));
+  if (step?.kind === 'team' && interaction.selected) return t('Close details (Escape)') + ' → ' + t('Your portrait');
+  return step?.instruction ?? t('Tutorial complete');
 }
 
 function refreshHud(): void {
@@ -980,11 +1211,12 @@ function refreshHud(): void {
   world.setNightlife(sim.vitality.venues, sim.vitality.partners);
   syncProperty();
   hud.update(buildSnapshot(sim, crowd.population));
-  syncTutorial();
+  syncTutorial(true);
   hud.setWorks(underWay());
   const sel = interaction.selected;
   if (sel?.kind === 'building') hud.showBuilding(cards.describeBuilding(sel.id));
   interaction.refresh();
+  syncTutorialHint();
   updateThreats();
   feed.setFilter(eventMatch());
   sandbox.syncLive('clock', sim.clockMinutes);
@@ -1026,7 +1258,7 @@ const sandbox = new SandboxPanel(hudRoot, settings, {
   },
   // One panel at a time in the settings' place.
   onOpen: () => { closeUtilityPanels(); orgSheet.setOpen(false); },
-  onVisibilityChange: (open) => tutorialGuide?.setCovered(open || orgSheet.isOpen),
+  onVisibilityChange: () => { if (tutorialGuide) { syncTutorial(); syncTutorialHint(); } },
 });
 
 sandbox.placeToggle(hudRoot.querySelector<HTMLElement>('.hud-header')!);
@@ -1086,7 +1318,6 @@ function queueContext(): void {
 
 // Random events: manual triggers wait for the next frame like slider input.
 const pendingTriggers: EventId[] = [];
-let pausedBeforeDetail = false;
 const feed = new EventFeed(hud.eventsSlot, {
   onTrigger: (id) => {
     pendingTriggers.push(id);
@@ -1095,8 +1326,7 @@ const feed = new EventFeed(hud.eventsSlot, {
   onFocus: (id) => focusPlace(EVENT_PLACE[id]),
   // An event's details box holds the clock while it is open, and leaves a pause the player chose alone.
   onDetail: (open) => {
-    if (open) { pausedBeforeDetail = paused; setPaused(true); }
-    else if (!pausedBeforeDetail) setPaused(false);
+    pauseState.setWindow('detail', open);
   },
   onHint: (hint) => {
     const input = document.getElementById(hintInputId(hint));
@@ -1149,14 +1379,13 @@ org.section.insertBefore(stakesSection.root, org.section.querySelector('.org-tea
 // The storm warning and the run's end wait for the pop-up to be free, ahead of other big events.
 const stakesBoxes: MajorEvent[] = [];
 // The organisation has its own sheet, opened from the money in the top bar or the organisation bar.
-const orgSheet = new Sheet(hudRoot, org.section, { label: t('Organisation'), fallbackFocus: () => hudRoot.querySelector<HTMLElement>('.tutorial-reply button'), disclosure: () => org.section.classList.contains('org-team-mode') ? org.teamDisclosure : null, onOpen: () => { closeUtilityPanels(); sandbox.setOpen(false); }, onChange: (open) => tutorialGuide?.setCovered(open || sandbox.isOpen) });
+const orgSheet = new Sheet(hudRoot, org.section, { label: t('Organisation'), fallbackFocus: () => hudRoot.querySelector<HTMLElement>('.portrait[data-who="player"]') ?? hudRoot.querySelector<HTMLElement>('.service-module-toggle'), disclosure: () => org.section.classList.contains('org-team-mode') ? org.teamDisclosure : null, onOpen: () => { closeUtilityPanels(); sandbox.setOpen(false); }, onChange: (open) => { pauseState.setWindow('organisation', open); syncTutorialSurfaces(); syncTutorial(); syncTutorialHint(); } });
 function openOrg(teamOnly = false, support?: PersonSupport, service?: ServiceId): void {
-  if (teamOnly ? !sim.tutorialCapabilities.staff : !sim.tutorialCapabilities.organisation) return;
+  if (!teamOnly && !sim.tutorialCapabilities.organisation) return;
   teamPanelOnly = teamOnly;
-  org.setTeamAccess(sim.tutorialCapabilities.services, teamOnly);
+  org.setTeamAccess(sim.tutorialCapabilities.services, teamOnly, sim.tutorialCapabilities.staff);
   org.setStaffingContext(support, service);
   if (teamOnly) { org.showTeam(); sim.tutorialReviewSkills(); }
-  org.setReviewComplete(teamOnly && sim.tutorial?.stage === 'outreach' && sim.tutorial.reviewedSkills);
   refreshOrg();
   orgSheet.setOpen(true);
   markTried('org');
@@ -1307,12 +1536,9 @@ const eventRandom = launchRandom(LAUNCH_STREAM.events);
 // The first decision comes early (2 to 4 hours in); after that every 10 to 25 hours.
 let nextBigEvent = 2 * 60 + eventRandom() * 2 * 60;
 let nextBudgetWarning = 0;
-let pausedBeforeEvent = false;
 /** Every decision that costs money is confirmed first, with its detail; the clock stops meanwhile. */
-let pausedBeforeConfirm = false;
 const confirmBox = new ConfirmPopup(document.body, (open) => {
-  if (open) { pausedBeforeConfirm = paused; setPaused(true); }
-  else if (!pausedBeforeConfirm) setPaused(false);
+  pauseState.setWindow('confirmation', open);
 });
 function confirmSpend(d: Decision | null, run: () => void): void {
   if (!d || d.cost <= 0) return run();
@@ -1460,8 +1686,8 @@ function showDaemonBox(): void {
 }
 
 const eventPopup = new EventPopup(document.body, (open) => {
-  if (open) { pausedBeforeEvent = paused; setPaused(true); }
-  else { if (!pausedBeforeEvent) setPaused(false); refreshOrg(); refreshHud(); }
+  pauseState.setWindow('event', open);
+  if (!open) { refreshOrg(); refreshHud(); }
 }, playerPicture);
 const eventWorld: EventWorld = {
   sim,
@@ -1544,12 +1770,16 @@ function checkBigEvent(): void {
 
 /** After any load: the world, the panels and the crowd's destinations follow the new state. */
 function afterLoad(): void {
+  placementAssembly.finish();
+  interaction.cancelPlacing();
+  restoreServiceSites();
   const spot = takeLoadedCamperSpot();
   if (spot !== null && spot !== camperSpot()) world.moveCamper(spot);
   syncProperty();
   // A loaded game's stages appear in place, not growing one by one.
   stagesShown = false;
   syncServiceVisuals();
+  crowd.restoreTutorialVisitors();
   refreshOrg();
   refreshHud();
 }
@@ -1665,10 +1895,9 @@ const meterCauses = stressRow ? new MeterCauses(stressRow, (m) => sim.cityStress
   // Scenarios enable project failure; old URL and save flags remain compatible.
   if (q.get('mode') === 'hardcore' || sim.goals.scenario) sim.stakes.hardcore = true;
 }
-let pausedBeforeReport = false;
 const nightBox = new NightReportBox(document.body, (open) => {
-  if (open) { pausedBeforeReport = paused; setPaused(true); }
-  else if (!pausedBeforeReport) setPaused(false);
+  pauseState.setWindow('report', open);
+  refreshHud();
 }, playerPicture);
 /** The morning's report waits until no other box is open. */
 let pendingReport: NightReport | null = null;
@@ -1771,7 +2000,7 @@ function refreshOrg(): void {
     stakes: sim.stakes, team: sim.team, budget: sim.org.budget, now: sim.org.now, clock: sim.clockMinutes, nights: sim.totals.nights,
     patrol: { running: sim.services.footPatrol.switchedOn, ready: sim.patrolReady, spots: sim.patrolSpots(), out: sim.patrol.spot, until: sim.patrol.until, reached: sim.patrol.reached },
   });
-  org.setTeamAccess(sim.tutorialCapabilities.services, teamPanelOnly || (!!sim.tutorial?.active && !sim.tutorialCapabilities.organisation));
+  org.setTeamAccess(sim.tutorialCapabilities.services, teamPanelOnly || (!!sim.tutorial?.active && !sim.tutorialCapabilities.organisation), sim.tutorialCapabilities.staff);
   org.update({ org: sim.org, stress: { police: sim.cityStress.police, medics: sim.cityStress.medics, sobering: sim.cityStress.sobering, district: sim.vitality.level }, services: sim.services, clock: sim.clockMinutes, incomePerHour: sim.fundingIncome, runningPerHour: sim.runningPerHour, payroll: sim.payroll, applicationContext: sim.applicationContext(), team: sim.team, drive: driveView(sim), favours: sim.favourView });
 }
 
@@ -1866,40 +2095,43 @@ function syncNight(): void {
 let urlTimer = 0;
 /** AI-painted cast art loads only when selected; superseded loads cannot publish. */
 const portraitLibrary = new PortraitLibrary(portraitView, (state) => {
-  portraitBox.hidden = state !== 'ready';
-  hudRoot.dataset.portraitReady = String(state === 'ready');
+  portraitView.hidden = state !== 'ready';
+  objectPortrait.root.hidden = state === 'ready';
 });
 let portraitKey = '';
 /** Where the coordinator portrait you chose on the welcome's first page is kept (per device). */
 const LOOK_KEY = 'hrp-player-look';
 try { const kept = localStorage.getItem(LOOK_KEY); if (kept) setPlayerPortrait(kept); } catch { /* storage blocked: the first look */ }
 
-/** Keeps the portrait on the selected person, or on you when nothing is selected; true when it changed. */
+/** Keeps a persistent identity shortcut for the selection, or the coordinator when nothing is selected. */
 function syncPortrait(): boolean {
   const sel = interaction.selected;
   const person = sel?.kind === 'person' ? crowd.person(sel.id) : undefined;
-  // People have portraits, and you do; a place or building has none. One who has left clears it.
-  // Your key names your portrait, so choosing another coordinator redraws it.
-  const key = person ? `person:${sel!.id}` : sel ? '' : `player:${playerPortraitId()}`;
-  const you = key.startsWith('player:');
+  const key = person ? `person:${sel!.id}` : sel ? `${sel.kind}:${sel.id}` : `player:${playerPortraitId()}`;
+  const you = !sel;
   if (you) portraitBox.removeAttribute('aria-controls');
   else portraitBox.setAttribute('aria-controls', 'selection-details');
-  portraitBox.setAttribute('aria-expanded', String(you ? orgSheet.isOpen : !hud.isFolded));
-  const card = person ? describePerson(person) : null;
-  const caption = card ? card.title : key ? t('You') : '';
-  const sub = card ? card.subtitle : key ? t('Coordinator, {org}', { org: orgName() }) : '';
+  portraitBox.setAttribute('aria-expanded', String(you ? orgSheet.isOpen : hud.isSelectionOpen));
+  const personCard = person ? describePerson(person) : null;
+  const card = personCard ?? (sel?.kind === 'building' ? cards.describeBuilding(sel.id)
+    : sel?.kind === 'vehicle' ? cards.describeVehicle(sel.id) : null);
+  const caption = sel?.kind === 'location' ? displayName('location', sel.id, LOCATION_NAMES[sel.id])
+    : card?.title ?? (you ? t('You') : t('Person'));
+  const sub = personCard ? personCard.subtitle : you ? t('Coordinator, {org}', { org: orgName() }) : '';
   if (portraitCaption.dataset.text !== caption + sub) {
     portraitCaption.dataset.text = caption + sub;
     portraitCaption.replaceChildren(caption, ...(sub ? [Object.assign(document.createElement('span'), { className: 'portrait-sub', textContent: sub })] : []));
-    portraitBox.setAttribute('aria-label', you ? t('You: open My organisation. Right-click or long press to edit your name and look.') : t('{name}: show in the panel. Right-click or long press for what you can do.', { name: caption }));
+    portraitBox.setAttribute('aria-label', you ? t('Your team') : t('{name}: show in the panel. Right-click or long press for what you can do.', { name: caption }));
   }
   if (key === portraitKey) return false;
   portraitKey = key;
-  portraitBox.hidden = !key || portraitView.dataset.state !== 'ready';
-  portraitBox.dataset.who = you ? 'player' : 'person';
-  // A person's painted face wears their figure's top (a jacket's colour when they have one); role portraits keep their uniforms.
+  portraitBox.hidden = false;
+  hudRoot.dataset.portraitReady = 'true';
+  portraitBox.dataset.who = you ? 'player' : sel!.kind;
+  objectPortrait.show(sel?.kind ?? 'person');
+  // Cancelling the previous request also prevents a late face replacing an object portrait.
   const tint = person && portraitTinted(person) ? (person.look.extra === 'jacket' ? person.look.accent : person.look.top) : null;
-  portraitLibrary.show(!key ? null : you ? playerPortraitUrl() : portraitUrl(portraitId(person!)), tint);
+  portraitLibrary.show(you ? playerPortraitUrl() : person ? portraitUrl(portraitId(person)) : null, tint);
   return false;
 }
 
@@ -2021,10 +2253,7 @@ function applyView(): void {
 }
 
 // Pointer, touch and keyboard interaction lives in `ui/interaction.ts`; only Space is global here.
-window.addEventListener('keydown', (e) => {
-  if (e.target instanceof Element && e.target.closest('button, input, select, textarea, summary, [contenteditable="true"]')) return;
-  if (e.code === 'Space') { e.preventDefault(); setPaused(!paused); }
-});
+bindPauseShortcut(() => setPaused(!paused));
 
 let resizeFrame = 0;
 const observer = new ResizeObserver(() => {
@@ -2102,7 +2331,7 @@ function frame(now: number): void {
   applyPending();
   if (!paused) {
     let remaining = realDt * speed;
-    while (remaining > 1e-6) {
+    while (remaining > 1e-6 && !paused) {
       const dt = Math.min(STEP, remaining);
       remaining -= dt;
       sim.tick(dt);
@@ -2136,11 +2365,15 @@ function frame(now: number): void {
       hudTimer = 0.25;
     }
   }
+  // A modal can stop the regular HUD cadence just as domain access changes.
+  // Unchanged immutable capabilities return without touching the DOM.
+  if (hud.setTutorialCapabilities(sim.tutorialCapabilities)) refreshHud();
   if (interaction.frame()) dirty = true;
   meterCauses?.update(realDt);
   if (rig.step(realDt, reducedMotion.matches)) applyView();
   if (marker.update(realDt, reducedMotion.matches)) dirty = true;
   if (coins.update(realDt)) dirty = true;
+  if (placementAssembly.update(realDt, reducedMotion.matches)) dirty = true;
   syncPortrait();
   updateSound();
   // While lite lighting's or the scenery kits' shaders compile (one-offs) the last frame stays on screen.
@@ -2154,20 +2387,32 @@ function frame(now: number): void {
   requestAnimationFrame(frame);
 }
 
+const tutorialDock = document.createElement('aside');
+tutorialDock.className = 'tutorial-dock';
+hudRoot.append(tutorialDock);
 tutorialGuide = new TutorialGuide(hudRoot, {
-  patrolOut: () => !!sim.patrol.out,
-  canDispatchCamp: () => sim.patrolReady && !sim.patrol.out,
-  inspectCamp: () => { interaction.select({ kind: 'building', id: world.camps.park }); rig.lookAt(new Vector3(CAMP_AT.x, 0, CAMP_AT.z)); sim.tutorialInspectCamp(); refreshHud(); },
-  openPatrol: () => { interaction.selectLocation('footPatrol'); rig.lookAt(world.locations.footPatrol.labelAnchor); sim.tutorialOpenPatrol(); refreshHud(); },
-  dispatchCamp: () => queueOrg(() => { sim.sendPatrol('camp', patrolPoint('camp')); rig.lookAt(new Vector3(CAMP_AT.x, 0, CAMP_AT.z)); refreshHud(); }),
-  selectService: (id) => { const place = locationOf(id); interaction.selectLocation(place); rig.lookAt(world.locations[place].labelAnchor); refreshHud(); },
-  reviewTeam: () => { openOrg(true); refreshHud(); },
+  onPopupChange: open => { pauseState.setWindow('tutorial', open); syncTutorialHint(); },
+  onGuidanceChange: () => syncTutorialHint(),
+  instruction: tutorialInstruction,
+  chapter: () => {
+    if (orgSheet.isOpen || sandbox.isOpen) return null;
+    return tutorialBriefing(currentTutorialNavigation());
+  },
+  patrolOut: () => sim.patrol.out || sim.patrol.returning,
   continueCity: () => { refreshHud(); },
-}, (buttons) => hud.setTutorialActions(buttons));
-hudRoot.querySelector('.column')!.prepend(tutorialGuide.root);
+}, tutorialDock);
 // Reframe only on actual layout changes, including folding the objective or selection.
-const hudLayoutObserver = new ResizeObserver(() => {
+observeLayout([...hudRoot.querySelectorAll<HTMLElement>('.tutorial-guide, .tutorial-dock, .sheet .sandbox-body, .column, .top-bar, .hud-header, .sandbox-toggle, .panels-toggle, .map-layers-direct, .map-layer-rail, .portrait, .site-picker, #selection-details, #selection-details .log, #selection-details .options')], () => {
   hud.invalidateLayout(); rig.invalidate(); dirty = true;
+  syncTutorial();
+  syncTutorialHint();
+  const guide = tutorialGuide?.root;
+  const viewportBox = hudRoot.getBoundingClientRect();
+  if (guide && !guide.hidden) {
+    const bottom = `${Math.max(0, guide.getBoundingClientRect().bottom - viewportBox.top)}px`;
+    const key = guide.dataset.collapsed === 'true' ? '--tutorial-dock-bottom' : '--tutorial-window-bottom';
+    if (hudRoot.style.getPropertyValue(key) !== bottom) hudRoot.style.setProperty(key, bottom);
+  }
   const dock = hudRoot.querySelector<HTMLElement>('.column')!.getBoundingClientRect();
   const viewport = hudRoot.getBoundingClientRect();
   const topBarRect = hudRoot.querySelector('.top-bar')!.getBoundingClientRect();
@@ -2191,19 +2436,22 @@ const hudLayoutObserver = new ResizeObserver(() => {
   const bottom = dock.left < viewport.width / 2 && dock.height > 0 ? dock.top : viewport.bottom - 26;
   const room = `${Math.max(80, bottom - (viewport.top + controlsBottom) - 20)}px`;
   if (portraitBox.style.getPropertyValue('--portrait-room') !== room) portraitBox.style.setProperty('--portrait-room', room);
+  tutorialCue.reveal();
 });
-for (const element of hudRoot.querySelectorAll<HTMLElement>('.tutorial-guide, .column, .top-bar, .hud-header, .sandbox-toggle, .panels-toggle, .map-layers-direct, .map-layer-rail, .portrait')) hudLayoutObserver.observe(element);
 window.visualViewport?.addEventListener('scroll', () => { hud.invalidateLayout(); rig.invalidate(); dirty = true; });
-function syncTutorial(): void {
-  if (sim.tutorial && !tutorialArea) tutorialArea = new TutorialArea(world, rig, sim.tutorialCapabilities);
-  if (tutorialArea?.set(sim.tutorialCapabilities)) { applyView(); dirty = true; }
-  hud.setTutorialCapabilities(sim.tutorialCapabilities);
+/** Publish access, clock and map bounds before a new objective can pause the game. */
+function syncTutorial(snapshotCurrent = false): void {
+  const capabilities = sim.tutorialCapabilities;
+  const changed = hud.setTutorialCapabilities(capabilities);
+  if (changed && !snapshotCurrent) hud.update(buildSnapshot(sim, crowd.population));
+  if (sim.tutorial && !tutorialArea) tutorialArea = new TutorialArea(world, rig, capabilities);
+  if (tutorialArea?.set(capabilities)) { applyView(); dirty = true; }
   sandbox.setWorldLocked(!!sim.tutorial?.active);
   mapLayers.button.hidden = false;
   tutorialGuide?.set(sim.tutorial);
 }
 
-hud.setPaused(false);
+hud.setPaused(paused);
 hud.setSpeed(speed);
 // `?off=dropIn,outreach,clubHr` starts with those services switched off (shareable scenarios).
 const params = new URLSearchParams(location.search);
@@ -2238,6 +2486,7 @@ await startGame();
 applyPending();
 if (!continuingGame && !sim.tutorial && params.get('scenario') === 'tutorial') sim.startTutorial();
 sim.start();
+syncServiceVisuals();
 syncTutorial();
 layout();
 rig.step(0, true);
@@ -2305,10 +2554,8 @@ if (QUALITY.kits) void loadKits().then(async (kits) => {
 });
 
 // The player gate: queue when the server is short of memory, a time limit while busy.
-let pausedBeforeQueue = false;
 const queueBox = new QueueBox(document.body, (blocked) => {
-  if (blocked) { pausedBeforeQueue = paused; setPaused(true); }
-  else if (!pausedBeforeQueue) setPaused(false);
+  pauseState.setWindow('queue', blocked);
 }, () => { /* time up: the box explains; the score can still be sent */ });
 startPresence((gate) => {
   if (gate.state === 'queue') queueBox.queued(gate.position);
@@ -2318,5 +2565,5 @@ requestAnimationFrame(frame);
 
 if (import.meta.env.DEV) {
   // Diagnostics for local profiling only; stripped from production builds.
-  Object.assign(window, { __sandbox: { CAMP_AT, renderer, pipeline, quality, lite, precompileMs, world, camera, sim, crowd, rig, interaction, actionMenu, props, street, cityProps, flavour, hud, nightBox, eventPopup, fx, syncEvents: () => { eventsDirty = true; syncEvents(); refreshOrg(); syncStreet(); } } });
+  Object.assign(window, { __sandbox: { CAMP_AT, renderer, pipeline, quality, lite, precompileMs, world, camera, sim, crowd, rig, interaction, actionMenu, props, street, cityProps, flavour, hud, nightBox, eventPopup, fx, syncEvents: () => { eventsDirty = true; syncEvents(); refreshOrg(); refreshHud(); syncStreet(); } } });
 }

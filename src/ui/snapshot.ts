@@ -1,3 +1,5 @@
+import { curbReserved } from '../sim/serviceSites';
+import { servicePlaced } from '../game/servicePlacement';
 import { venueStatus } from './venueStatus';
 import { price } from './money';
 import { t } from '../i18n';
@@ -7,7 +9,7 @@ import { ORG } from '../config/organisation';
 import { displayName } from './names';
 import { EXPOSURE, aidSeason } from '../sim/exposure';
 import { HUSTLE } from '../config/hustles';
-import { CAMPER_SPOTS, camperSpot } from '../world/layout';
+import { CAMPER_SPOTS, camperSpot, PATROL } from '../world/layout';
 import { INVEST } from '../sim/simulation';
 import { BASE_STAGE, NEW_STAGE, stageCount, stageOf } from '../config/serviceStages';
 import { PROPERTY } from '../sim/property';
@@ -61,6 +63,7 @@ function serviceSnapshot(id: LocationId, s: ServiceModel, sim?: Simulation): Loc
   const permitted = availability !== 'notPermitted';
   const venueReason = availability && availability !== 'switchedOff' ? availability : s.closedReason;
   const view: LocationSnapshot = {
+    placed: sim ? servicePlaced(sim, s.id) : s.everRun,
     name: displayName('location', id, LOCATION_NAMES[id]),
     service: text.label,
     status: s.status,
@@ -114,13 +117,13 @@ function serviceSnapshot(id: LocationId, s: ServiceModel, sim?: Simulation): Loc
           }
           : undefined,
       path: s.id === 'outreach' ? { current: sim.camperPath } : undefined,
-      campers: s.id === 'outreach' ? {
+      campers: s.id === 'outreach' && servicePlaced(sim, s.id) ? {
         out: sim.property.extraCampers,
         max: PROPERTY.maxExtraCampers,
         cost: PROPERTY.camperCost,
         perHour: PROPERTY.camperPerHour,
         moving: sim.outreachMoving,
-        spots: CAMPER_SPOTS.map((spot, i) => ({ name: spot.name, taken: sim.property.campers.includes(i), here: i === camperSpot() })),
+        spots: CAMPER_SPOTS.map((spot, i) => ({ name: spot.name, taken: sim.property.campers.includes(i) || curbReserved(sim.serviceSites, i, 'outreach') || (servicePlaced(sim, 'footPatrol') && Math.hypot(spot.x - PATROL.frame.x, spot.z - PATROL.frame.z) < .01), here: i === camperSpot() })),
       } : undefined,
     },
   };

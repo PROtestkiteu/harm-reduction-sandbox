@@ -9,11 +9,13 @@ export interface CareTask { state: number; action: CareAction; worker: number; r
 export interface RecipientVisit {
   visitor: number; states: StateSupport[]; site: ServiceId; phase: 'queued' | 'active' | 'transfer';
   waited: number; visited: ServiceId[]; task?: CareTask; preferred?: number; nextWorker?: number;
+  tutorialSupported?: boolean;
   destination?: ServiceId; nextDestination?: ServiceId; referralLeft?: number; referralWorker?: number; escalated?: boolean; timeFactor?: number;
 }
 export interface CareSummary { none: number; bronze: number; silver: number; gold: number; points: number }
 export interface CareSave { version: 1; visits: RecipientVisit[]; pending: CareSummary; lastNight: number }
 export interface CareEnvironment {
+  ready?(visitor: number): boolean;
   workers: readonly Member[]; open(site: ServiceId): boolean; equipment: boolean; machine?: boolean; checking: boolean;
   has(supply: SupplyId): boolean; use(supply: SupplyId): boolean; timeFactor(site: ServiceId): number; completed?(visitor: number, action: CareAction): void; canPerform?(action: CareAction): boolean; commit?(visitor: number, action: CareAction): boolean;
 }
@@ -59,7 +61,7 @@ export class RecipientCare {
   }
   arrive(visitor: number, site: ServiceId): RecipientVisit {
     const v = this.ensure(visitor, site); v.site = site; v.phase = 'queued'; v.waited = 0;
-    delete v.destination; delete v.referralLeft; delete v.referralWorker;
+    delete v.destination; delete v.referralLeft; delete v.referralWorker; delete v.tutorialSupported;
     if (!v.visited.includes(site)) v.visited.push(site);
     this.revision++; return v;
   }
@@ -106,7 +108,7 @@ export class RecipientCare {
     const finished: number[] = [];
     const workers = env.workers.filter(m => m.workingAt === site && m.energy > 0);
     const busy = new Set([...this.visits.values()].flatMap(v => v.task ? [v.task.worker] : v.referralWorker !== undefined ? [v.referralWorker] : []));
-    const active = [...this.visits.values()].filter(v => v.site === site && v.phase === 'active')
+    const active = [...this.visits.values()].filter(v => v.site === site && v.phase === 'active' && (env.ready?.(v.visitor) ?? true))
       .sort((a, b) => careUrgency(b) - careUrgency(a) || b.waited - a.waited || a.visitor - b.visitor);
     for (const v of active) {
       if (v.nextDestination && !v.task) {
@@ -223,6 +225,7 @@ export class RecipientCare {
       });
       if (!v.states.length) continue;
       if (!finite(v.timeFactor) || v.timeFactor === 0) delete v.timeFactor;
+      if (v.tutorialSupported !== true) delete v.tutorialSupported;
       v.waited = finite(v.waited) ? v.waited : 0;
       v.visited = Array.isArray(v.visited) ? [...new Set([...v.visited.filter(siteValid), v.site])] : [v.site];
       if (!['queued', 'active', 'transfer'].includes(v.phase)) v.phase = 'queued';

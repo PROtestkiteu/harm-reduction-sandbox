@@ -32,6 +32,7 @@ const FIGURE_HEIGHT = 1.75;
 export class ScenePicker {
   private readonly raycaster = new Raycaster();
   private readonly roots: Object3D[];
+  private readonly visibleRoots: Object3D[] = [];
   private readonly foot = new Vector3();
   private readonly head = new Vector3();
   private readonly mid = new Vector3();
@@ -48,13 +49,15 @@ export class ScenePicker {
   }
 
   /** The id of whichever of `targets` is under the pointer (nearest first), or null. */
-  pickAmong(clientX: number, clientY: number, camera: OrthographicCamera, frame: RenderFrame, targets: readonly { id: number; root: Object3D }[]): number | null {
+  pickAmong(clientX: number, clientY: number, camera: OrthographicCamera, frame: RenderFrame, targets: readonly { id: number; root: Object3D }[], respectBuildings = false): number | null {
     this.raycaster.setFromCamera(clientToNdc(clientX, clientY, frame), camera);
     let best: { id: number; d: number } | null = null;
     for (const t of targets) {
       const h = this.raycaster.intersectObject(t.root, true)[0];
       if (h && (!best || h.distance < best.d)) best = { id: t.id, d: h.distance };
     }
+    const foreground = respectBuildings && best ? pickBuilding(this.raycaster.ray) : null;
+    if (foreground && best && foreground.distance + .05 < best.d) return null;
     return best?.id ?? null;
   }
 
@@ -62,7 +65,11 @@ export class ScenePicker {
     this.raycaster.setFromCamera(clientToNdc(clientX, clientY, frame), camera);
     const ray = this.raycaster.ray;
     const extras = this.extras();
-    const placeHit = this.raycaster.intersectObjects(extras.length ? [...this.roots, ...extras] : this.roots, true)[0];
+    // Three.js raycasting also intersects invisible objects; unplaced venues have no hit target.
+    this.visibleRoots.length = 0;
+    for (const root of this.roots) if (root.visible) this.visibleRoots.push(root);
+    for (const root of extras) if (root.visible) this.visibleRoots.push(root);
+    const placeHit = this.raycaster.intersectObjects(this.visibleRoots, true)[0];
     const buildingHit = pickBuilding(ray);
     // A police car or ambulance in front of everything else wins.
     let vehicle: { id: number; distance: number } | null = null;
