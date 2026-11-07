@@ -119,3 +119,6 @@
 
 /* Header controls retain their full touch area above the draggable padding. */
 .tutorial-guide .tutorial-minimize, .tutorial-guide .tutorial-close { z-index: 5; }
+
+/* Keep the dock hint, but say identical briefing/action copy only once in the popup. */
+.tutorial-guide[data-collapsed='false'][data-repeated-instruction='true'] > .tutorial-instruction { display: none; }
