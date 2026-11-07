@@ -6,6 +6,7 @@ Nothing here is imported by the game, so none of it reaches `dist/`.
 
 | Script | What it does |
 |---|---|
+| `tutorialCopy.mjs [dev-url] [outDir]` | All 15 tutorial briefing/recovery paths and their control states in EN/PL/ES/PT/UK at desktop/phone sizes; expanded explanations and collapsed hints stay separate. |
 | `servicePlacementAudit.mjs [dev-url] [--baseline]` | All seven unplaced services, cancelled previews, chosen buildings/curbs while paused, desktop/touch bounds and render probe. `SIZE=393x852` uses touch. |
 | `dropInPresentation.mjs [dev-url] [--baseline]` | Unplaced neutral drop-in home, cancelled placement, selected building frontage visible while time is paused, no false visits, desktop/touch screenshots and canonical render probe. |
 | `run-bots.mjs` | Balance: idle, hoarder, spammer, sensible and greedy bots on the real sim for N game days, same seed each; money, meters, first red meter, game over. `--speed 3` repeats at another clock speed. |

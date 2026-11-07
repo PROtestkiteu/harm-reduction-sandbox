@@ -24,3 +24,9 @@ Each service has its own setup task. Placement and operation are briefed again f
 Regression coverage: scripts/tests/tutorial.mjs checks all 15 task/recovery identifiers and concise nonempty explanations. scripts/bots/tutorial.mjs runs the full authored journey with physical patrol return, actual support completions and the report. scripts/bots/tutorialRegularControls.mjs exercises the public build with native mouse, emulated touch, keyboard dismissal, deferred handoff, distinct minimize/close behavior, no early clues, cancellation and persistent mission UI.
 
 Validated and published as 0.0.532+mw6q56yg. Typecheck, localization (zero problems), domain coverage, complete browser journey, public production interaction checks and live release checks passed. Phone input was Chrome emulation; physical Safari, phones and Quest remain untested.
+
+## Copy audit
+
+Every expanded briefing shows one short explanation and its progress counter. Its live control hint appears only in the collapsed mission card. This applies to all 15 authored tasks and recovery paths, including paraphrased repetition in camp selection, service setup, team review, staffing, dispatch and funding. No text equality or chapter-specific exceptions are needed.
+
+`node scripts/bots/tutorialCopy.mjs` renders 44 navigation states per language/viewport combination, covering all 15 tasks in EN, PL, ES, PT and UK at desktop and phone sizes (440 states). It checks real guide styles, explanations, hidden popup hints and retained collapsed hints. This is Chrome emulation, not physical device validation.

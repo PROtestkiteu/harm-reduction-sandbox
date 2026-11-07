@@ -166,8 +166,6 @@ export class TutorialGuide {
     this.counter.hidden = !count;
     const hint = this.callbacks.instruction();
     if (this.text.textContent !== hint) this.text.textContent = hint;
-    const repeated = String(!!hint.trim() && hint.trim() === this.context.textContent?.trim());
-    if (this.root.dataset.repeatedInstruction !== repeated) this.root.dataset.repeatedInstruction = repeated;
   }
 
   /** A real UI action acknowledges the prompt; it never completes an objective. */

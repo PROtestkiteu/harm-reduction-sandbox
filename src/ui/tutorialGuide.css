@@ -102,7 +102,7 @@
 /* Context belongs to the reading window; the dock keeps just the current action and progress. */
 .tutorial-guide[data-collapsed='true'] > .tutorial-context { display: none; }
 /* Expanded chapters explain once; the compact dock retains the live action hint. */
-.tutorial-guide[data-collapsed='false']:is([data-chapter='placement'], [data-chapter='patrol-return'], [data-chapter='operating']) > .tutorial-instruction { display: none; }
+.tutorial-guide[data-collapsed='false'] > .tutorial-instruction { display: none; }
 
 /* Minus preserves an unread briefing; X acknowledges it and starts its control clues. */
 .tutorial-guide[data-collapsed='false'] h2 { padding-right: 80px; }
@@ -119,6 +119,3 @@
 
 /* Header controls retain their full touch area above the draggable padding. */
 .tutorial-guide .tutorial-minimize, .tutorial-guide .tutorial-close { z-index: 5; }
-
-/* Keep the dock hint, but say identical briefing/action copy only once in the popup. */
-.tutorial-guide[data-collapsed='false'][data-repeated-instruction='true'] > .tutorial-instruction { display: none; }
