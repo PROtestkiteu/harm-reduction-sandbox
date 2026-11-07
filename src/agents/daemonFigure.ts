@@ -2,7 +2,7 @@ import { AdditiveBlending, Mesh, MeshBasicMaterial, RingGeometry, type Object3D 
 import { EDGES, NODES, type NodeId } from '../world/layout';
 import type { Season } from '../sim/calendar';
 import { createRandom } from '../sim/random';
-import { CharacterRig, randomAppearance, type Figure } from './character';
+import { CharacterRig, randomAppearance, type Figure, type Appearance } from './character';
 import { HumanFigure, peopleLibrary } from './humanFigure';
 
 /**
@@ -25,6 +25,9 @@ export class DaemonFigure {
   private readonly ring: Mesh;
   private readonly ringMat: MeshBasicMaterial;
   private readonly random = createRandom(4242);
+  private origin: { x: number; z: number } | null = null;
+  get activeFigure(): Figure | null { return this.figure; }
+
   private from: NodeId = NODE_IDS[0];
   private to: NodeId = NODE_IDS[0];
   private t = 0;
@@ -51,7 +54,7 @@ export class DaemonFigure {
   }
 
   /** Turns up (a new face, somewhere on the inner streets) or is gone. */
-  setActive(on: boolean): void {
+  setActive(on: boolean, origin?: { x: number; z: number }, appearance?: Appearance): void {
     if (on === this.shown) return;
     if (!on) {
       this.figure!.root.removeFromParent();
@@ -60,12 +63,13 @@ export class DaemonFigure {
       this.ring.visible = false;
       return;
     }
-    const look = { ...randomAppearance(this.random, false, this.random() < 0.5 ? 'everyday' : 'hiphop', this.season()), dog: false };
+    const look = appearance ?? { ...randomAppearance(this.random, false, this.random() < 0.5 ? 'everyday' : 'hiphop', this.season()), dog: false };
     const lib = peopleLibrary();
     this.figure = lib ? new HumanFigure(lib, look) : new CharacterRig(look);
     this.figure.setBodyState('wired');
     this.scene.add(this.figure.root);
-    this.from = NODE_IDS[Math.floor(this.random() * NODE_IDS.length)];
+    this.from = origin ? NODE_IDS.reduce((best, id) => Math.hypot(NODES[id].x - origin.x, NODES[id].z - origin.z) < Math.hypot(NODES[best].x - origin.x, NODES[best].z - origin.z) ? id : best) : NODE_IDS[Math.floor(this.random() * NODE_IDS.length)];
+    this.origin = origin ? { ...origin } : null;
     this.to = this.pickNext(this.from);
     this.t = 0;
     this.fit = 0;
@@ -82,7 +86,16 @@ export class DaemonFigure {
     const f = this.figure;
     if (!f) return;
     this.time += dt;
-    const a = NODES[this.from];
+    if (this.origin) {
+      // Existing city people stay where help is needed, without a shortcut through buildings.
+      this.x = this.origin.x; this.z = this.origin.z;
+      this.shouting = Math.sin(this.time * 0.7) > 0.6;
+      f.root.position.set(this.x, 0, this.z);
+      f.update(dt, this.shouting ? 'dance' : 'stand', 0);
+      this.updateRing(still);
+      return;
+    }
+    const a = this.origin ?? NODES[this.from];
     const b = NODES[this.to];
     if (this.fit > 0) {
       // Stopped: shouting at nobody, arms going.
@@ -97,6 +110,7 @@ export class DaemonFigure {
       const speed = FAST * (0.8 + 0.35 * Math.sin(this.time * 3.1) + 0.15 * Math.sin(this.time * 7.3));
       this.t += (speed * dt) / len;
       if (this.t >= 1) {
+        this.origin = null;
         this.from = this.to;
         this.to = this.pickNext(this.from);
         this.t = 0;
@@ -104,13 +118,17 @@ export class DaemonFigure {
       f.update(dt, 'walk', speed);
       if ((this.nextFit -= dt) <= 0) this.fit = 2 + this.random() * 2;
     }
-    const p = NODES[this.from];
+    const p = this.origin ?? NODES[this.from];
     const q = NODES[this.to];
     this.x = p.x + (q.x - p.x) * this.t;
     this.z = p.z + (q.z - p.z) * this.t;
     f.root.position.set(this.x, 0, this.z);
     if (this.fit <= 0) f.root.rotation.y = Math.atan2(q.x - p.x, q.z - p.z);
     else f.root.rotation.y += dt * (still ? 0 : 2.5) * Math.sin(this.time * 2);
+    this.updateRing(still);
+  }
+
+  private updateRing(still: boolean): void {
     this.ring.position.set(this.x, 0.05, this.z);
     const pulse = still ? 1 : 1 + 0.18 * Math.sin(this.time * 5);
     this.ring.scale.set(pulse, 1, pulse);

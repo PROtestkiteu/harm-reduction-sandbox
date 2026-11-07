@@ -249,6 +249,7 @@ export class Interaction {
         this.d.hud.showPerson(null, false, title);
         this.redraw = true;
       } else {
+        highlight.setSelected(p.root);
         this.leftTitle = describePerson(p).title;
         if (this.following) {
           const r = p.root.position;

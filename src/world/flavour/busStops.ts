@@ -1,7 +1,7 @@
 import type { Group } from 'three';
 import { BUS_STOPS } from '../../config/flavour/vignettes';
 import { range, type Random } from '../../sim/random';
-import { fade, type ActorPool } from './actors';
+import { fade, type ActorSource } from './actors';
 import type { Scene } from './index';
 import { busShelter } from './props';
 
@@ -10,7 +10,7 @@ import { busShelter } from './props';
  * who get on when a bus passes. Where the buses are is asked twice a second,
  * not every frame.
  */
-export function buildBusStops(pool: ActorPool, random: Random, root: Group, buses: () => readonly { x: number; z: number }[]): Scene {
+export function buildBusStops(pool: ActorSource, random: Random, root: Group, buses: () => readonly { x: number; z: number }[]): Scene {
   const stops = BUS_STOPS.stops.map((st, i) => {
     const g = busShelter(root);
     g.position.set(st.at.x, 0.12, st.at.z);

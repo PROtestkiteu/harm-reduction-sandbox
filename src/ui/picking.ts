@@ -63,7 +63,7 @@ export class ScenePicker {
 
   pick(clientX: number, clientY: number, camera: OrthographicCamera, frame: RenderFrame, coarse: boolean): Target | null {
     this.raycaster.setFromCamera(clientToNdc(clientX, clientY, frame), camera);
-    const ray = this.raycaster.ray;
+    const ray = this.raycaster.ray.clone();
     const extras = this.extras();
     // Three.js raycasting also intersects invisible objects; unplaced venues have no hit target.
     this.visibleRoots.length = 0;
@@ -77,32 +77,43 @@ export class ScenePicker {
       const h = this.raycaster.intersectObject(v.root, true)[0];
       if (h && (!vehicle || h.distance < vehicle.distance)) vehicle = { id: v.id, distance: h.distance };
     }
-    if (vehicle && vehicle.distance <= Math.min(placeHit?.distance ?? Infinity, buildingHit?.distance ?? Infinity)) return { kind: 'vehicle', id: vehicle.id };
+
     // Whichever is nearer along the ray: a service's building or an ordinary one.
     const hit = placeHit && (!buildingHit || placeHit.distance <= buildingHit.distance) ? placeHit : null;
     const nearest = Math.min(placeHit?.distance ?? Infinity, buildingHit?.distance ?? Infinity);
 
     let best: { id: number; score: number; depth: number } | null = null;
-    const minRadius = coarse ? 20 : 7;
+    const minRadius = coarse ? 24 : 14;
     this.crowd.forEachVisible((p) => {
       const root = p.root;
       this.foot.copy(root.position);
-      this.head.copy(root.position).setY(root.position.y + FIGURE_HEIGHT * root.scale.y);
+      this.head.set(0, FIGURE_HEIGHT * root.scale.y * (p.seated ? 0.65 : 1), 0).applyQuaternion(root.quaternion).add(this.foot);
       const a = worldToClient(this.foot, camera, frame);
       const b = worldToClient(this.head, camera, frame);
       const len = Math.hypot(b.x - a.x, b.y - a.y);
-      const radius = Math.max(minRadius, len * 0.22);
+      const radius = Math.max(minRadius, len * 0.32);
       const d = distToSegment(clientX, clientY, a.x, a.y, b.x, b.y);
       if (d > radius) return;
       const depth = this.mid.addVectors(this.foot, this.head).multiplyScalar(0.5).sub(ray.origin).dot(ray.direction);
       // A building surface clearly in front of this person hides them.
-      if (nearest < depth - 0.5) return;
+      if (nearest < depth - 0.5) {
+        // Padding beside a visible body must not inherit a neighbouring wall's hit.
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const l2 = dx * dx + dy * dy;
+        const t = l2 > 0 ? Math.min(1, Math.max(0, ((clientX - a.x) * dx + (clientY - a.y) * dy) / l2)) : 0;
+        this.raycaster.setFromCamera(clientToNdc(a.x + t * dx, a.y + t * dy, frame), camera);
+        const wall = pickBuilding(this.raycaster.ray);
+        const place = this.raycaster.intersectObjects(this.visibleRoots, true)[0];
+        if (Math.min(wall?.distance ?? Infinity, place?.distance ?? Infinity) < depth - 0.5) return;
+      }
+      if (vehicle && vehicle.distance < depth - 0.5) return;
       const score = d / radius;
       if (!best || score < best.score - 0.05 || (Math.abs(score - best.score) <= 0.05 && depth < best.depth)) {
         best = { id: p.id, score, depth };
       }
     });
     if (best) return { kind: 'person', id: (best as { id: number }).id };
+    if (vehicle && vehicle.distance <= nearest) return { kind: 'vehicle', id: vehicle.id };
     if (!hit) return buildingHit ? { kind: 'building', id: buildingHit.building.id } : null;
 
     let part: 'stand' | undefined;

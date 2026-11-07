@@ -95,7 +95,7 @@ export interface SaveMore {
   /** Tonight's picket, priest or nun (sim/streetVisitors.ts). */
   visitors?: Partial<ReturnType<Simulation['visitors']['snapshot']>>;
   /** Someone in acute crisis on the street, if they are (sim/chaosDaemon.ts); checked there on restore. */
-  daemon?: { since?: number | null; fails?: number; quietUntil?: number };
+  daemon?: Partial<ReturnType<Simulation['daemon']['snapshot']>>;
   /** The foot patrol out at a spot, if it is (sim/patrol.ts); checked there on restore. */
   patrol?: Partial<ReturnType<Simulation['patrol']['snapshot']>>;
   /** Standing, supplies, the big crisis and the run's end (sim/stakes.ts); checked there on restore. */

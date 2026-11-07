@@ -124,6 +124,8 @@ export interface Satellite {
 /** Read-only view of one person for the UI; carries no identifying detail. */
 export interface PersonState {
   readonly id: number;
+  readonly ambient?: boolean;
+  readonly crisis?: boolean;
   readonly role: PersonRole;
   /** Everyday group they belong to; never a statement about drug use. */
   readonly archetype: Archetype;
@@ -300,7 +302,7 @@ export class Crowd {
   /** Current state of one person, or undefined once they have left the scene. */
   person(id: number): PersonState | undefined {
     const a = this.agents.get(id);
-    return a && this.view(a);
+    return a ? this.view(a) : this.world.people.person(id);
   }
 
   /** Visits every person drawn with their ground position and role, allocating nothing (map overlays, every frame). */
@@ -311,6 +313,7 @@ export class Crowd {
   /** Visits every person currently drawn, for picking. */
   forEachVisible(visit: (p: PersonState) => void): void {
     for (const a of this.agents.values()) if (a.visible) visit(this.view(a));
+    this.world.people.forEachVisible(visit);
   }
 
   private view(a: Agent): PersonState {

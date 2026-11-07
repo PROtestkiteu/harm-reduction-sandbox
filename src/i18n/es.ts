@@ -4,6 +4,8 @@
  * plural() looks up each English form here (one, other).
  */
 export const ES: Record<string, string> = {
+  'Someone who was already here is now in acute distress. They need space, a calm approach and qualified support.': 'Una persona que ya estaba aquí atraviesa ahora una crisis aguda. Necesita espacio, un trato tranquilo y apoyo cualificado.',
+  'Spending time in the city': 'Pasando tiempo en la ciudad',
   "Ukraine (Drugstore outreach)": "Ucrania (trabajo comunitario de Drugstore)",
   "Beyond the dancefloor": "Más allá de la pista",
   "Ukraine: build trust through nightlife outreach, inspired by Drugstore’s research and service model. Reach people beyond the party and keep support available. Online delivery and wartime disruption are not simulated; undocumented policy factors retain game defaults.": "Ucrania: genera confianza mediante trabajo comunitario nocturno inspirado en los estudios y el modelo de Drugstore. Llega más allá de la fiesta y mantén el apoyo disponible. No se simulan las entregas en línea ni las interrupciones por la guerra; los factores políticos no documentados conservan los valores predeterminados del juego.",

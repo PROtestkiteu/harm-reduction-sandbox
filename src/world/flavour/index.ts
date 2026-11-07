@@ -3,7 +3,7 @@ import type { PackId, WeatherMood } from '../../config/flavour/packs';
 import type { Season } from '../../sim/calendar';
 import { createRandom, type Random } from '../../sim/random';
 import type { Traffic } from '../traffic';
-import { ActorPool, type Actor, type FigureMaker } from './actors';
+import { ActorPool, type Actor, type ActorSource, type FigureMaker } from './actors';
 
 /**
  * Runs the flavour packs. Each pack is built the first time it is switched on
@@ -74,7 +74,7 @@ export class Board {
 
 export interface PackDeps {
   scene: Object3D;
-  pool: ActorPool;
+  pool: ActorSource;
   traffic: Traffic;
   board: Board;
   random: Random;
@@ -130,6 +130,8 @@ export class FlavourPacks {
     this.pool.setVisible(false);
   }
 
+  setPeople(people: import('../../agents/cityPeople').CityPeople): void { this.pool.setPeople(people); }
+
   setFigureMaker(make: FigureMaker): void {
     this.pool.setFigureMaker(make);
   }
@@ -154,7 +156,7 @@ export class FlavourPacks {
     this.loading.add(id);
     const builder = await this.builders[id]();
     // Each pack its own seeded random, so one pack never shifts another's sequence.
-    const made = builder({ ...this.deps, random: createRandom((this.seed + 7919 * (Object.keys(this.builders).indexOf(id) + 1)) | 0) });
+    const made = builder({ ...this.deps, pool: this.pool.scope(Object.keys(this.builders).indexOf(id)), random: createRandom((this.seed + 7919 * (Object.keys(this.builders).indexOf(id) + 1)) | 0) });
     made.setMood?.(this.mood);
     this.built.set(id, made);
     this.loading.delete(id);

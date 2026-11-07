@@ -1,3 +1,4 @@
+import { CityPeople } from '../agents/cityPeople';
 import { QUALITY } from '../render/quality';
 import {
   PCFShadowMap,
@@ -70,6 +71,7 @@ import { dynamic, mergeStatic } from './mergeStatic';
 import { bus, car, CAR_COLOURS, setVehicleDaylight } from './vehicles';
 
 export interface World {
+  people: CityPeople;
   scene: Scene;
   locations: Record<LocationId, LocationVisual>;
   club: ReturnType<typeof buildClub>;
@@ -191,7 +193,7 @@ export interface World {
   /** Metres per screen pixel now: decides how the people out in the city are drawn. */
   setDetail(metresPerPixel: number): void;
   /** Sculpted figures for the people out in the city, once their assets are loaded. */
-  setFigureFactory(make: (kind: AmbientKind) => Figure): void;
+  setFigureFactory(make: (kind: AmbientKind, look: import('../agents/character').Appearance) => Figure): void;
   /** The big park's sellers and patrols follow the street market (0..1) and policing (0 none). */
   setParkLife(market: number, patrol: number): void;
   /** What goes on in the big park now: joggers (0 to 4), the yoga class, a family picnic. */
@@ -475,11 +477,12 @@ export function buildWorld(random: Random): World {
   const puffs = new Puffs(scene);
   const ambientRoot = TUTORIAL_LAYOUT ? dynamic(new Group()) : new Group();
   scene.add(ambientRoot);
-  const ambient = buildAmbient(ambientRoot, mulberry(31), traffic, puffs, beyond.streets);
+  const people = new CityPeople();
+  const ambient = buildAmbient(ambientRoot, mulberry(31), traffic, puffs, beyond.streets, people);
   let tutorialServices: ReadonlySet<string> | null = null;
   let tutorialFullCity = true;
   const teamBus = new TeamBus(scene, traffic);
-  const parkActivities = new ParkActivities(scene);
+  const parkActivities = new ParkActivities(scene, people);
   let detail = 0.2;
   buildStreets(scene, mulberry(29));
   buildBlockGround(scene, mulberry(31));
@@ -804,6 +807,7 @@ export function buildWorld(random: Random): World {
   const solids = collectSolids(scene);
   ambient.setSolids(solids);
   return {
+    people,
     solids,
     puffs,
     scene,

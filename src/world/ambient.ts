@@ -1,3 +1,6 @@
+import type { CityPeople } from '../agents/cityPeople';
+import { randomAppearance, type Appearance } from '../agents/character';
+import { createRandom } from '../sim/random';
 import { QUALITY } from '../render/quality';
 import { CapsuleGeometry, Color, Group, InstancedMesh, Matrix4, MeshLambertMaterial, Quaternion, SphereGeometry, Vector3, type Object3D } from 'three';
 import type { Random } from '../sim/random';
@@ -43,7 +46,7 @@ export interface Ambient {
   /** Where the camera looks and how many metres a screen pixel covers, for level of detail. */
   setView(x: number, z: number, radius: number, metresPerPixel: number): void;
   /** Makes a sculpted figure for a person of this kind, once the people's assets are loaded. */
-  setFigureFactory(make: (kind: AmbientKind) => Figure): void;
+  setFigureFactory(make: (kind: AmbientKind, look: Appearance) => Figure): void;
   /** Asks whether someone is on the road just ahead of a car at (x, z) heading (dx, dz): it waits if so. */
   setYield(ahead: (x: number, z: number, dx: number, dz: number) => boolean): void;
   /** Places where people who have had too much hang about: a liquor store, a casino. */
@@ -166,7 +169,7 @@ const PULL = 4;
 /** Seconds a van takes to pull across. */
 const PULL_TIME = 2.5;
 
-export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic, puffs: Puffs, outer: OuterStreets): Ambient {
+export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic, puffs: Puffs, outer: OuterStreets, selectable: CityPeople): Ambient {
   // Through-traffic, one way per street as the district's streets are (the
   // far kerb is for parking), horizon to horizon: eastbound on the north
   // street, westbound on the south street, southbound on the east street,
@@ -462,6 +465,16 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic, 
     kind: (i < strollers ? 'stroller' : i < strollers + SELLERS.length ? 'seller' : i < drunkBase ? 'buyer' : i < joggerBase ? 'drunk' : i < policeBase ? 'jogger' : i < crewBase ? 'police' : 'firefighter') as AmbientKind,
     lying: false,
   }));
+  const looks = people.map((p, i) => {
+    const r = createRandom(9700 + i);
+    const styles = ['everyday', 'everyday', 'student', 'office', 'worker', 'older', 'tourist', 'raver', 'punk', 'hiphop'] as const;
+    const look = randomAppearance(r, p.kind === 'firefighter', p.kind === 'seller' ? 'technoBlack' : p.kind === 'police' ? 'everyday' : styles[Math.floor(r() * styles.length)]);
+    if (p.kind === 'firefighter') Object.assign(look, { vestColour: 0x26282c, extra: 'jacket', kit: {} });
+    if (p.kind === 'seller') look.kit = { ...look.kit, hood: 'up' };
+    if (p.kind === 'police') look.police = true;
+    selectable.add(-1000 - i, look, p.kind === 'police' ? 'police' : p.kind === 'firefighter' ? 'staff' : p.kind === 'seller' ? 'seller' : 'passerby');
+    return look;
+  });
   const place = (i: number, pos: Vector3, shown: number, bob: number) => {
     const p = people[i];
     const dx = pos.x - p.x;
@@ -474,7 +487,7 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic, 
     p.bob = bob;
   };
   const view = { x: 0, z: 0, radius: 60, mpp: 0.2 };
-  let makeFigure: ((kind: AmbientKind) => Figure) | null = null;
+  let makeFigure: ((kind: AmbientKind, look: Appearance) => Figure) | null = null;
   const figures = new Map<number, Figure>();
   const order: number[] = [];
   bodies.frustumCulled = heads.frustumCulled = false;
@@ -572,6 +585,16 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic, 
     const withFigure = new Set(near);
     for (let i = 0; i < count; i++) {
       const p = people[i];
+      if (selectable.claimed(-1000 - i)) {
+        selectable.update(-1000 - i, p.x, p.y, p.z, false, false, undefined, p.shown > 0.05);
+      }
+      if (selectable.claimed(-1000 - i)) {
+        const fig = figures.get(i);
+        if (fig) fig.root.visible = false;
+        m.makeScale(0, 0, 0);
+        bodies.setMatrixAt(i, m); heads.setMatrixAt(i, m);
+        continue;
+      }
       // The cheap shape only when tiny; otherwise hidden (a figure or nothing at all).
       const k = tiny ? Math.max(0.001, p.shown) : 0.001;
       m.compose(at.set(p.x, 0.55 + p.bob + p.y, p.z), q, s.set(k, k, k));
@@ -581,7 +604,7 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic, 
       let fig = figures.get(i);
       if (withFigure.has(i)) {
         if (!fig && makeFigure) {
-          fig = makeFigure(p.kind);
+          fig = makeFigure(p.kind, looks[i]);
           fig.root.userData.baseScale = fig.root.scale.x;
           scene.add(dynamic(fig.root));
           figures.set(i, fig);
@@ -597,6 +620,8 @@ export function buildAmbient(scene: Object3D, random: Random, traffic: Traffic, 
           fig.update(dt, p.moving && !p.lying ? 'walk' : 'stand', p.kind === 'drunk' ? 0.7 : p.kind === 'jogger' ? 2.4 : 1.2);
         }
       } else if (fig) fig.root.visible = false;
+      selectable.update(-1000 - i, p.x, p.y, p.z, p.shown > 0.05 && (tiny || !!fig?.root.visible), p.moving,
+        fig?.root.visible ? fig.root : undefined, p.shown > 0.05);
     }
     // Keep only a bounded set of figures alive: drop the longest unused.
     while (figures.size > POOL + 8 && order.length) {

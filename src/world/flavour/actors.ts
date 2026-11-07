@@ -1,3 +1,6 @@
+import type { CityPeople } from '../../agents/cityPeople';
+import { randomAppearance } from '../../agents/character';
+import { createRandom } from '../../sim/random';
 import {
   AdditiveBlending,
   BufferAttribute,
@@ -46,6 +49,7 @@ export interface ActorLook {
 export type Glow = 'none' | 'ember' | 'flame' | 'phone' | 'vape';
 
 export interface Actor {
+  readonly personId: number;
   x: number;
   z: number;
   heading: number;
@@ -77,7 +81,7 @@ export interface Actor {
   blocked?: number;
 }
 
-export type FigureMaker = (look: ActorLook) => Figure | null;
+export type FigureMaker = (look: ActorLook, appearance?: Appearance) => Figure | null;
 
 /** Below this many pixels tall, a person is drawn as a cheap shape. */
 const TINY_PX = 9;
@@ -103,6 +107,8 @@ const GLOW_COLOUR: Record<Exclude<Glow, 'none'>, number> = { ember: 0xff6a2a, fl
 
 const byDistance = (a: Actor, b: Actor) => a.d2 - b.d2;
 
+export type ActorSource = Pick<ActorPool, 'add' | 'addSolid' | 'blocked' | 'viewCentre' | 'metresPerPixel' | 'actors'>;
+
 export class ActorPool {
   readonly actors: Actor[] = [];
   private readonly near: Actor[] = [];
@@ -124,6 +130,26 @@ export class ActorPool {
   private readonly v = new Vector3();
   private readonly s = new Vector3();
   private readonly c = new Color();
+
+  private selectable?: CityPeople;
+  private fallbackIndex = 0;
+  setPeople(people: CityPeople): void { this.selectable = people; }
+  /** Each pack retains its namespace even when it creates people after lazy loading. */
+  scope(source: number): ActorSource {
+    let index = 0;
+    const pool = this;
+    return {
+      add(look, x = 0, z = 0) {
+        if (index >= 1000) throw new Error('City person source capacity exceeded');
+        return pool.add(look, x, z, -10000 - source * 1000 - index++);
+      },
+      addSolid: (...args) => pool.addSolid(...args),
+      blocked: (...args) => pool.blocked(...args),
+      get viewCentre() { return pool.viewCentre; },
+      get metresPerPixel() { return pool.metresPerPixel; },
+      get actors() { return pool.actors; },
+    };
+  }
 
   constructor(scene: Object3D, private readonly budget: number, private readonly random: () => number) {
     scene.add(this.root);
@@ -164,8 +190,10 @@ export class ActorPool {
     return this.view.mpp;
   }
 
-  add(look: ActorLook, x = 0, z = 0): Actor {
-    const a: Actor = { x, z, heading: 0, pose: 'stand', body: 'normal', speed: 1.2, shown: 0, lying: false, lift: 0, glow: 'none', smokes: false, look, detailed: false, d2: 0 };
+  add(look: ActorLook, x = 0, z = 0, personId = -90000 - this.fallbackIndex++): Actor {
+    const base = randomAppearance(createRandom(-personId), !!look.vest, look.style);
+    this.selectable?.add(personId, { ...base, ...look.dress, police: look.police, staff: !!look.vest, dog: false, placard: false });
+    const a: Actor = { personId, x, z, heading: 0, pose: 'stand', body: 'normal', speed: 1.2, shown: 0, lying: false, lift: 0, glow: 'none', smokes: false, look, detailed: false, d2: 0 };
     this.actors.push(a);
     return a;
   }
@@ -178,7 +206,10 @@ export class ActorPool {
 
   setVisible(on: boolean): void {
     this.root.visible = on;
-    if (!on) for (const f of this.figures.values()) f.root.visible = false;
+    if (!on) {
+      for (const f of this.figures.values()) f.root.visible = false;
+      for (const a of this.actors) this.selectable?.update(a.personId, a.x, a.lift, a.z, false, false);
+    }
   }
 
   /** The street's fixed obstacles (benches, bins, trees, parked cars): walkers are kept clear of them. */
@@ -252,7 +283,14 @@ export class ActorPool {
     const gc = this.glows.geometry.getAttribute('color') as BufferAttribute;
     for (const a of this.actors) {
       const fig = this.figures.get(a);
+      if (this.selectable?.claimed(a.personId)) this.selectable.update(a.personId, a.x, a.lift, a.z, false, false, undefined, a.shown > 0.01);
+      if (this.selectable?.claimed(a.personId)) {
+        if (fig) fig.root.visible = false;
+        if (a.attach) a.attach.visible = false;
+        continue;
+      }
       const shown = a.shown > 0.01;
+      this.selectable?.update(a.personId, a.x, a.lift, a.z, false, false, undefined, shown);
       if (a.attach) {
         a.attach.visible = shown;
         if (shown) { a.attach.position.set(a.x, 0, a.z); a.attach.rotation.y = a.heading; }
@@ -261,11 +299,12 @@ export class ActorPool {
       if (a.detailed) {
         let f = fig;
         if (!f && this.make) {
-          f = this.make(a.look) ?? undefined;
+          f = this.make(a.look, this.selectable?.appearance(a.personId)) ?? undefined;
           if (f) {
             f.root.userData.baseScale = f.root.scale.x;
             this.root.add(f.root);
             this.figures.set(a, f);
+            this.selectable?.setAppearance(a.personId, f.look);
           }
         }
         if (f) {
@@ -288,6 +327,8 @@ export class ActorPool {
         this.bodies.setColorAt(n, this.c.setHex(a.look.vest ?? (a.look.police ? 0x1e2a4a : a.look.kit?.hood === 'up' ? 0x1e1e22 : 0x5a5a60)));
         n++;
       }
+      const root = this.figures.get(a)?.root;
+      this.selectable?.update(a.personId, a.x, a.lift, a.z, shown && (tiny || !!root?.visible), a.pose === 'walk', root?.visible ? root : undefined, shown);
       if (a.glow !== 'none' && g < MAX && !a.lying) {
         // The hand: at the mouth for a draw now and then, else at the hip; a lighter is held low and in front.
         const up = a.glow === 'flame' ? (a.pose === 'crouch' ? 0.55 : a.pose === 'sit' ? 0.75 : 1.1)

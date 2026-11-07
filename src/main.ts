@@ -1,3 +1,4 @@
+import { restoreCityAppearance } from './agents/cityPeople';
 import { bindPauseShortcut } from './ui/keyboard';
 import { PlacementAssembly } from './world/placementAssembly';
 import { selectionPortrait } from './ui/selectionPortrait';
@@ -69,7 +70,6 @@ import { COORDINATOR_IDS, PORTRAIT_H, PORTRAIT_W, PortraitLibrary, playerPortrai
 import { describePerson } from './ui/personInfo';
 import { ActionMenu } from './ui/actionMenu';
 import { HumanFigure, peopleLibrary } from './agents/humanFigure';
-import { randomAppearance, type Archetype } from './agents/character';
 import { displayName, rename } from './ui/names';
 import { Welcome } from './ui/welcome';
 import { SavePanel } from './ui/savePanel';
@@ -568,16 +568,7 @@ const hud = new Hud(hudRoot, {
 // People out in the city beyond the district get sculpted figures when the camera is close.
 {
   const lib = peopleLibrary();
-  const r = createRandom(97);
-  const styles: Archetype[] = ['everyday', 'everyday', 'student', 'office', 'worker', 'older', 'tourist', 'raver', 'punk', 'hiphop'];
-  if (lib) world.setFigureFactory((kind) => {
-    const look = randomAppearance(r, false, kind === 'seller' ? 'technoBlack' : kind === 'police' ? 'everyday' : styles[Math.floor(r() * styles.length)], sim.season);
-    if (kind === 'police') return new HumanFigure(lib, { ...look, police: true, kit: {} });
-    // Fire crew: a dark tunic with reflective bands.
-    if (kind === 'firefighter') return new HumanFigure(lib, { ...look, staff: true, vestColour: 0x26282c, extra: 'jacket', kit: {} });
-    if (kind === 'seller') return new HumanFigure(lib, { ...look, kit: { ...look.kit, hood: 'up' } });
-    return new HumanFigure(lib, look);
-  });
+  if (lib) world.setFigureFactory((_kind, look) => new HumanFigure(lib, look));
 }
 // Flavour packs: street life over the model (world/flavour). None of it touches the simulation;
 // a pack that is off is not built, and costs nothing per frame.
@@ -591,6 +582,7 @@ const applyWetness = () => {
 };
 const flavourPoint = new Vector3();
 const flavour = startFlavour({
+  people: world.people,
   scene: world.scene,
   camera,
   canvas,
@@ -688,6 +680,7 @@ const interaction = new Interaction({
   },
   allowsTarget: (target) => tutorialArea?.allowsTarget(target, crowd) ?? true,
   onSelection: (target) => {
+    if (target?.kind === 'person' && crowd.person(target.id)?.crisis) showDaemonBox();
     const hint = currentTutorialNavigation();
     const camp = target?.kind === 'building' && target.id === world.camps.park;
     const hinted = hint?.kind === 'camp' && camp || hint?.kind === 'dispatch' && !hint.open && camp || hint?.kind === 'service' && !hint.open && target?.kind === 'location' && serviceAt(target.id) === hint.service;
@@ -1567,6 +1560,7 @@ function buildingDecision(action: string): Decision | null {
  * the camera goes to them and the box opens; it waits if another box is open.
  */
 const daemonFigure = new DaemonFigure(world.scene, () => sim.season);
+sim.daemon.setCandidates(() => world.people.crisisCandidates());
 const daemonTag = document.createElement('button');
 daemonTag.type = 'button';
 daemonTag.className = 'daemon-tag';
@@ -1581,14 +1575,23 @@ let daemonOpenPending = false;
 let daemonShoutAt = 0;
 const daemonPoint = new Vector3();
 
-function updateDaemon(dt: number): void {
+function syncDaemonIdentity(): void {
   const active = sim.daemon.active;
   if (active && !daemonFigure.shown) {
-    daemonFigure.setActive(true);
+    const origin = sim.daemon.person;
+    daemonFigure.setActive(true, origin ?? undefined, origin ? world.people.appearance(origin.id) ?? restoreCityAppearance(origin.identity) : undefined);
+    if (origin && daemonFigure.activeFigure) world.people.beginCrisis(origin.id, daemonFigure.activeFigure);
     daemonFigure.update(0, reducedMotion.matches);
     rig.lookAt(daemonPoint.set(daemonFigure.x, 0, daemonFigure.z));
     daemonOpenPending = true;
-  } else if (!active && daemonFigure.shown) daemonFigure.setActive(false);
+  } else if (!active && daemonFigure.shown) {
+    world.people.endCrisis();
+    daemonFigure.setActive(false);
+  }
+}
+
+function updateDaemon(dt: number): void {
+  syncDaemonIdentity();
   if (!daemonFigure.shown) return;
   daemonFigure.update(dt, reducedMotion.matches);
   if (daemonOpenPending && !document.querySelector('dialog[open]')) {
@@ -1672,7 +1675,7 @@ function showDaemonBox(): void {
     id: 'daemon',
     title: t('Someone in acute crisis'),
     lines: [
-      t('Wired, sleepless and terrified, they are striding the street shouting at people who are not there. Passers-by are scared, and the police and the medics are being pulled in.'),
+      sim.daemon.person ? t('Someone who was already here is now in acute distress. They need space, a calm approach and qualified support.') : t('Wired, sleepless and terrified, they are striding the street shouting at people who are not there. Passers-by are scared, and the police and the medics are being pulled in.'),
       t('Left alone, it ends badly within a few hours: a collapse or an arrest. A failed try makes the next one harder.'),
     ],
     eligible: () => true,
@@ -2341,6 +2344,7 @@ function frame(now: number): void {
       const parts = Math.max(1, Math.ceil(pace));
       for (let i = 0; i < parts; i++) crowd.update((dt * pace) / parts);
       syncServiceVisuals();
+      syncDaemonIdentity();
       world.update(dt, sceneTime);
       ghosts.update(dt);
       sceneTime += dt;

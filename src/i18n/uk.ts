@@ -1,5 +1,7 @@
 /** Ukrainian interface catalogue. Terminology sources: docs/ukrainian-localization.md. */
 export const UK: Record<string, string> = {
+  'Someone who was already here is now in acute distress. They need space, a calm approach and qualified support.': 'Людина, яка вже була тут, зараз переживає гостру кризу. Їй потрібні простір, спокійний підхід і кваліфікована підтримка.',
+  'Spending time in the city': 'Проводить час у місті',
   "Ukraine (Drugstore outreach)": "Україна (аутріч Drugstore)",
   "Beyond the dancefloor": "За межами танцполу",
   "Ukraine: build trust through nightlife outreach, inspired by Drugstore’s research and service model. Reach people beyond the party and keep support available. Online delivery and wartime disruption are not simulated; undocumented policy factors retain game defaults.": "Україна: розвивай довіру через аутріч у нічному житті за прикладом досліджень і моделі послуг Drugstore. Допомагай людям і поза вечірками та підтримуй доступність допомоги. Онлайн-доставка й перебої через війну не моделюються; для неописаних чинників політики діють стандартні налаштування гри.",

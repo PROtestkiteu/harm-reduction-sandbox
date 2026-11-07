@@ -267,6 +267,7 @@ export class Hud {
   private readonly guideShort: HTMLElement;
   private readonly orgOpt: HTMLElement;
   private readonly speaker: HTMLElement;
+  private readonly selectionFold: HTMLButtonElement;
   private readonly renameButton: HTMLButtonElement;
   private readonly said: HTMLElement;
   private readonly aside: HTMLElement;
@@ -436,7 +437,14 @@ export class Hud {
     this.renameButton.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M3 17.25V21h3.75L17.8 9.94l-3.75-3.75L3 17.25zm17.7-10.2a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>';
     this.renameButton.hidden = true;
     this.renameButton.addEventListener('click', this.renameAction);
-    line.append(this.speaker, this.renameButton, this.said);
+    this.selectionFold = button('selection-fold');
+    this.selectionFold.setAttribute('aria-expanded', 'true');
+    this.selectionFold.setAttribute('aria-label', t('Fold the panel away'));
+    this.selectionFold.dataset.iconHint = t('Fold the panel away');
+    this.selectionFold.addEventListener('click', () => this.setFolded(!this.folded));
+    const nameRow = el('span', 'selection-name-row');
+    nameRow.append(this.speaker, this.renameButton, this.selectionFold);
+    line.append(nameRow, this.said);
     this.aside = el('p', 'aside');
     this.locationView = el('div', 'location-view');
     this.chips = el('ul', 'chips');
@@ -1248,6 +1256,10 @@ export class Hud {
     this.folded = folded;
     this.selectionWindow.dataset.collapsed = String(folded);
     setAttr(this.speaker, 'aria-expanded', String(!folded));
+    setAttr(this.selectionFold, 'aria-expanded', String(!folded));
+    const foldLabel = folded ? t('Open the panel') : t('Fold the panel away');
+    setAttr(this.selectionFold, 'aria-label', foldLabel);
+    this.selectionFold.dataset.iconHint = foldLabel;
     this.speaker.dataset.iconHint = folded ? t('Open the panel') : t('Fold the panel away');
     this.root.dispatchEvent(new CustomEvent('selectionfold', { detail: folded }));
   }

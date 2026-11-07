@@ -49,6 +49,7 @@ const BUILDERS: Record<PackId, () => Promise<PackBuilder>> = {
 };
 
 export interface FlavourHost {
+  people: import('../../agents/cityPeople').CityPeople;
   scene: import('three').Object3D;
   camera: Camera;
   canvas: HTMLElement;
@@ -97,6 +98,7 @@ export function startFlavour(host: FlavourHost): Flavour {
       return out;
     },
   }, BUILDERS, Math.max(6, Math.round(QUALITY.figures * 0.5)));
+  packs.setPeople(host.people);
   packs.setMood(settings.weather);
   for (const p of PACKS) if (settings.on[p.id]) void packs.set(p.id, true);
   const context: FlavourContext = { clock: 1080, night: 0, day: 0, season: host.season(), snowy: false, patrol: 0, market: 0, squat: 0, squatDoors: [], still: false, street: 0, thefts: [], shopGuard: [], shopShut: [], visit: null, happenings: [], bars: [], scuffles: 0 };
@@ -115,8 +117,8 @@ export function startFlavour(host: FlavourHost): Flavour {
     },
     setFigures(lib) {
       const r = createRandom(211);
-      packs.setFigureMaker((look: ActorLook) => {
-        const base = randomAppearance(r, !!look.vest, look.style, host.season());
+      packs.setFigureMaker((look: ActorLook, appearance) => {
+        const base = appearance ?? randomAppearance(r, !!look.vest, look.style, host.season());
         return new HumanFigure(lib, {
           ...base,
           ...look.dress,

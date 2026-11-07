@@ -1,3 +1,6 @@
+import type { CityPeople } from '../agents/cityPeople';
+import { randomAppearance } from '../agents/character';
+import { createRandom } from '../sim/random';
 import { Group, type Object3D } from 'three';
 import { add, box } from './kit';
 import { mat } from './materials';
@@ -34,7 +37,7 @@ export class ParkActivities {
   private readonly yoga: Group;
   private readonly picnic: Group;
 
-  constructor(scene: Object3D) {
+  constructor(scene: Object3D, private readonly people: CityPeople) {
     this.yoga = add(scene, dynamic(new Group()));
     this.yoga.position.set(18, 0.1, 76);
     const mats = [0x6a3a8a, 0x2a8a8a, 0xc85a3a, 0x3a6aa8, 0x8aa83a, 0xa83a6a];
@@ -56,11 +59,19 @@ export class ParkActivities {
     // A ball and a kite on the grass beside them.
     add(this.picnic, box(0.3, 0.3, 0.3, mat(0xf2c400), 3.2, 0, 0.8));
     mergeStatic(this.picnic);
+    for (let i = 0; i < 14; i++) this.people.add(-2000 - i, randomAppearance(createRandom(2000 + i)), 'passerby', i !== 8, false);
     this.set({ yoga: false, picnic: false });
   }
 
   set(v: { yoga: boolean; picnic: boolean }): void {
     this.yoga.visible = v.yoga;
     this.picnic.visible = v.picnic;
+    for (let i = 0; i < 9; i++) {
+      const x = i === 8 ? 18 : 18 + (i % 4) * 1.6 - 2.4;
+      const z = i === 8 ? 73.8 : 76.2 + Math.floor(i / 4) * 2.4;
+      this.people.update(-2000 - i, x, 0.1, z, v.yoga, false);
+    }
+    const picnic = [[-1.3, -0.6], [1.2, -0.5], [-0.9, 1.1], [0.8, 1.0], [1.6, 0.6]];
+    picnic.forEach(([x, z], i) => this.people.update(-2009 - i, x - 2, 0.1, z + 70, v.picnic, false));
   }
 }

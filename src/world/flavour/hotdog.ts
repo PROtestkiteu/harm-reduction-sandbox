@@ -1,7 +1,7 @@
 import type { Group } from 'three';
 import { HOTDOG } from '../../config/flavour/vignettes';
 import { range, type Random } from '../../sim/random';
-import { fade, type ActorPool } from './actors';
+import { fade, type ActorSource } from './actors';
 import type { Scene } from './index';
 import { hotdogCart } from './props';
 
@@ -10,7 +10,7 @@ import { hotdogCart } from './props';
  * pitch (by arc length along the loop, so it goes round the corner, never
  * across a block), stays a few minutes at each, and customers stop by.
  */
-export function buildHotdog(pool: ActorPool, random: Random, root: Group): Scene {
+export function buildHotdog(pool: ActorSource, random: Random, root: Group): Scene {
   const legs = HOTDOG.loop.slice(1).map((b, i) => ({ a: HOTDOG.loop[i], b, len: Math.hypot(b.x - HOTDOG.loop[i].x, b.z - HOTDOG.loop[i].z) }));
   const along = (p: { x: number; z: number }) => {
     let s = 0;

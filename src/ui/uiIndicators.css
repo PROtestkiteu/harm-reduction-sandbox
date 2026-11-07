@@ -34,7 +34,7 @@ details > summary::marker { content: ''; }
 .goals-head::after, .events-heading::after, .legend-heading::after,
 .opt.group::after, .opt.guide-opt::after, .event-head::after,
 .map-legend .legend-go::after, .sandbox-reply::after, details > summary::after,
-.selection-heading::after, .sandbox-backlink::before,
+.selection-heading::after, .selection-fold::after, .sandbox-backlink::before,
 .employee-assignment::after, .team-member::after, .mix-row .mix-setup::before,
 .options[data-drill] > li.drill-head .opt::before {
   content: ''; display: inline-block; box-sizing: border-box;
@@ -52,9 +52,9 @@ details > summary::marker { content: ''; }
   position: absolute; right: 0; top: calc(50% - var(--ui-mark-slot) / 2);
 }
 .goals-head::after, .events-heading::after, .legend-heading::after,
-.selection-heading::after { --ui-mark: var(--ui-plus); }
+.selection-heading::after, .selection-fold::after { --ui-mark: var(--ui-plus); }
 .goals-head[aria-expanded='true']::after, .events-heading[aria-expanded='true']::after,
-.legend-heading[aria-expanded='true']::after, .selection-heading[aria-expanded='true']::after { --ui-mark: var(--ui-minus); }
+.legend-heading[aria-expanded='true']::after, .selection-heading[aria-expanded='true']::after, .selection-fold[aria-expanded='true']::after { --ui-mark: var(--ui-minus); }
 details[open] > summary::after, .opt.group[aria-expanded='true']::after { transform: rotate(90deg); }
 /* Nested disclosures belong with their label; select controls retain a trailing arrow. */
 details > summary { padding-left: calc(var(--ui-mark-slot) + var(--ui-mark-gap)); padding-right: 0; }
@@ -89,8 +89,19 @@ details > summary::after { left: 0; right: auto; }
 .cite-reference + .cite-reference { margin-top: 4px; }
 .cite-reference a { color: var(--reply); text-decoration: underline; text-underline-offset: 3px; }
 
-.window .line:has(.selection-rename:not([hidden])) .selection-heading { width: calc(100% - 44px); min-height: 44px; }
-.window .selection-rename {
-  position: absolute; top: 0; right: 0; width: 44px; height: 44px;
-  margin: 0; padding: 0;
+/* Keep rename beside the name, with an independent fold target at the far edge. */
+.window .selection-name-row { display: flex; align-items: center; width: 100%; min-width: 0; }
+.window .selection-name-row .selection-heading {
+  flex: 0 1 auto; width: auto; min-width: 0; min-height: 44px;
+  padding: 0; overflow-wrap: anywhere;
 }
+.window .selection-name-row .selection-heading::after { display: none; }
+.window .selection-rename {
+  position: static; flex: 0 0 44px; width: 44px; height: 44px; margin: 0; padding: 0;
+}
+.window .selection-fold {
+  display: inline-flex; align-items: center; justify-content: center;
+  flex: 0 0 44px; width: 44px; height: 44px; margin-left: auto; padding: 0;
+  background: none; border: 0; color: var(--reply); cursor: pointer;
+}
+.window .selection-fold:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }

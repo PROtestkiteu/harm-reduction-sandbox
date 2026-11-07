@@ -34,6 +34,7 @@ const unit = (id: number, salt: number) => (((id * 2654435761) ^ (salt * 40503))
 const PASSERBY_SHARE = 0.25;
 
 function profileFor(p: PersonState): UseProfile | undefined {
+  if (p.ambient) return undefined;
   const roll = unit(p.id, 1);
   let list: readonly string[] | undefined;
   if (p.role === 'sleeper' || p.resting) list = PROFILES_BY_GROUP.unhoused;
@@ -183,6 +184,9 @@ export function describePerson(p: PersonState): PersonCard {
 }
 
 function describeRole(p: PersonState): PersonCard {
+  if (p.crisis) return { role: p.role, title: t('Person in crisis'), subtitle: ROLE_SUBTITLE.passerby, activity: t('Person in crisis'), inView: p.visible };
+  if (p.ambient) return { role: p.role, title: ROLE_TITLE[p.role], subtitle: ROLE_SUBTITLE[p.role as Exclude<PersonRole, 'staff'>] ?? ROLE_SUBTITLE.passerby,
+    activity: p.role === 'police' ? t('On patrol') : p.seated ? t('Person resting') : p.moving ? t('Walking past') : t('Spending time in the city'), inView: p.visible };
   const staff = p.role === 'staff';
   if (p.role === 'police' || p.role === 'resident' || p.role === 'seller' || p.role === 'sleeper' || p.role === 'cleaner') {
     return { role: p.role, title: ROLE_TITLE[p.role], subtitle: ROLE_SUBTITLE[p.role], activity: contextActivity(p), inView: p.visible, profile: profileFor(p) };

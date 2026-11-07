@@ -46,7 +46,13 @@ export interface DaemonInput {
 
 export type DaemonNews = { kind: 'arrived' } | { kind: 'endedAlone'; arrest: boolean };
 
+export interface CrisisPerson { id: number; x: number; z: number; identity?: string }
+
 export class ChaosDaemon {
+  /** Existing city identity, retained in saves; legacy saves may have no source person. */
+  person: CrisisPerson | null = null;
+  private candidates: (() => readonly CrisisPerson[]) | null = null;
+  setCandidates(candidates: () => readonly CrisisPerson[]): void { this.candidates = candidates; }
   /** Organisation minutes they turned up at, or null when nobody is roaming. */
   since: number | null = null;
   /** Tries that failed this time, each making the next a little harder. */
@@ -72,6 +78,10 @@ export class ChaosDaemon {
     if (now < this.quietUntil || inp.nights < 1) return null;
     if (inp.street < DAEMON.streetAt && inp.crisis < DAEMON.crisisAt) return null;
     if (this.random() >= 1 - Math.pow(1 - DAEMON.chancePerHour, dtMinutes / 60)) return null;
+    const people = this.candidates?.() ?? [];
+    // A separate deterministic choice preserves crisis timing and outcome rolls.
+    const person = people[Math.floor(createRandom(Math.floor(now * 1000))() * people.length)];
+    this.person = person ? { id: person.id, x: person.x, z: person.z, identity: person.identity } : null;
     this.since = now;
     this.fails = 0;
     return { kind: 'arrived' };
@@ -93,17 +103,24 @@ export class ChaosDaemon {
 
   private end(now: number): void {
     this.since = null;
+    this.person = null;
     this.fails = 0;
     this.quietUntil = now + DAEMON.cooldownHours * 60;
   }
 
-  snapshot(): { since: number | null; fails: number; quietUntil: number } {
-    return { since: this.since, fails: this.fails, quietUntil: this.quietUntil };
+  snapshot(): { since: number | null; fails: number; quietUntil: number; person: CrisisPerson | null } {
+    return { since: this.since, fails: this.fails, quietUntil: this.quietUntil, person: this.person ? { ...this.person } : null };
   }
 
-  restore(s: { since?: unknown; fails?: unknown; quietUntil?: unknown } | undefined): void {
+  restore(s: { since?: unknown; fails?: unknown; quietUntil?: unknown; person?: unknown } | undefined): void {
     if (!s) return;
+    this.person = null;
+    const p = s.person as Partial<CrisisPerson> | null;
+    if (p && Number.isSafeInteger(p.id) && p.id! < 0 && Number.isFinite(p.x) && Number.isFinite(p.z)) {
+      this.person = { id: p.id!, x: p.x!, z: p.z!, ...(typeof p.identity === 'string' && p.identity.length <= 4096 ? { identity: p.identity } : {}) };
+    }
     this.since = typeof s.since === 'number' && Number.isFinite(s.since) ? s.since : null;
+    if (this.since === null) this.person = null;
     if (typeof s.fails === 'number' && Number.isFinite(s.fails)) this.fails = Math.max(0, Math.round(s.fails));
     if (typeof s.quietUntil === 'number' && Number.isFinite(s.quietUntil)) this.quietUntil = s.quietUntil;
   }
