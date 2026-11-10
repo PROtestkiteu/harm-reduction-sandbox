@@ -2291,7 +2291,7 @@ export const ES: Record<string, string> = {
   "Drag to move around, pinch or scroll to zoom, and tap a place to inspect it.": "Arrastra para moverte, pellizca o desplázate para acercar y toca un lugar para inspeccionarlo.",
   "Begin by visiting the park encampment and opening the foot patrol controls.": "Empieza visitando el campamento del parque y abriendo los controles de la patrulla a pie.",
   "You can pause whenever you need. Setbacks are recoverable during the tutorial.": "Puedes pausar cuando lo necesites. Los contratiempos tienen solución durante el tutorial.",
-  "Harm Reduction Project": "Proyecto de reducción de daños",
+  "Harm Reduction Simulator": "Simulador de reducción de daños",
   "Loading game…": "Cargando partida…",
   "This saved game is unavailable. Choose another save or try again.": "Esta partida guardada no está disponible. Elige otra o inténtalo de nuevo.",
   "Main menu": "Menú principal",

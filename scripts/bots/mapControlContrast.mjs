@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {mkdirSync, writeFileSync} from 'node:fs';
 import {drive} from './chrome.mjs';
-const base=process.argv[2]??'http://127.0.0.1:5272/thegame/';
+const base=process.argv[2]??'http://127.0.0.1:5272/simulator/';
 const out=process.argv[3]??'/tmp/hrs-map-control-contrast';mkdirSync(out,{recursive:true});
 const start=`(async()=>{const end=Date.now()+120000;while(!document.querySelector('.main-menu-actions')&&Date.now()<end)await new Promise(r=>setTimeout(r,100));document.querySelectorAll('.main-menu-actions button')[1].click();[...document.querySelectorAll('.scenario-tile')].find(e=>e.querySelector('strong').textContent==='First nights').click();document.querySelector('.scenario-detail .menu-primary').click();while((!document.querySelector('#hud')||document.getElementById('loading'))&&Date.now()<end)await new Promise(r=>setTimeout(r,100));if(document.getElementById('loading'))throw Error('Game not ready');document.querySelectorAll('dialog[open]').forEach(d=>d.close());return true;})()`;
 const snapshot=`(()=>{

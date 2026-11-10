@@ -2,7 +2,7 @@
 // Never force a HUD refresh after the model changes lessons.
 import {drive,SKIP_WELCOME} from './chrome.mjs';
 const expected=process.argv[2]??'fixed';
-const base=process.argv[3]??'http://127.0.0.1:5308/thegame/';
+const base=process.argv[3]??'http://127.0.0.1:5308/simulator/';
 const rows=await drive(base+'?scenario=tutorial&packs=none&quality=low',[
  ...SKIP_WELCOME,
  {eval:`(()=>{const s=window.__sandbox,T=s.sim.tutorial.constructor;s.sim.tutorial=T.restore({...s.sim.tutorial.snapshot(),stage:'dropIn',reviewedSkills:true,visits:{outreach:5,dropIn:4}});s.sim.tutorialInspectCamp();s.sim.clockMinutes=30*60+43;s.syncEvents();const row=document.querySelector('#services-management [data-tutorial-service=clubHr]');if(row.dataset.tutorialLocked!=='true')throw Error('Fixture did not start with locked club');s.sim.tutorial.served('dropIn');s.sim.tutorialInspectCamp();return {stage:s.sim.tutorial.stage,clock:s.sim.clockMinutes}})()`},

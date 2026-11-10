@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {mkdirSync} from 'node:fs';
 import {drive,call,SKIP_WELCOME} from './chrome.mjs';
-const base=process.argv[2]??'http://127.0.0.1:5308/thegame/';
+const base=process.argv[2]??'http://127.0.0.1:5308/simulator/';
 const baseline=process.argv.includes('--baseline'),out=process.env.OUT??'/tmp/hrp-home-533-visual';mkdirSync(out,{recursive:true});
 const mouse=selector=>['mousePressed','mouseReleased'].map(type=>({cdp:'Input.dispatchMouseEvent',paramsEval:`(()=>{const r=document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();return {type:'${type}',x:r.x+r.width/2,y:r.y+r.height/2,button:'left',buttons:${type==='mousePressed'?1:0},clickCount:1}})()`}));
 const click=selector=>process.env.SIZE?.startsWith('393')?[

@@ -1,4 +1,4 @@
-# Harm Reduction Project (https://github.com/PROtestkiteu/harm-reduction-sandbox)
+# Harm Reduction Simulator (https://github.com/PROtestkiteu/harm-reduction-sandbox)
 # Static files only. Basic firewall rules, security headers and caching.
 
 Options -Indexes -MultiViews
@@ -11,7 +11,7 @@ LimitRequestBody 16384
 
   # The web root is shared with the shop domains: the game lives on protestkit.eu only.
   RewriteCond %{HTTP_HOST} !^(www\.)?protestkit\.eu$ [NC]
-  RewriteRule ^ https://protestkit.eu/thegame/ [R=301,L]
+  RewriteRule ^ https://protestkit.eu/simulator/ [R=301,L]
 
   # The leaderboard endpoint is the one script: GET and POST only, nothing else under api/.
   RewriteRule ^api/(?!board\.php$) - [F,L]

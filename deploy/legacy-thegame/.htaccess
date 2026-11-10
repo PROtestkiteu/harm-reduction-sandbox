@@ -1,0 +1,24 @@
+# The game moved from /thegame/ to /simulator/. This folder only forwards.
+# Deployed once to /var/www/html/www.protestkit.eu/thegame/ together with sw.js from this folder.
+
+Options -Indexes -MultiViews
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # Installed copies still ask for their worker here: it clears the old copies and retires itself.
+  RewriteRule ^sw\.js$ - [L]
+
+  # Open old tabs may still post a finished run: 308 keeps the method and body.
+  RewriteRule ^api/board\.php$ https://protestkit.eu/simulator/api/board.php [R=308,L]
+
+  # Everything else, same path and query. Browsers keep the #g= save in the address across a redirect.
+  RewriteRule ^(.*)$ https://protestkit.eu/simulator/$1 [R=301,L]
+</IfModule>
+
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  <FilesMatch "^sw\.js$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+</IfModule>

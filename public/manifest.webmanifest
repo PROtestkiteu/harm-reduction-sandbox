@@ -1,6 +1,6 @@
 {
-  "name": "Harm Reduction Project",
-  "short_name": "HR Project",
+  "name": "Harm Reduction Simulator",
+  "short_name": "HR Simulator",
   "start_url": "./",
   "scope": "./",
   "display": "fullscreen",

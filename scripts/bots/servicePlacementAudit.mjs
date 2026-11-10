@@ -1,6 +1,6 @@
 // All first-site choices use normal service controls; the dev hook only inspects results.
 import assert from 'node:assert/strict';import {mkdirSync} from 'node:fs';import {drive,call,SKIP_WELCOME} from './chrome.mjs';
-const base=process.argv[2]??'http://127.0.0.1:5308/thegame/',baseline=process.argv.includes('--baseline'),mobile=process.env.SIZE?.startsWith('393'),out=process.env.OUT??'/tmp/hrp-services-534-audit';mkdirSync(out,{recursive:true});
+const base=process.argv[2]??'http://127.0.0.1:5308/simulator/',baseline=process.argv.includes('--baseline'),mobile=process.env.SIZE?.startsWith('393'),out=process.env.OUT??'/tmp/hrp-services-534-audit';mkdirSync(out,{recursive:true});
 const input=s=>mobile?[
 {cdp:'Input.dispatchTouchEvent',paramsEval:`(()=>{const b=document.querySelector(${JSON.stringify(s)});b.scrollIntoView({block:'nearest'});const r=b.getBoundingClientRect();return {type:'touchStart',touchPoints:[{x:r.x+r.width/2,y:r.y+r.height/2}]}})()`},{cdp:'Input.dispatchTouchEvent',params:{type:'touchEnd',touchPoints:[]}},{wait:180}
 ]:['mousePressed','mouseReleased'].map(type=>({cdp:'Input.dispatchMouseEvent',paramsEval:`(()=>{const b=document.querySelector(${JSON.stringify(s)});b.scrollIntoView({block:'nearest'});const r=b.getBoundingClientRect();return {type:'${type}',x:r.x+r.width/2,y:r.y+r.height/2,button:'left',buttons:${type==='mousePressed'?1:0},clickCount:1}})()`}));

@@ -1,8 +1,8 @@
-# Harm Reduction Project
+# Harm Reduction Simulator
 
 A small city you can watch and poke at. People go to work, to the club, to the pharmacy or the drop-in. You run the services, change the rules around them, and see what happens on the street.
 
-Play it at **[protestkit.eu/thegame](https://protestkit.eu/thegame/)**.
+Play it at **[protestkit.eu/simulator](https://protestkit.eu/simulator/)**. The old address, protestkit.eu/thegame, forwards there.
 
 Every number in it is illustrative. It shows directions of effect that the research supports. It does not predict anything about a real city.
 
@@ -47,7 +47,7 @@ npm install
 npm run dev
 ```
 
-`npm run build` makes a static site in `dist/`. Set `--base` if it lives in a subfolder, for example `npx vite build --base=/thegame/`.
+`npm run build` makes a static site in `dist/`. Set `--base` if it lives in a subfolder, for example `npx vite build --base=/simulator/`.
 
 ## Browser support
 
@@ -62,7 +62,7 @@ On devices without half-float colour buffers the scene renders in 8 bits. Below 
 
 ## Leaderboard
 
-Saves are links: the game state is packed after `#g=` and never reaches a server. The public leaderboard is one PHP file, `server/board.php`, deployed as `api/board.php` next to the game. It needs PHP with SQLite, a secret of at least 32 characters in `/etc/thegame/secret` and a writable `/var/lib/thegame/` (both paths can be changed with `THEGAME_SECRET_FILE` and `THEGAME_DB`).
+Saves are links: the game state is packed after `#g=` and never reaches a server. The public leaderboard is one PHP file, `server/board.php`, deployed as `api/board.php` next to the game. It needs PHP with SQLite, a secret of at least 32 characters in `/etc/thegame/secret` and a writable `/var/lib/thegame/` (both paths can be changed with `THEGAME_SECRET_FILE` and `THEGAME_DB`). These server paths keep their old name on purpose, so the leaderboard kept its data when the game moved from /thegame/ to /simulator/.
 
 For development, run it beside Vite, which forwards `/api/board.php` to it:
 

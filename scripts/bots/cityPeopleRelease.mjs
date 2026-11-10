@@ -16,4 +16,4 @@ const steps=[
  {eval:`(()=>{const n=document.querySelector('.selection-heading').getBoundingClientRect(),p=document.querySelector('.selection-rename').getBoundingClientRect();if(Math.abs(p.left-n.right)>4||p.width<44||p.height<44||p.right>innerWidth)throw Error('Phone rename placement');return {phonePencilGap:p.left-n.right,width:p.width,height:p.height}})()`},
  {shot:'phone.png'}
 ];
-console.log(JSON.stringify(await drive(process.argv[2]??'http://127.0.0.1:5299/thegame/?packs=none&quality=low',steps,{out,seed:777,size:'1440x900',settle:12000,menu:true,diagnostics:true}),null,2));
+console.log(JSON.stringify(await drive(process.argv[2]??'http://127.0.0.1:5299/simulator/?packs=none&quality=low',steps,{out,seed:777,size:'1440x900',settle:12000,menu:true,diagnostics:true}),null,2));

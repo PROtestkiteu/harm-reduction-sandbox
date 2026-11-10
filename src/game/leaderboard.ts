@@ -1,7 +1,7 @@
 import type { SaveData } from './saveGame';
 import { isSandboxed, markSandboxed, onSandboxed, sandboxedReason } from './sandboxed';
 
-/** The leaderboard endpoint, next to the page (works under /thegame/ and in development). */
+/** The leaderboard endpoint, next to the page (works under /simulator/ and in development). */
 const API = () => new URL('api/board.php', document.baseURI).toString();
 const RUN_KEY = 'hrp-run';
 

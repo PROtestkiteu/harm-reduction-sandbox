@@ -2262,7 +2262,7 @@ export const UK: Record<string, string> = {
   "Drag to move around, pinch or scroll to zoom, and tap a place to inspect it.": "Перетягніть, щоб переміщатися, зведіть або прокрутіть, щоб збільшити, і торкніться місця, щоб перевірити його.",
   "Begin by visiting the park encampment and opening the foot patrol controls.": "Почніть із відвідування паркового табору та відкриття пішого патруля.",
   "You can pause whenever you need. Setbacks are recoverable during the tutorial.": "Ви можете зробити паузу, коли вам потрібно. Невдачі можна усунути під час навчання.",
-  "Harm Reduction Project": "Проєкт зменшення шкоди",
+  "Harm Reduction Simulator": "Симулятор зменшення шкоди",
   "Loading game…": "Завантаження гри…",
   "This saved game is unavailable. Choose another save or try again.": "Ця збережена гра недоступна. Виберіть інше збереження або повторіть спробу.",
   "Main menu": "Головне меню",

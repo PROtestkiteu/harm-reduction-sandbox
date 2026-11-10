@@ -25,7 +25,7 @@ export function showMainMenu(): Promise<void> {
     splash.classList.add('has-menu');
     splash.removeAttribute('role');
     const menu = el('main', 'main-menu');
-    const title = el('h1', 'main-menu-brand', t('Harm Reduction Project'));
+    const title = el('h1', 'main-menu-brand', t('Harm Reduction Simulator'));
     const page = el('section', 'main-menu-page');
     page.setAttribute('aria-live', 'polite');
     menu.append(title, page);

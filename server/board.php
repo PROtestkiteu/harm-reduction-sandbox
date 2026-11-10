@@ -1,6 +1,6 @@
 <?php
 /**
- * Leaderboard for the harm reduction project game.
+ * Leaderboard for the Harm Reduction Simulator game.
  *
  *   GET  board.php                      top 50 runs
  *   POST board.php {"action":"start"}   a signed run ticket: {id, ts, token}

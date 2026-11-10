@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {mkdirSync} from 'node:fs';
 import {drive} from './chrome.mjs';
-const base=process.argv[2]??'http://127.0.0.1:5302/thegame/';const out=process.argv[3]??'/tmp/hrp-ui-520-controls';mkdirSync(out,{recursive:true});
+const base=process.argv[2]??'http://127.0.0.1:5302/simulator/';const out=process.argv[3]??'/tmp/hrp-ui-520-controls';mkdirSync(out,{recursive:true});
 const mouse=selector=>[...['mousePressed','mouseReleased'].map(type=>({cdp:'Input.dispatchMouseEvent',paramsEval:`(()=>{const b=document.querySelector(${JSON.stringify(selector)});b.scrollIntoView({block:'nearest'});const r=b.getBoundingClientRect();return {type:'${type}',x:r.left+r.width/2,y:r.top+r.height/2,button:'left',buttons:${type==='mousePressed'?1:0},clickCount:1}})()`})),{wait:180}];
 const campClick=['mousePressed','mouseReleased'].map(type=>({cdp:'Input.dispatchMouseEvent',paramsEval:`({type:'${type}',...campPoint,button:'left',buttons:${type==='mousePressed'?1:0},clickCount:1})`}));
 const tap=selector=>[{eval:`(()=>{if(!document.querySelector(${JSON.stringify(selector)}))throw Error('Missing control '+${JSON.stringify(selector)}+' at '+document.querySelector('.tutorial-guide').dataset.stage+': '+document.body.innerText.slice(-700));return true})()`},{cdp:'Input.dispatchTouchEvent',paramsEval:`(()=>{const b=document.querySelector(${JSON.stringify(selector)});b.scrollIntoView({block:'nearest'});const r=b.getBoundingClientRect();return {type:'touchStart',touchPoints:[{x:r.left+r.width/2,y:r.top+r.height/2}]}})()`},{cdp:'Input.dispatchTouchEvent',params:{type:'touchEnd',touchPoints:[]}},{wait:350}];
