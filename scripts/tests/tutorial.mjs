@@ -241,6 +241,26 @@ for(const site of ['outreach','dropIn','clubHr'])emptyNight.setEnabled(site,true
 emptyNight.clockMinutes=32*60-.1;emptyNight.tick(.1);
 assert.equal(emptyNight.tutorial.stage,'night','Morning alone cannot finish unstaffed services');
 assert.deepEqual(emptyNight.tutorial.nightServices,[],'A failed report cannot reuse an earlier night');
+assert(emptyNight.org.log.some(n=>/did not complete the lesson/.test(n.text)),'A failed report tells the learner why the lesson continues');
+
+// The club lesson can end just after closing time: the coordinated night must not wait a whole extra day.
+const lateNight=(enterAt)=>{
+  const sim=fresh();
+  sim.tutorial=TutorialProgress.restore({...sim.tutorial.snapshot(),stage:'nightlife',inspectedCamp:true,reviewedSkills:true,visits:{clubHr:4},rewards:['meet','patrol','outreach','dropIn','nightlife']});
+  sim.org.paid=10;sim.org.budget=5000;
+  for(const id of ['outreach','dropIn','clubHr']){sim.serviceSites[id]={kind:'original'};sim.setEnabled(id,true);}
+  const staff=()=>{for(const id of ['outreach','dropIn','clubHr']){const s=sim.services[id];for(let g=0;g<10&&s.staffOnSite<s.assigned;g++)sim.staffArrived(id);}};
+  staff();sim.clockMinutes=enterAt;sim.tutorial.served('clubHr');sim.tick(.01);
+  assert.equal(sim.tutorial.stage,'night');
+  const begun=sim.org.now;
+  for(let i=0;i<20000&&sim.tutorial.stage!=='complete';i++){sim.tick(.25);staff();}
+  assert.equal(sim.tutorial.stage,'complete','Coordinated night completes at the next morning report');
+  return sim.org.now-begun;
+};
+for(const enterAt of [29*60+50,30*60+10,31*60+50]){
+  const waited=lateNight(enterAt);
+  assert(waited<=32*60-enterAt+1,'Lesson entered at '+enterAt+' waited '+Math.round(waited)+' game minutes instead of reaching the same morning');
+}
 console.log('All visit lessons: physical arrival, completed support, saved routes, exactly-once credit; unstaffed morning rejected: passed');
 
 const {tutorialNavigation,tutorialBriefing}=await import('../../src/ui/tutorialNavigation.ts');

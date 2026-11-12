@@ -8,7 +8,7 @@ const results=await drive(url.href,[
 {eval:`(async()=>{
  window.pauseWait=async(test,label,timeout=120000)=>{const end=Date.now()+timeout;while(!test()&&Date.now()<end)await new Promise(r=>setTimeout(r,50));if(!test())throw Error(label)};
  localStorage.setItem('hrp-tutorials-hidden',JSON.stringify(['guides']));await pauseWait(()=>document.querySelector('.main-menu-actions'),'menu');document.querySelectorAll('.main-menu-actions button')[1].click();[...document.querySelectorAll('.scenario-tile')].find(t=>t.querySelector('strong').textContent==='Tutorial').click();document.querySelector('.scenario-detail .menu-primary').click();
- await pauseWait(()=>document.querySelector('.tutorial-action')&&!document.getElementById('loading'),'tutorial');
+ await pauseWait(()=>document.querySelector('.tutorial-guide:not([hidden]) .tutorial-toggle')&&!document.getElementById('loading'),'tutorial');
  const intro=document.querySelector('dialog.intro');if(intro?.open)for(let i=0;i<5&&intro.open;i++)intro.querySelector('.intro-nav button:last-child').click();
  await new Promise(r=>setTimeout(r,100));
  window.pauseCycle=async()=>{

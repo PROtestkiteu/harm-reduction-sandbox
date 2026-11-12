@@ -2255,7 +2255,7 @@ export const UK: Record<string, string> = {
   "With salt and lime?": "З сіллю та лаймом?",
   "Safe space": "Безпечний простір",
   "Save game": "Зберегти гру",
-  "Tutorial support: emergency funds and a rested team keep the next lesson within reach.": "Підтримка навчанняів: надзвичайні кошти та відпочила команда забезпечують доступ до наступного уроку.",
+  "Tutorial support: emergency funds and a rested team keep the next lesson within reach.": "Підтримка навчання: надзвичайні кошти та відпочила команда забезпечують доступ до наступного уроку.",
   "Start with two streetworkers, a small neighbourhood and the park next door.": "Почніть із двох вуличних працівників, невеликого району та парку поруч.",
   "Meet people where they are. Your first round offers clean kit, naloxone, a warm drink and a conversation.": "Допомагай людям там, де вони є. Перший вихід: стерильні засоби, налоксон, теплий напій і розмова.",
   "Follow one goal at a time. New streets, services and controls appear as your team learns.": "Дотримуйтеся однієї мети за раз. Нові вулиці, служби та елементи керування з’являються, коли ваша команда навчається.",
@@ -2453,6 +2453,7 @@ export const UK: Record<string, string> = {
   "Green sites are available. Blue marks your selection. Escape cancels placement.": "Зелені місця доступні. Синім позначено ваш вибір. Escape скасовує розміщення.",
   "Your portrait": "Ваш портрет",
   "Keep all three services staffed until the night report.": "Забезпечте персонал у всіх трьох службах до нічного звіту.",
+  "This night did not complete the lesson: all three services must stay open and staffed through the night. Try again tonight.": "Ця ніч не зарахувала урок: усі три служби мають працювати з персоналом усю ніч. Спробуйте знову сьогодні ввечері.",
 
   "Back to map": "До мапи",
   "Select the camp on the map.": "Виберіть табір на мапі.",

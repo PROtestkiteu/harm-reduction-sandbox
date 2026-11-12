@@ -13,7 +13,8 @@ for (const touch of [false, true]) {
     { cdp: 'Input.dispatchMouseEvent', paramsEval: `({type:'mousePressed',...dispatchPoint,button:'right',buttons:2,clickCount:1})` },
     { cdp: 'Input.dispatchMouseEvent', paramsEval: `({type:'mouseReleased',...dispatchPoint,button:'right',buttons:0,clickCount:1})` },
   ];
-  const point = camp => ({ eval: `window.__sandbox.actionMenu.close(); dispatchPoint=findPoint(${camp}); true` });
+  // Settle the camera before aiming: a press must land where the pick was measured.
+  const point = camp => ({ eval: `(async()=>{const s=window.__sandbox;s.actionMenu.close();document.querySelector('.tutorial-guide[data-collapsed=false] .tutorial-close')?.click();s.rig.step(0,true);await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame);dispatchPoint=findPoint(${camp});return true})()` });
   const results = await drive(new URL('?scenario=tutorial&packs=none&quality=low', base).href, [
     ...SKIP_WELCOME,
     { eval: `(() => {
@@ -24,7 +25,8 @@ for (const touch of [false, true]) {
       window.patrolButtons=()=>[...document.querySelectorAll('.action-menu:not([hidden]) button')].filter(b=>/send.*patrol/i.test(b.textContent));
       window.findPoint=camp=>{
         for(let y=180;y<innerHeight-140;y+=8)for(let x=20;x<innerWidth-20;x+=8){
-          if(document.elementFromPoint(x,y)!==s.renderer.domElement)continue;
+          // A finger's width clear of every overlay: touch hit-testing snaps near-misses onto nearby windows.
+          if([[0,0],[-14,0],[14,0],[0,-14],[0,14]].some(([dx,dy])=>document.elementFromPoint(x+dx,y+dy)!==s.renderer.domElement))continue;
           const picked=s.interaction.pick(x,y,s.camera,s.pipeline.frame,${touch});
           const isCamp=picked?.kind==='building'&&picked.id===s.world.camps.park;
           if(camp?isCamp:!picked)return {x,y};
@@ -36,7 +38,19 @@ for (const touch of [false, true]) {
     { eval: `dispatchAudit.initialGround=patrolButtons().length;true` },
     point(true), ...press,
     { eval: `dispatchAudit.locked=patrolButtons().length===1&&patrolButtons()[0].disabled;
-      window.__sandbox.actionMenu.close();document.querySelector('.tutorial-reply button').click();true` },
+      window.__sandbox.actionMenu.close();true` },
+    // Reach a ready patrol through the real lesson: select the camp, open Foot patrol, place its stand, wait for the crew.
+    { eval: `(async()=>{const s=window.__sandbox;let scene=0;
+      s.interaction.select({kind:'building',id:s.world.camps.park});s.syncEvents();await new Promise(requestAnimationFrame);
+      if(document.getElementById('services-management').hidden)document.querySelector('.service-module-toggle').click();
+      document.querySelector('.svc-row[data-tutorial-service=footPatrol] .opt').click();
+      document.querySelector('.opt.switch[data-service=footPatrol]').click();await new Promise(r=>setTimeout(r,350));
+      document.querySelector('[data-placement-action=next]').click();document.querySelector('[data-placement-action=open]').click();
+      await new Promise(r=>setTimeout(r,350));document.querySelector('.tutorial-guide .tutorial-close:not([hidden])')?.click();
+      for(let i=0;i<18000&&!s.sim.patrolReady;i++){s.sim.tick(1/30);const pace=s.sim.pace,n=Math.max(1,Math.ceil(pace));for(let k=0;k<n;k++)s.crowd.update(pace/30/n);s.world.update(1/30,scene);scene+=1/30;if(i%900===0)await new Promise(requestAnimationFrame);}
+      if(!s.sim.patrolReady)throw Error('Crew did not reach the patrol stand');
+      if(document.querySelector('.time-pause').dataset.paused!=='true')document.querySelector('.time-pause').click();
+      s.interaction.select(null);s.syncEvents();s.rig.lookAt(s.rig.focus.clone().set(s.CAMP_AT.x,0,s.CAMP_AT.z));s.rig.step(0,true);await new Promise(requestAnimationFrame);return true})()` },
     { wait: 500 }, point(false), ...press,
     { eval: `dispatchAudit.unlockedGround=patrolButtons().length; window.__sandbox.actionMenu.close();
       dispatchAudit.funds=window.__sandbox.sim.org.budget;window.__sandbox.sim.org.budget=14;true` },

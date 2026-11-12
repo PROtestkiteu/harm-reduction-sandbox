@@ -90,7 +90,10 @@ assert(![...crowd.agents.values()].some(a=>a.staffMember===newcomer));assert.equ
 assert.strictEqual(crowd.person(avatarB.id).worker,second);
 
 // The same named patrol members return from the beat, even when the requested post differs.
-const patrol=new Simulation(321);patrol.startTutorial();const beat=staffingCrowd(patrol);patrol.start();arriveQueued(beat);
+const patrol=new Simulation(321);patrol.startTutorial();
+// The tutorial patrol starts only once its stand is placed and switched on.
+patrol.serviceSites.footPatrol={kind:'curb',id:0};patrol.setEnabled('footPatrol',true);
+const beat=staffingCrowd(patrol);patrol.start();arriveQueued(beat);
 assert.equal(patrol.services.footPatrol.staffOnSite,2);
 patrol.tutorial.inspectCamp();patrol.tutorial.openPatrol();
 assert(patrol.sendPatrol('camp',{x:-20,z:80}));

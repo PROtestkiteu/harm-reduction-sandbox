@@ -19,6 +19,8 @@ The next briefing waits while Team or Settings is open. Closing an unrelated pan
 | Coordinated night | Keep the network staffed through a report | Real staffed services and morning report |
 | Completion | Continue the same city with all controls | Close tutorial |
 
+The coordinated night counts the club when the club lesson ends after closing time (06:00), so the 08:00 report completes the tutorial the same morning instead of a full day later. A morning report that does not complete the lesson posts a notice saying why. The camp's right-click and long-press menu lists one dispatch entry, the one that states why it is unavailable.
+
 Each service has its own setup task. Placement and operation are briefed again for outreach, drop-in and club lessons. Opening Services, selecting a service, choosing a site and confirming it are controls within these tasks, rather than separate lessons for every click. Retrying a previously explained task does not replay its popup.
 
 Regression coverage: scripts/tests/tutorial.mjs checks all 15 task/recovery identifiers and concise nonempty explanations. scripts/bots/tutorial.mjs runs the full authored journey with physical patrol return, actual support completions and the report. scripts/bots/tutorialRegularControls.mjs exercises the public build with native mouse, emulated touch, keyboard dismissal, deferred handoff, distinct minimize/close behavior, no early clues, cancellation and persistent mission UI.

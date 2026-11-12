@@ -633,6 +633,9 @@ export class Simulation {
       this.org.paid = Math.max(this.org.paid, tutorial.capabilities.services.length + 1);
       this.org.equipment = true;
       if (tutorial.stage === 'nightlife' && (this.clockMinutes >= CLUB_CLOSES && this.clockMinutes < CLUB_OPENS)) this.clockMinutes = CLUB_OPENS;
+      // The club lesson can finish just after closing time. Its staffed evening was tonight, so it counts
+      // toward the coordinated night instead of making the learner wait a full day for the next one.
+      if (tutorial.stage === 'night' && !this.clubOpen) tutorial.observeOperational(['clubHr']);
       for (const id of tutorial.capabilities.services) this.timers[id === 'clubHr' ? 'club' : id] = nextArrival(this.random, this.rate(id === 'clubHr' ? 'club' : id));
       this.org.broke = false;
       for (const id of ['naloxone', 'kits', 'leaflets', 'blankets'] as const) this.stakes.supplies.stock[id] = Math.max(60, this.stakes.supplies.stock[id]);
@@ -660,12 +663,14 @@ export class Simulation {
       this.reputation.award(report.care.points);
       this.totals.nights++;
       // Check before notifying UI; a report must occur after entering the final stage.
+      const coordinating = tutorial.stage === 'night';
       tutorial.night((['outreach', 'dropIn', 'clubHr'] as const).every((id) => {
         const service = this.services[id];
         // The club closes naturally at 06:00; remember its staffed evening at the 08:00 report.
         return tutorial.nightServices.includes(id) && service.switchedOn && !this.org.closedDown.has(id)
           && (id === 'clubHr' ? this.serviceAvailability(id) === 'hours' : service.status === 'open' && service.staffOnSite > 0 && service.assigned > 0);
       }));
+      if (coordinating && tutorial.stage === 'night') this.org.notice(this.clockMinutes, t('This night did not complete the lesson: all three services must stay open and staffed through the night. Try again tonight.'));
       this.applyTutorialReward();
       this.emit({ type: 'nightReport', report });
     }

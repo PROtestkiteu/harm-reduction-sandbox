@@ -1184,13 +1184,13 @@ export class Hud {
    * The replies shown right now, for the action menu: one entry per option
    * row with a single button (the speed row and the like stay in the column).
    */
-  menuEntries(): { title: string; items: { label: string; disabled: boolean; run(): void }[] } {
+  menuEntries(): { title: string; items: { label: string; disabled: boolean; run(): void; action?: string }[] } {
     // The menu lists staffing actions directly, so open the group while reading the rows.
     const wasOpen = this.staffOpen;
     const loc = this.mode?.kind === 'location' ? this.lastSnapshot?.locations[this.mode.id].actions : undefined;
     const opened = !!loc && !wasOpen && !this.staffGroupBtn.disabled;
     if (opened) { this.staffOpen = true; this.renderActions(loc); }
-    const items = [...this.options.children]
+    const items: { label: string; disabled: boolean; run(): void; action?: string }[] = [...this.options.children]
       .filter((li) => li !== this.staffGroupOpt)
       .filter((li): li is HTMLLIElement => li instanceof HTMLLIElement && !li.hidden && li.getClientRects().length > 0)
       .map((li) => li.querySelectorAll('button'))
@@ -1201,6 +1201,7 @@ export class Hud {
           + (b.getAttribute('role') === 'switch' ? (b.getAttribute('aria-checked') === 'true' ? t(': on (switch off)') : t(': off (switch on)')) : ''),
         disabled: b.disabled,
         run: () => b.click(),
+        action: b.dataset.buildingAction,
       }))
       .filter((i) => i.label);
     if (this.canRename()) items.push({ label: t('Rename'), disabled: false, run: this.renameAction });

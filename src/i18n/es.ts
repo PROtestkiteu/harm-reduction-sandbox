@@ -2481,6 +2481,7 @@ export const ES: Record<string, string> = {
   "Green sites are available. Blue marks your selection. Escape cancels placement.": "Los lugares verdes están disponibles. El azul indica tu selección. Escape cancela la colocación.",
   "Your portrait": "Tu retrato",
   "Keep all three services staffed until the night report.": "Mantén personal en los tres servicios hasta el informe nocturno.",
+  "This night did not complete the lesson: all three services must stay open and staffed through the night. Try again tonight.": "Esta noche no completó la lección: los tres servicios deben seguir abiertos y con personal toda la noche. Inténtalo de nuevo esta noche.",
 
   "Back to map": "Volver al mapa",
   "Select the camp on the map.": "Selecciona el campamento en el mapa.",

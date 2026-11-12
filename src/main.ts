@@ -710,7 +710,8 @@ const interaction = new Interaction({
     refreshHud();
     const { title, items } = hud.menuEntries();
     const patrol = patrolHereItem(x, y);
-    actionMenu.show(x, y, title, patrol ? [...items, patrol] : items);
+    // The map entry dispatches to the camp and says why it cannot; the card's own camp button would repeat it.
+    actionMenu.show(x, y, title, patrol ? [...items.filter(item => item.action !== 'patrolCamp'), patrol] : items);
   },
 });
 
